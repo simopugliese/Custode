@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="stylesheet" href="_ds/modernist-5f585763-c11f-492a-be9a-27326451c4e6/styles.css">
+<script src="_ds/modernist-5f585763-c11f-492a-be9a-27326451c4e6/_ds_bundle.js"></script>
+<link rel="stylesheet" href="custode.css">
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.min.js"></script>
+<style>
+body{margin:0}
+.pg{display:flex;min-height:900px}
+.rail{width:58px;flex:none;border-right:2px solid var(--color-divider);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:2px}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;padding:0 44px}
+.hd{padding:36px 0 28px;border-bottom:2px solid var(--color-divider)}
+.hd h1{font-size:56px;margin-top:20px;max-width:30ch;text-wrap:pretty;line-height:1.05}
+.stats{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;border-bottom:2px solid var(--color-divider)}
+.stats>div{padding:22px 0 22px 24px;border-left:1px solid var(--color-rule)}
+.stats>div:first-child{padding-left:0;border-left:0}
+.num{font-variant-numeric:tabular-nums;font-size:46px;font-weight:800;letter-spacing:-.03em;line-height:1.1}
+.num small{font-size:22px;font-weight:400;color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.cols{display:grid;grid-template-columns:1.4fr 1fr;gap:0 44px;flex:1}
+.colL{padding:28px 0;display:flex;flex-direction:column;gap:32px}
+.colR{padding:28px 0 28px 44px;border-left:1px solid var(--color-rule);display:flex;flex-direction:column;gap:34px}
+.ask{display:flex;align-items:center;gap:14px;padding:18px 0;border-top:2px solid var(--color-divider)}
+.ask .input{background:transparent;border:0;border-bottom:1px solid var(--color-divider);padding-left:0}
+.tm{width:48px;flex:none;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}
+.cal{display:flex;gap:18px;padding:13px 0;border-bottom:1px solid var(--color-rule)}
+.hb{width:15px;height:15px;flex:none;border:1px solid var(--color-divider)}
+.hb-on{background:var(--color-accent);border-color:var(--color-accent)}
+</style>
+</helmet>
+
+<div class="cu" data-theme="{{ theme }}" style="width:1380px">
+
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" data-on="1"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Custode · sabato 30 agosto, 08:41</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Tre task per oggi, Analisi II alle 9 e pioggia dalle 14.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="zap" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Custode propone <b>2 nuove automazioni</b> dedotte dalle tue abitudini — non partono senza il tuo sì.</span>
+      <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ goRegole }}">Vedi in Regole di contesto<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Task aperti</span><div class="num">3</div></div>
+      <div><span class="cu-kicker">Spesa settimana</span><div class="num">148<small>,20 €</small></div></div>
+      <div><span class="cu-kicker">Streak più lunga</span><div class="num" style="color:var(--color-accent)">5<small style="color:inherit;opacity:.55"> giorni</small></div></div>
+      <div><span class="cu-kicker">Lista spesa</span><div class="num">4<small> da prendere</small></div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Oggi</h5><button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Aggiungi</button></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Prenotare visita dentista</span><span class="cu-mono" style="margin-left:auto;font-size:12px;font-weight:600">18:00</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Sistemare appunti Analisi II — cap. 4</span><span class="cu-muted" style="margin-left:auto;font-size:12px">ripasso</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Rinnovare abbonamento treno</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">domani</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0;opacity:.45"><button class="cbx" data-on="1" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px;text-decoration:line-through">Pagare bolletta luce</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:4px">Calendario</h5>
+          <div>
+            <div class="cal"><span class="tm">09:00</span><span style="font-size:15px">Analisi II</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Aula B2</span></div>
+            <div class="cal"><span class="tm">14:00</span><span style="font-size:15px">Fisica I</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Aula Magna</span></div>
+            <div class="cal" style="border-bottom:0"><span class="tm">16:45</span><span style="font-size:15px">Check-in lezioni</span><span class="cu-muted" style="margin-left:auto;font-size:12px">automatico</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:12px">Abitudini</h5>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div class="row"><span style="width:130px;font-size:14px">Palestra</span>
+              <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div></div>
+              <span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">2 / 3</span></div>
+            <div class="row"><span style="width:130px;font-size:14px">Lettura serale</span>
+              <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div></div>
+              <span class="cu-mono" style="margin-left:auto;font-size:12px;color:var(--color-accent-700);font-weight:600">5 di fila</span></div>
+            <div class="row"><span style="width:130px;font-size:14px">Studio serale</span>
+              <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div></div>
+              <span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">3 / 5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Spese · settimana</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">148,20 / 250 €</span></div>
+          <div style="display:flex;gap:2px;height:14px">
+            <div style="flex:62.4;background:var(--color-accent-500)"></div><div style="flex:32;background:var(--color-accent-400)"></div><div style="flex:31;background:var(--color-accent-300)"></div><div style="flex:22.8;background:var(--color-accent-200)"></div><div style="flex:101.8;background:color-mix(in srgb, var(--color-text) 9%, transparent)"></div>
+          </div>
+          <div style="margin-top:14px">
+            <div class="listrow" style="padding:8px 0"><div style="width:9px;height:9px;background:var(--color-accent-500)"></div><span style="font-size:14px">Alimentari</span><span class="cu-mono" style="margin-left:auto;font-size:14px">62,40</span></div>
+            <div class="listrow" style="padding:8px 0"><div style="width:9px;height:9px;background:var(--color-accent-400)"></div><span style="font-size:14px">Casa</span><span class="cu-mono" style="margin-left:auto;font-size:14px">32,00</span></div>
+            <div class="listrow" style="padding:8px 0"><div style="width:9px;height:9px;background:var(--color-accent-300)"></div><span style="font-size:14px">Trasporti</span><span class="cu-mono" style="margin-left:auto;font-size:14px">31,00</span></div>
+            <div class="listrow" style="padding:8px 0"><div style="width:9px;height:9px;background:var(--color-accent-200)"></div><span style="font-size:14px">Bar</span><span class="cu-mono" style="margin-left:auto;font-size:14px">22,80</span></div>
+            <div class="listrow" style="padding:8px 0"><div style="width:9px;height:9px;border:1px solid var(--color-divider)"></div><span class="cu-muted" style="font-size:14px">Resta di budget</span><span class="cu-mono" style="margin-left:auto;font-size:14px">101,80</span></div>
+          </div>
+          <div class="row" style="margin-top:12px"><span class="cu-muted" style="font-size:12px">1 scontrino in attesa di conferma</span><button class="btn btn-ghost" style="margin-left:auto">Rivedi<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button></div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:6px"><h5>Lista spesa</h5><button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Aggiungi</button></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Latte</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:11px">2 L</span></div>
+            <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Caffè</span></div>
+            <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Detersivo piatti</span></div>
+            <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Uova</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:11px">6</span></div>
+            <div class="listrow" data-row="" style="padding:9px 0;opacity:.45"><button class="cbx" data-on="1" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px;text-decoration:line-through">Pane</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«segna 8€ colazione al bar», «ho fatto palestra e lettura»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDiario }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Diario · agosto 2026</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Ventisei voci approvate su trentuno giorni.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="pen-line" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">La voce di <b>ieri</b> è pronta e aspetta la tua approvazione prima di entrare nel diario.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Leggila<i data-lucide="arrow-down" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Voci del mese</span><div class="num">26<small> / 31</small></div></div>
+      <div><span class="cu-kicker">Giorni consecutivi</span><div class="num" style="color:var(--color-accent)">9<small style="color:inherit;opacity:.55"> giorni</small></div></div>
+      <div><span class="cu-kicker">Parole in media</span><div class="num">142</div></div>
+      <div><span class="cu-kicker">Tema più ricorrente</span><div class="num" style="font-size:34px;padding-top:8px">studio</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div class="row" style="gap:6px">
+          <span class="cu-kicker" style="flex:none">Periodo</span>
+          <div class="seg" style="margin-left:6px">
+            <label class="seg-opt"><input type="radio" name="perDiario" defaultChecked="{{ true }}">Timeline</label>
+            <label class="seg-opt"><input type="radio" name="perDiario">Settimane</label>
+            <label class="seg-opt"><input type="radio" name="perDiario">Mesi</label>
+          </div>
+          <button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="search" style="width:14px;height:14px"></i>Cerca nel diario</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:30px">
+          <article style="border-top:2px solid var(--color-accent);padding-top:16px">
+            <div class="row" style="margin-bottom:10px">
+              <span class="cu-mono" style="font-size:13px;font-weight:600">Ven 29 agosto</span>
+              <span class="tag tag-accent" style="margin-left:auto">da approvare</span>
+            </div>
+            <p style="font-size:16px;line-height:1.6;text-wrap:pretty">Giornata piena tra laboratorio e consegna del sito. Il backend ti ha dato soddisfazione, il frontend resta la parte che ti pesa e su cui rimandi. Sera tranquilla, hai ripreso a leggere e sei andato a dormire prima del solito.</p>
+            <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap"><span class="tag tag-outline">lavoro</span><span class="tag tag-outline">studio</span><span class="tag tag-outline">umore</span></div>
+            <div class="row" style="gap:6px;margin-top:14px">
+              <button class="btn btn-primary" onClick="{{ approve }}"><i data-lucide="check" style="width:15px;height:15px"></i>Approva</button>
+              <button class="btn btn-secondary"><i data-lucide="pencil" style="width:15px;height:15px"></i>Modifica</button>
+              <button class="btn btn-ghost">Scarta</button>
+              <span class="cu-muted" style="margin-left:auto;font-size:12px">da 3 vocali e 11 messaggi</span>
+            </div>
+          </article>
+
+          <article style="border-top:1px solid var(--color-divider);padding-top:16px">
+            <div class="row" style="margin-bottom:10px">
+              <span class="cu-mono" style="font-size:13px;font-weight:600">Gio 28 agosto</span>
+              <span class="cu-muted" style="margin-left:auto;font-size:12px">approvata alle 23:40</span>
+            </div>
+            <p style="font-size:16px;line-height:1.6;text-wrap:pretty">Mattinata su Analisi II, il capitolo 3 è finalmente chiaro. Pomeriggio perso in riunioni inutili, umore basso verso le 17 poi risalito con la palestra. Cena veloce, niente lettura.</p>
+            <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap"><span class="tag tag-outline">studio</span><span class="tag tag-outline">palestra</span></div>
+          </article>
+
+          <article style="border-top:1px solid var(--color-divider);padding-top:16px">
+            <div class="row" style="margin-bottom:10px">
+              <span class="cu-mono" style="font-size:13px;font-weight:600">Mer 27 agosto</span>
+              <span class="cu-muted" style="margin-left:auto;font-size:12px">approvata alle 22:58</span>
+            </div>
+            <p style="font-size:16px;line-height:1.6;text-wrap:pretty">Giornata corta: solo Fisica I e due ore di appunti. Hai chiuso la questione dell'abbonamento e ti sei liberato la testa. Serata con gli amici, rientro tardi.</p>
+            <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap"><span class="tag tag-outline">studio</span><span class="tag tag-outline">amici</span></div>
+          </article>
+
+          <article style="border-top:1px solid var(--color-divider);padding-top:16px;opacity:.55">
+            <div class="row" style="margin-bottom:10px">
+              <span class="cu-mono" style="font-size:13px;font-weight:600">Mar 26 agosto</span>
+              <span class="cu-muted" style="margin-left:auto;font-size:12px">nessuna voce — non hai scritto a Custode</span>
+            </div>
+          </article>
+
+          <article style="border-top:1px solid var(--color-divider);padding-top:16px">
+            <div class="row" style="margin-bottom:10px">
+              <span class="cu-mono" style="font-size:13px;font-weight:600">Lun 25 agosto</span>
+              <span class="cu-muted" style="margin-left:auto;font-size:12px">approvata alle 23:12</span>
+            </div>
+            <p style="font-size:16px;line-height:1.6;text-wrap:pretty">Ripresa dopo il weekend più lenta del previsto. Hai messo giù la scaletta del progetto e chiuso due task rimandati da settimane; soddisfazione piccola ma reale.</p>
+            <div class="row" style="gap:6px;margin-top:12px;flex-wrap:wrap"><span class="tag tag-outline">lavoro</span><span class="tag tag-outline">umore</span></div>
+          </article>
+
+          <div class="row"><button class="btn btn-secondary">Carica agosto per intero</button><span class="cu-muted" style="margin-left:auto;font-size:12px">21 voci più vecchie</span></div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Riepilogo settimanale</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">sett. 35</span></div>
+          <p style="font-size:14px;line-height:1.6;text-wrap:pretty">Settimana di studio costante ma frammentata: cinque giorni su sette con almeno due ore di appunti, sempre di mattina. Il frontend del progetto è stato rimandato tre volte — è il punto ricorrente delle ultime tre settimane.</p>
+          <div class="row" style="gap:6px;margin-top:12px"><span class="tag tag-neutral">generato domenica 24</span></div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Riepilogo mensile</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">agosto</span></div>
+          <p style="font-size:14px;line-height:1.6;text-wrap:pretty">Mese in due metà: la prima dispersiva, la seconda con un ritmo di studio riconoscibile. La lettura serale è l'unica abitudine che hai tenuto per tutto il mese.</p>
+          <button class="btn btn-ghost" style="margin-top:8px">Tutti i riepiloghi<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:12px">Temi del mese</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">studio</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:88px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:100%;height:6px;background:var(--color-accent)"></div></div><span class="cu-muted cu-mono" style="font-size:12px;width:22px;text-align:right">18</span></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">lavoro</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:88px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:72%;height:6px;background:var(--color-accent)"></div></div><span class="cu-muted cu-mono" style="font-size:12px;width:22px;text-align:right">13</span></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">umore</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:88px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:50%;height:6px;background:var(--color-accent)"></div></div><span class="cu-muted cu-mono" style="font-size:12px;width:22px;text-align:right">9</span></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">palestra</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:88px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:39%;height:6px;background:var(--color-accent)"></div></div><span class="cu-muted cu-mono" style="font-size:12px;width:22px;text-align:right">7</span></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">amici</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:88px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:22%;height:6px;background:var(--color-accent)"></div></div><span class="cu-muted cu-mono" style="font-size:12px;width:22px;text-align:right">4</span></div></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:12px">Copertura del mese</h5>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:230px">
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">Verde = voce approvata. I quattro vuoti sono giorni in cui non hai scritto nulla.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«aggiungi al diario di oggi: pomeriggio in biblioteca»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isLezioni }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Lezioni e corsi · semestre in corso</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Analisi II è indietro di due capitoli: il ripasso parte da lì.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="clipboard-check" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Il <b>check-in serale</b> di oggi arriva alle 16:45 — ti chiederà cosa hai capito di Analisi II e Fisica I.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Fallo adesso<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Corsi attivi</span><div class="num">4</div></div>
+      <div><span class="cu-kicker">Lezioni questa settimana</span><div class="num">7<small> / 9</small></div></div>
+      <div><span class="cu-kicker">Check-in fatti</span><div class="num" style="color:var(--color-accent)">11<small style="color:inherit;opacity:.55"> di fila</small></div></div>
+      <div><span class="cu-kicker">Argomenti da ripassare</span><div class="num">5</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div>
+          <div class="row" style="margin-bottom:6px">
+            <h5>Settimana di lezioni</h5>
+            <div class="seg" style="margin-left:12px">
+              <label class="seg-opt"><input type="radio" name="perLez" defaultChecked="{{ true }}">Settimana</label>
+              <label class="seg-opt"><input type="radio" name="perLez">Mese</label>
+            </div>
+            <span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">25 – 31 agosto</span>
+          </div>
+          <div style="display:grid;grid-template-columns:64px 1fr;border-top:1px solid var(--color-divider)">
+            <div class="cu-kicker" style="padding:14px 0">Lun</div>
+            <div style="padding:10px 0;border-left:1px solid var(--color-rule);padding-left:16px;display:flex;flex-direction:column;gap:6px">
+              <div class="row" style="gap:12px"><span class="tm">09:00</span><span style="font-size:14px">Analisi II</span><span class="cu-muted" style="font-size:12px">Aula B2</span><span class="tag tag-neutral" style="margin-left:auto">seguita</span></div>
+              <div class="row" style="gap:12px"><span class="tm">15:00</span><span style="font-size:14px">Algebra lineare</span><span class="cu-muted" style="font-size:12px">Aula 4</span><span class="tag tag-neutral" style="margin-left:auto">seguita</span></div>
+            </div>
+            <div class="cu-kicker" style="padding:14px 0;border-top:1px solid var(--color-rule)">Mar</div>
+            <div style="padding:10px 0;border-left:1px solid var(--color-rule);border-top:1px solid var(--color-rule);padding-left:16px">
+              <div class="row" style="gap:12px"><span class="tm">11:00</span><span style="font-size:14px">Fisica I</span><span class="cu-muted" style="font-size:12px">Aula Magna</span><span class="tag tag-outline" style="margin-left:auto">saltata</span></div>
+            </div>
+            <div class="cu-kicker" style="padding:14px 0;border-top:1px solid var(--color-rule)">Mer</div>
+            <div style="padding:10px 0;border-left:1px solid var(--color-rule);border-top:1px solid var(--color-rule);padding-left:16px;display:flex;flex-direction:column;gap:6px">
+              <div class="row" style="gap:12px"><span class="tm">09:00</span><span style="font-size:14px">Analisi II</span><span class="cu-muted" style="font-size:12px">Aula B2</span><span class="tag tag-neutral" style="margin-left:auto">seguita</span></div>
+              <div class="row" style="gap:12px"><span class="tm">14:00</span><span style="font-size:14px">Statistica</span><span class="cu-muted" style="font-size:12px">Lab 1</span><span class="tag tag-neutral" style="margin-left:auto">seguita</span></div>
+            </div>
+            <div class="cu-kicker" style="padding:14px 0;border-top:1px solid var(--color-rule)">Gio</div>
+            <div style="padding:10px 0;border-left:1px solid var(--color-rule);border-top:1px solid var(--color-rule);padding-left:16px">
+              <div class="row" style="gap:12px"><span class="tm">11:00</span><span style="font-size:14px">Fisica I</span><span class="cu-muted" style="font-size:12px">Aula Magna</span><span class="tag tag-neutral" style="margin-left:auto">seguita</span></div>
+            </div>
+            <div class="cu-kicker" style="padding:14px 0;border-top:2px solid var(--color-accent);color:var(--color-accent)">Oggi</div>
+            <div style="padding:10px 0;border-left:1px solid var(--color-rule);border-top:2px solid var(--color-accent);padding-left:16px;display:flex;flex-direction:column;gap:6px">
+              <div class="row" style="gap:12px"><span class="tm">09:00</span><span style="font-size:14px;font-weight:600">Analisi II</span><span class="cu-muted" style="font-size:12px">Aula B2</span><span class="tag tag-accent" style="margin-left:auto">tra 20 min</span></div>
+              <div class="row" style="gap:12px"><span class="tm">14:00</span><span style="font-size:14px;font-weight:600">Fisica I</span><span class="cu-muted" style="font-size:12px">Aula Magna</span></div>
+            </div>
+            <div class="cu-kicker" style="padding:14px 0;border-top:1px solid var(--color-rule)">Dom</div>
+            <div style="padding:14px 0;border-left:1px solid var(--color-rule);border-top:1px solid var(--color-rule);padding-left:16px" class="cu-muted">
+              <span style="font-size:13px">Nessuna lezione — slot di ripasso suggerito 10:00 – 12:00</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:6px"><h5>Piani di ripasso generati</h5><span class="cu-muted" style="margin-left:auto;font-size:12px">dai tuoi check-in</span></div>
+          <div style="border-top:2px solid var(--color-accent);padding-top:14px;display:flex;flex-direction:column;gap:10px">
+            <div class="row"><span style="font-size:15px;font-weight:600">Analisi II — integrali impropri e serie</span><span class="tag tag-accent" style="margin-left:auto">priorità</span></div>
+            <p class="cu-muted" style="font-size:13px;line-height:1.55;text-wrap:pretty">Nei check-in di lunedì e mercoledì hai segnato «capito poco» sui capitoli 4 e 5. Custode propone tre sessioni da 45 minuti entro giovedì.</p>
+            <div>
+              <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Rivedere gli esempi del cap. 4</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">oggi, 45 min</span></div>
+              <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Esercizi 12–18 sulle serie</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">domenica</span></div>
+              <div class="listrow" data-row="" style="padding:9px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:14px">Riscrivere gli appunti del cap. 5</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">martedì</span></div>
+            </div>
+            <div class="row" style="gap:6px"><button class="btn btn-secondary">Manda i task al bot</button><button class="btn btn-ghost">Rigenera il piano</button></div>
+          </div>
+          <div style="border-top:1px solid var(--color-divider);padding-top:14px;margin-top:20px;display:flex;flex-direction:column;gap:8px">
+            <div class="row"><span style="font-size:15px;font-weight:600">Fisica I — dinamica rotazionale</span><span class="cu-muted" style="margin-left:auto;font-size:12px">una sessione</span></div>
+            <p class="cu-muted" style="font-size:13px;line-height:1.55">Un solo check-in incerto: basta un ripasso da 30 minuti prima di giovedì.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Corsi</h5><button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Aggiungi</button></div>
+          <div>
+            <div style="padding:12px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span style="font-size:14px;font-weight:600">Analisi II</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">5 / 12 capitoli</span></div>
+              <div style="height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent);margin-top:8px"><div style="width:42%;height:6px;background:var(--color-accent)"></div></div>
+              <div class="cu-muted" style="font-size:12px;margin-top:6px">Esame il 12 gennaio · 2 argomenti in arretrato</div>
+            </div>
+            <div style="padding:12px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span style="font-size:14px;font-weight:600">Fisica I</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">7 / 10 capitoli</span></div>
+              <div style="height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent);margin-top:8px"><div style="width:70%;height:6px;background:var(--color-accent)"></div></div>
+              <div class="cu-muted" style="font-size:12px;margin-top:6px">Esame il 20 gennaio</div>
+            </div>
+            <div style="padding:12px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span style="font-size:14px;font-weight:600">Algebra lineare</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">6 / 8 capitoli</span></div>
+              <div style="height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent);margin-top:8px"><div style="width:75%;height:6px;background:var(--color-accent)"></div></div>
+              <div class="cu-muted" style="font-size:12px;margin-top:6px">Esame il 9 febbraio</div>
+            </div>
+            <div style="padding:12px 0">
+              <div class="row"><span style="font-size:14px;font-weight:600">Statistica</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">3 / 9 capitoli</span></div>
+              <div style="height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent);margin-top:8px"><div style="width:33%;height:6px;background:var(--color-accent)"></div></div>
+              <div class="cu-muted" style="font-size:12px;margin-top:6px">Esame da fissare</div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Check-in serali</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ultimi 14 giorni</span></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:230px">
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">Il vuoto di ieri: eri fuori casa, Custode ha rimandato la domanda.</div>
+          <div style="margin-top:14px;border-top:1px solid var(--color-divider);padding-top:12px">
+            <div class="cu-kicker" style="margin-bottom:8px">Ultimo check-in · giovedì</div>
+            <div class="listrow" style="padding:8px 0"><span style="font-size:14px">Fisica I</span><span class="tag tag-accent" style="margin-left:auto">chiaro</span></div>
+            <div class="listrow" style="padding:8px 0"><span style="font-size:14px">Analisi II</span><span class="tag tag-outline" style="margin-left:auto">da rivedere</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Argomenti da ripassare</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Integrali impropri</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Analisi II</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Serie numeriche</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Analisi II</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Dinamica rotazionale</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Fisica I</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Autovalori</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Algebra lineare</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Test d'ipotesi</span><span class="cu-muted" style="margin-left:auto;font-size:12px">Statistica</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«oggi Analisi II l'ho capita bene», «sposta il ripasso a domenica»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTask }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" data-on="1"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Task · sabato 30 agosto</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Tre per oggi, due in ritardo, uno rinviato tre volte.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="rotate-ccw" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">«Sistemare il frontend del progetto» è stato rinviato <b>3 volte</b> — Custode chiede se vale ancora la pena tenerlo.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Decidi<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Aperti</span><div class="num">9</div></div>
+      <div><span class="cu-kicker">Oggi</span><div class="num" style="color:var(--color-accent)">3</div></div>
+      <div><span class="cu-kicker">In ritardo</span><div class="num">2</div></div>
+      <div><span class="cu-kicker">Chiusi questa settimana</span><div class="num">14</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div class="row" style="gap:6px">
+          <span class="cu-kicker" style="flex:none">Vista</span>
+          <div class="seg" style="margin-left:6px">
+            <label class="seg-opt"><input type="radio" name="vTask" defaultChecked="{{ true }}">Per scadenza</label>
+            <label class="seg-opt"><input type="radio" name="vTask">Per progetto</label>
+            <label class="seg-opt"><input type="radio" name="vTask">Completati</label>
+          </div>
+          <button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Nuovo task</button>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>In ritardo</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">2</span></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Mandare i documenti al commercialista</span><span class="cu-mono" style="margin-left:auto;font-size:12px;font-weight:600">28 ago</span><div class="rowact row" style="gap:2px;margin-left:12px"><button class="btn btn-ghost">Rinvia</button><button class="btn btn-ghost"><i data-lucide="pencil" style="width:14px;height:14px"></i></button></div></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Sistemare il frontend del progetto</span><span class="tag tag-outline" style="margin-left:auto">rinviato 3×</span><span class="cu-mono" style="margin-left:12px;font-size:12px;font-weight:600">26 ago</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Oggi</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">3</span></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Prenotare visita dentista</span><span class="cu-mono" style="margin-left:auto;font-size:12px;font-weight:600">18:00</span><div class="rowact row" style="gap:2px;margin-left:12px"><button class="btn btn-ghost">Rinvia</button><button class="btn btn-ghost"><i data-lucide="pencil" style="width:14px;height:14px"></i></button></div></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Sistemare appunti Analisi II — cap. 4</span><span class="cu-muted" style="margin-left:auto;font-size:12px">da piano di ripasso</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Rinnovare abbonamento treno</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">entro domani</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Prossimi sette giorni</h5></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Esercizi 12–18 sulle serie</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">domenica</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Riscrivere gli appunti del cap. 5</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">martedì</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Pagare l'affitto</span><span class="tag tag-neutral" style="margin-left:auto">ricorrente</span><span class="cu-mono" style="margin-left:12px;font-size:12px">1 set</span></div>
+            <div class="listrow" data-row="" style="padding:13px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Chiamare l'officina per il tagliando</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">4 set</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Senza scadenza</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">3</span></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Cercare un corso di nuoto</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Ordinare la libreria in camera</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Leggere il libro consigliato da Marco</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <h5 style="margin-bottom:12px">Chiusi questa settimana</h5>
+          <div style="display:flex;gap:5px;align-items:flex-end;height:70px">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:24px;background:var(--color-accent-300)"></div><span class="cu-kicker">L</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:40px;background:var(--color-accent-300)"></div><span class="cu-kicker">M</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:16px;background:var(--color-accent-300)"></div><span class="cu-kicker">M</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:48px;background:var(--color-accent-300)"></div><span class="cu-kicker">G</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:32px;background:var(--color-accent-300)"></div><span class="cu-kicker">V</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:8px;background:var(--color-accent)"></div><span class="cu-kicker" style="color:var(--color-accent)">S</span></div>
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px"><div style="width:100%;height:2px;background:color-mix(in srgb,var(--color-text) 12%,transparent)"></div><span class="cu-kicker">D</span></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">Il giovedì è il tuo giorno più produttivo, tre settimane di fila.</div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Ricorrenti</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Pagare l'affitto</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni 1° del mese</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Bucato</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni domenica</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Backup del portatile</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni venerdì</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Da dove arrivano</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Scritti al bot</span><span class="cu-mono" style="margin-left:auto;font-size:14px">6</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Da piani di ripasso</span><span class="cu-mono" style="margin-left:auto;font-size:14px">3</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Da regole di contesto</span><span class="cu-mono" style="margin-left:auto;font-size:14px">2</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«ricordami di chiamare l'officina giovedì mattina»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSpesa }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Lista spesa · aggiornata alle 07:58</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Nove cose da prendere, quattro reparti.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="lightbulb" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Custode suggerisce <b>caffè</b> e <b>carta forno</b>: li ricompri ogni tre settimane circa e l'ultima volta è stata il 7 agosto.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Aggiungi entrambi<i data-lucide="plus" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Da prendere</span><div class="num">9</div></div>
+      <div><span class="cu-kicker">Presi</span><div class="num" style="color:var(--color-accent)">3</div></div>
+      <div><span class="cu-kicker">Stima carrello</span><div class="num">42<small>,00 €</small></div></div>
+      <div><span class="cu-kicker">Ultima spesa</span><div class="num" style="font-size:34px;padding-top:8px">7 giorni</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div class="row" style="gap:6px">
+          <span class="cu-kicker" style="flex:none">Ordina per</span>
+          <div class="seg" style="margin-left:6px">
+            <label class="seg-opt"><input type="radio" name="vSpesa" defaultChecked="{{ true }}">Reparto</label>
+            <label class="seg-opt"><input type="radio" name="vSpesa">Aggiunta</label>
+          </div>
+          <button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Aggiungi voce</button>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Frutta e verdura</h5></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Pomodori</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">1 kg</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Mele</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">6</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Insalata</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Latticini e uova</h5></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Latte</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">2 L</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Uova</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">6</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Yogurt greco</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">4</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Dispensa</h5></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Caffè</span><span class="tag tag-neutral" style="margin-left:auto">ricorrente</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Pasta</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">2 pacchi</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Casa</h5></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Detersivo piatti</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:4px"><h5>Presi</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">3</span></div>
+          <div style="opacity:.45">
+            <div class="listrow" data-row="" style="padding:10px 0"><button class="cbx" data-on="1" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px;text-decoration:line-through">Pane</span></div>
+            <div class="listrow" data-row="" style="padding:10px 0"><button class="cbx" data-on="1" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px;text-decoration:line-through">Tonno</span></div>
+            <div class="listrow" data-row="" style="padding:10px 0"><button class="cbx" data-on="1" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px;text-decoration:line-through">Sapone mani</span></div>
+          </div>
+          <div class="row" style="margin-top:12px"><button class="btn btn-secondary">Svuota i presi</button><span class="cu-muted" style="margin-left:auto;font-size:12px">Custode li archivia da sé dopo la spesa</span></div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <h5 style="margin-bottom:12px">Suggeriti da Custode</h5>
+          <p class="cu-muted" style="font-size:13px;line-height:1.55;margin-bottom:12px;text-wrap:pretty">Cose che ricompri a intervalli regolari e che ora dovrebbero essere finite.</p>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Carta forno</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni 3 sett.</span><button class="btn btn-ghost" style="margin-left:10px"><i data-lucide="plus" style="width:14px;height:14px"></i></button></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Dentifricio</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni 6 sett.</span><button class="btn btn-ghost" style="margin-left:10px"><i data-lucide="plus" style="width:14px;height:14px"></i></button></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Olio d'oliva</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">ogni 5 sett.</span><button class="btn btn-ghost" style="margin-left:10px"><i data-lucide="plus" style="width:14px;height:14px"></i></button></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Ultime spese fatte</h5>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span class="cu-mono" style="font-size:13px">23 ago</span><span class="cu-muted" style="font-size:13px">Esselunga</span><span class="cu-mono" style="margin-left:auto;font-size:14px">54,20</span></div>
+            <div class="listrow" style="padding:10px 0"><span class="cu-mono" style="font-size:13px">16 ago</span><span class="cu-muted" style="font-size:13px">Coop</span><span class="cu-mono" style="margin-left:auto;font-size:14px">38,90</span></div>
+            <div class="listrow" style="padding:10px 0"><span class="cu-mono" style="font-size:13px">9 ago</span><span class="cu-muted" style="font-size:13px">Esselunga</span><span class="cu-mono" style="margin-left:auto;font-size:14px">61,15</span></div>
+          </div>
+          <button class="btn btn-ghost" style="margin-top:8px">Vedi in Spese<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Reparti più frequenti</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Latticini e uova</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:80px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:100%;height:6px;background:var(--color-accent)"></div></div></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Frutta e verdura</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:80px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:78%;height:6px;background:var(--color-accent)"></div></div></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Dispensa</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:80px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:52%;height:6px;background:var(--color-accent)"></div></div></div></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Casa</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:80px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:30%;height:6px;background:var(--color-accent)"></div></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«aggiungi due yogurt e la carta forno alla lista»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSpese }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Spese · agosto 2026</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>612 euro finora, in linea col mese scorso.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="receipt" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Uno scontrino letto da foto aspetta conferma: <b>Esselunga, 54,20 €</b> — Custode l'ha messo in Alimentari.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Conferma<i data-lucide="check" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Totale mese</span><div class="num">612<small>,40 €</small></div></div>
+      <div><span class="cu-kicker">Media al giorno</span><div class="num">20<small>,41 €</small></div></div>
+      <div><span class="cu-kicker">Categoria maggiore</span><div class="num" style="font-size:34px;padding-top:8px">Alimentari</div></div>
+      <div><span class="cu-kicker">Su luglio</span><div class="num">+2<small>,1 %</small></div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div class="row" style="gap:6px">
+          <span class="cu-kicker" style="flex:none">Periodo</span>
+          <div class="seg" style="margin-left:6px">
+            <label class="seg-opt"><input type="radio" name="vSpese">Settimana</label>
+            <label class="seg-opt"><input type="radio" name="vSpese" defaultChecked="{{ true }}">Mese</label>
+            <label class="seg-opt"><input type="radio" name="vSpese">Anno</label>
+          </div>
+          <button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Registra spesa</button>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:14px">Andamento del mese</h5>
+          <div style="display:flex;gap:3px;align-items:flex-end;height:120px;border-bottom:1px solid var(--color-divider);padding-bottom:2px">
+            <div style="flex:1;height:18%;background:var(--color-accent-300)"></div><div style="flex:1;height:44%;background:var(--color-accent-300)"></div><div style="flex:1;height:9%;background:var(--color-accent-300)"></div><div style="flex:1;height:66%;background:var(--color-accent-300)"></div><div style="flex:1;height:24%;background:var(--color-accent-300)"></div><div style="flex:1;height:82%;background:var(--color-accent-300)"></div><div style="flex:1;height:12%;background:var(--color-accent-300)"></div>
+            <div style="flex:1;height:30%;background:var(--color-accent-300)"></div><div style="flex:1;height:52%;background:var(--color-accent-300)"></div><div style="flex:1;height:16%;background:var(--color-accent-300)"></div><div style="flex:1;height:38%;background:var(--color-accent-300)"></div><div style="flex:1;height:70%;background:var(--color-accent-300)"></div><div style="flex:1;height:22%;background:var(--color-accent-300)"></div><div style="flex:1;height:8%;background:var(--color-accent-300)"></div>
+            <div style="flex:1;height:46%;background:var(--color-accent-300)"></div><div style="flex:1;height:58%;background:var(--color-accent-300)"></div><div style="flex:1;height:34%;background:var(--color-accent-300)"></div><div style="flex:1;height:20%;background:var(--color-accent-300)"></div><div style="flex:1;height:76%;background:var(--color-accent-300)"></div><div style="flex:1;height:28%;background:var(--color-accent-300)"></div><div style="flex:1;height:14%;background:var(--color-accent-300)"></div>
+            <div style="flex:1;height:40%;background:var(--color-accent-300)"></div><div style="flex:1;height:92%;background:var(--color-accent-300)"></div><div style="flex:1;height:26%;background:var(--color-accent-300)"></div><div style="flex:1;height:36%;background:var(--color-accent-300)"></div><div style="flex:1;height:18%;background:var(--color-accent-300)"></div><div style="flex:1;height:62%;background:var(--color-accent-300)"></div><div style="flex:1;height:30%;background:var(--color-accent-300)"></div>
+            <div style="flex:1;height:22%;background:var(--color-accent-300)"></div><div style="flex:1;height:48%;background:var(--color-accent)"></div>
+          </div>
+          <div class="row" style="margin-top:8px"><span class="cu-kicker">1 ago</span><span class="cu-kicker" style="margin-left:auto">oggi</span></div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:6px"><h5>Movimenti recenti</h5><button class="btn btn-ghost" style="margin-left:auto">Esporta CSV<i data-lucide="download" style="width:14px;height:14px"></i></button></div>
+          <table class="table">
+            <thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th style="text-align:right">Importo</th></tr></thead>
+            <tbody>
+              <tr><td class="cu-mono">30 ago</td><td>Colazione al bar</td><td><span class="tag tag-neutral">Bar</span></td><td class="cu-mono" style="text-align:right">8,00</td></tr>
+              <tr><td class="cu-mono">29 ago</td><td>Abbonamento treno</td><td><span class="tag tag-neutral">Trasporti</span></td><td class="cu-mono" style="text-align:right">31,00</td></tr>
+              <tr><td class="cu-mono">28 ago</td><td>Lampadine e detersivi</td><td><span class="tag tag-neutral">Casa</span></td><td class="cu-mono" style="text-align:right">32,00</td></tr>
+              <tr><td class="cu-mono">23 ago</td><td>Esselunga <span class="cu-muted">· da scontrino</span></td><td><span class="tag tag-neutral">Alimentari</span></td><td class="cu-mono" style="text-align:right">54,20</td></tr>
+              <tr><td class="cu-mono">22 ago</td><td>Cena con Marco e Giulia</td><td><span class="tag tag-neutral">Ristoranti</span></td><td class="cu-mono" style="text-align:right">28,50</td></tr>
+              <tr><td class="cu-mono">20 ago</td><td>Libro di testo Fisica I</td><td><span class="tag tag-neutral">Studio</span></td><td class="cu-mono" style="text-align:right">41,90</td></tr>
+              <tr><td class="cu-mono">18 ago</td><td>Bolletta luce</td><td><span class="tag tag-neutral">Casa</span></td><td class="cu-mono" style="text-align:right">62,00</td></tr>
+            </tbody>
+          </table>
+          <button class="btn btn-secondary" style="margin-top:14px">Carica altri movimenti</button>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Categorie</h5><span class="cu-muted" style="margin-left:auto;font-size:12px">create da Custode</span></div>
+          <div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Alimentari</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:100%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">214,60</span></div></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Casa</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:69%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">148,00</span></div></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Trasporti</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:41%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">88,00</span></div></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Ristoranti</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:32%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">68,50</span></div></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Studio</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:26%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">55,50</span></div></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Bar</span><div style="margin-left:auto;display:flex;align-items:center;gap:10px"><div style="width:70px;height:6px;background:color-mix(in srgb,var(--color-text) 10%,transparent)"><div style="width:18%;height:6px;background:var(--color-accent)"></div></div><span class="cu-mono" style="font-size:14px;width:52px;text-align:right">37,80</span></div></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">«Studio» è nata questo mese: Custode l'ha creata dopo tre spese in libreria.</div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Confronto</h5>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Luglio</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:14px">599,80</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Giugno</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:14px">641,20</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Media 3 mesi</span><span class="cu-mono" style="margin-left:auto;font-size:14px">617,80</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">In attesa</h5>
+          <div style="border-top:2px solid var(--color-accent);padding-top:12px;display:flex;flex-direction:column;gap:8px">
+            <div class="row"><span style="font-size:14px;font-weight:600">Esselunga</span><span class="cu-mono" style="margin-left:auto;font-size:14px;font-weight:600">54,20</span></div>
+            <div class="cu-muted" style="font-size:12px">Letto da foto del 23 agosto · categoria proposta: Alimentari</div>
+            <div class="row" style="gap:6px"><button class="btn btn-primary" onClick="{{ approve }}">Conferma</button><button class="btn btn-ghost">Cambia categoria</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«segna 8€ colazione al bar», «quanto ho speso in ristoranti questo mese?»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAbitudini }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Abitudini · settimana 35</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>La lettura serale tiene da cinque giorni; la palestra è indietro di una.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="calendar-clock" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Restano <b>due giorni</b> per il terzo allenamento della settimana — domenica hai lo slot libero delle 10.</span>
+      <button class="btn btn-ghost" style="margin-left:auto">Mettilo in agenda<i data-lucide="arrow-right" style="width:14px;height:14px"></i></button>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Abitudini attive</span><div class="num">5</div></div>
+      <div><span class="cu-kicker">Obiettivi centrati</span><div class="num" style="color:var(--color-accent)">3<small style="color:inherit;opacity:.55"> / 5</small></div></div>
+      <div><span class="cu-kicker">Streak migliore</span><div class="num">5<small> giorni</small></div></div>
+      <div><span class="cu-kicker">Costanza del mese</span><div class="num">78<small> %</small></div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div class="row" style="gap:6px">
+          <span class="cu-kicker" style="flex:none">Vista</span>
+          <div class="seg" style="margin-left:6px">
+            <label class="seg-opt"><input type="radio" name="vAb" defaultChecked="{{ true }}">Settimana</label>
+            <label class="seg-opt"><input type="radio" name="vAb">Mese</label>
+          </div>
+          <button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Nuova abitudine</button>
+        </div>
+
+        <div>
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;border-bottom:2px solid var(--color-divider);padding-bottom:8px">
+            <span class="cu-kicker">Abitudine</span><span class="cu-kicker">Lun – Dom</span><span class="cu-kicker" style="text-align:right">Obiettivo</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;padding:16px 0;border-bottom:1px solid var(--color-rule)">
+            <div><div style="font-size:15px;font-weight:600">Palestra</div><div class="cu-muted" style="font-size:12px">3 volte a settimana · ultima: giovedì</div></div>
+            <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div></div>
+            <span class="cu-mono" style="font-size:15px;text-align:right;width:44px">2/3</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;padding:16px 0;border-bottom:1px solid var(--color-rule)">
+            <div><div style="font-size:15px;font-weight:600">Lettura serale</div><div class="cu-muted" style="font-size:12px">ogni giorno · 5 di fila</div></div>
+            <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div></div>
+            <span class="cu-mono" style="font-size:15px;text-align:right;width:44px;color:var(--color-accent-700);font-weight:600">5/7</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;padding:16px 0;border-bottom:1px solid var(--color-rule)">
+            <div><div style="font-size:15px;font-weight:600">Studio serale</div><div class="cu-muted" style="font-size:12px">5 volte a settimana</div></div>
+            <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div></div>
+            <span class="cu-mono" style="font-size:15px;text-align:right;width:44px">3/5</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;padding:16px 0;border-bottom:1px solid var(--color-rule)">
+            <div><div style="font-size:15px;font-weight:600">Creatina</div><div class="cu-muted" style="font-size:12px">nei giorni di palestra</div></div>
+            <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div><div class="hb"></div></div>
+            <span class="cu-mono" style="font-size:15px;text-align:right;width:44px">2/2</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:0 22px;padding:16px 0">
+            <div><div style="font-size:15px;font-weight:600">Camminata dopo pranzo</div><div class="cu-muted" style="font-size:12px">ogni giorno · interrotta martedì</div></div>
+            <div style="display:flex;gap:5px"><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb"></div></div>
+            <span class="cu-mono" style="font-size:15px;text-align:right;width:44px">3/7</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:6px"><h5>Segna per oggi</h5><span class="cu-muted" style="margin-left:auto;font-size:12px">di solito lo fai dal bot, ma da qui funziona uguale</span></div>
+          <div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Palestra</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Lettura serale</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Studio serale</span></div>
+            <div class="listrow" data-row="" style="padding:11px 0"><button class="cbx" data-on="0" onClick="{{ toggleCheck }}"><i data-lucide="check" style="width:12px;height:12px"></i></button><span style="font-size:15px">Camminata dopo pranzo</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <div class="row" style="margin-bottom:12px"><h5>Agosto</h5><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">lettura serale</span></div>
+          <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:230px">
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+            <div class="hb hb-on"></div><div class="hb hb-on"></div><div class="hb hb-on"></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">24 giorni su 30. I buchi sono tutti di venerdì o sabato.</div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Streak</h5>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Lettura serale</span><span class="cu-mono" style="margin-left:auto;font-size:14px;color:var(--color-accent-700);font-weight:600">5 giorni</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Creatina</span><span class="cu-mono" style="margin-left:auto;font-size:14px">2 giorni</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Camminata dopo pranzo</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:14px">interrotta</span></div>
+            <div class="listrow" style="padding:10px 0"><span class="cu-muted" style="font-size:14px">Record: lettura serale</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:14px">18 giorni</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Custode propone</h5>
+          <div style="border-top:1px solid var(--color-divider);padding-top:12px;display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:14px;font-weight:600;line-height:1.4">Abbassare la camminata a 4 volte a settimana</div>
+            <div class="cu-muted" style="font-size:12px">Perché: in sei settimane l'obiettivo giornaliero è stato centrato una volta sola. Un target raggiungibile regge meglio di uno ambizioso.</div>
+            <div class="row" style="gap:6px"><button class="btn btn-secondary" onClick="{{ approve }}">Accetta</button><button class="btn btn-ghost">No, lascia com'è</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«ho fatto palestra», «segna lettura per ieri»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isRegole }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" data-on="1"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" onClick="{{ goImpostazioni }}"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Regole di contesto</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Sei automazioni attive, due proposte che aspettano un tuo sì.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="info" style="width:15px;height:15px;opacity:.6"></i>
+      <span style="font-size:13px">Una regola è un «quando… allora…»: Custode nota un pattern e <b>propone</b> l'automazione, ma non la attiva finché non la approvi tu.</span>
+    </div>
+
+    <div class="stats">
+      <div><span class="cu-kicker">Attive</span><div class="num">6</div></div>
+      <div><span class="cu-kicker">Da approvare</span><div class="num">2</div></div>
+      <div><span class="cu-kicker">Scattate questa settimana</span><div class="num" style="color:var(--color-accent)">19</div></div>
+      <div><span class="cu-kicker">In pausa</span><div class="num">1</div></div>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div>
+          <div class="row" style="margin-bottom:10px"><h5>Proposte</h5><span class="cu-muted" style="margin-left:auto;font-size:12px">generate stanotte dall'analisi dei tuoi dati</span></div>
+          <div style="border-top:2px solid var(--color-accent);padding-top:14px;display:flex;flex-direction:column;gap:10px">
+            <div class="row" style="gap:10px"><span class="tag tag-outline cu-mono">prima_evento</span><span class="cu-muted" style="font-size:11px">confidenza alta</span></div>
+            <div style="font-size:16px;font-weight:600;line-height:1.4">Quando in calendario c'è «palestra», mandami un promemoria per la creatina 30 minuti prima.</div>
+            <div class="cu-muted" style="font-size:13px;line-height:1.55">Perché: 6 allenamenti su 7 nell'ultimo mese erano preceduti da un evento «palestra», e la creatina l'hai segnata sempre dopo, mai prima.</div>
+            <div class="row" style="gap:6px"><button class="btn btn-primary" onClick="{{ approve }}"><i data-lucide="check" style="width:15px;height:15px"></i>Approva</button><button class="btn btn-secondary">Modifica i parametri</button><button class="btn btn-ghost">Scarta</button></div>
+          </div>
+          <div style="border-top:2px solid var(--color-accent);padding-top:14px;margin-top:22px;display:flex;flex-direction:column;gap:10px">
+            <div class="row" style="gap:10px"><span class="tag tag-outline cu-mono">dopo_evento</span><span class="cu-muted" style="font-size:11px">confidenza media</span></div>
+            <div style="font-size:16px;font-weight:600;line-height:1.4">Sposta il check-in appunti a 45 minuti dopo l'ultima lezione, invece di 30.</div>
+            <div class="cu-muted" style="font-size:13px;line-height:1.55">Perché: con il buffer attuale rispondi «più tardi» 4 volte su 5 — di solito sei ancora fuori casa.</div>
+            <div class="row" style="gap:6px"><button class="btn btn-primary" onClick="{{ approve }}"><i data-lucide="check" style="width:15px;height:15px"></i>Approva</button><button class="btn btn-secondary">Modifica i parametri</button><button class="btn btn-ghost">Scarta</button></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="row" style="margin-bottom:6px"><h5>Regole attive</h5><button class="btn btn-ghost" style="margin-left:auto"><i data-lucide="plus" style="width:14px;height:14px"></i>Scrivine una</button></div>
+          <div>
+            <div style="padding:15px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span class="tag tag-neutral cu-mono">mattina</span><span style="font-size:15px;font-weight:600;margin-left:10px">Digest delle 07:30</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r1" defaultChecked="{{ true }}">Attiva</label><label class="seg-opt"><input type="radio" name="r1">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">Meteo, lezioni del giorno, task in scadenza e lista spesa se manca qualcosa. Scattata 7 volte su 7.</div>
+            </div>
+            <div style="padding:15px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span class="tag tag-neutral cu-mono">dopo_evento</span><span style="font-size:15px;font-weight:600;margin-left:10px">Check-in appunti dopo le lezioni</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r2" defaultChecked="{{ true }}">Attiva</label><label class="seg-opt"><input type="radio" name="r2">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">30 minuti dopo l'ultima lezione del giorno. Scattata 4 volte, risposta 1.</div>
+            </div>
+            <div style="padding:15px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span class="tag tag-neutral cu-mono">sera</span><span style="font-size:15px;font-weight:600;margin-left:10px">Voce di diario alle 22:30</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r3" defaultChecked="{{ true }}">Attiva</label><label class="seg-opt"><input type="radio" name="r3">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">Riassume la giornata dai messaggi e la manda in approvazione. Scattata 6 volte su 7.</div>
+            </div>
+            <div style="padding:15px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span class="tag tag-neutral cu-mono">meteo</span><span style="font-size:15px;font-weight:600;margin-left:10px">Ombrello se piove prima di un'uscita</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r4" defaultChecked="{{ true }}">Attiva</label><label class="seg-opt"><input type="radio" name="r4">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">Solo se la probabilità supera il 60%. Scattata 2 volte questa settimana.</div>
+            </div>
+            <div style="padding:15px 0;border-bottom:1px solid var(--color-rule)">
+              <div class="row"><span class="tag tag-neutral cu-mono">soglia</span><span style="font-size:15px;font-weight:600;margin-left:10px">Avviso a 200 € di spesa settimanale</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r5" defaultChecked="{{ true }}">Attiva</label><label class="seg-opt"><input type="radio" name="r5">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">Mai scattata questo mese.</div>
+            </div>
+            <div style="padding:15px 0;opacity:.55">
+              <div class="row"><span class="tag tag-neutral cu-mono">luogo</span><span style="font-size:15px;font-weight:600;margin-left:10px">Lista spesa quando passi dal supermercato</span><div class="seg" style="margin-left:auto"><label class="seg-opt"><input type="radio" name="r6">Attiva</label><label class="seg-opt"><input type="radio" name="r6" defaultChecked="{{ true }}">Pausa</label></div></div>
+              <div class="cu-muted" style="font-size:13px;margin-top:8px">In pausa da te il 12 agosto — arrivava troppo spesso.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <h5 style="margin-bottom:12px">Attività della settimana</h5>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Digest mattutino</span><span class="cu-mono" style="margin-left:auto;font-size:14px">7</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Voce di diario</span><span class="cu-mono" style="margin-left:auto;font-size:14px">6</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Check-in appunti</span><span class="cu-mono" style="margin-left:auto;font-size:14px">4</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Ombrello</span><span class="cu-mono" style="margin-left:auto;font-size:14px">2</span></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">Al check-in appunti hai risposto una volta su quattro: è il motivo della proposta di spostarlo.</div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Tipi di trigger</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">orario</span><span class="cu-muted" style="margin-left:auto;font-size:12px">a un'ora fissa</span></div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">prima_evento</span><span class="cu-muted" style="margin-left:auto;font-size:12px">n minuti prima</span></div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">dopo_evento</span><span class="cu-muted" style="margin-left:auto;font-size:12px">n minuti dopo</span></div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">meteo</span><span class="cu-muted" style="margin-left:auto;font-size:12px">al variare del meteo</span></div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">soglia</span><span class="cu-muted" style="margin-left:auto;font-size:12px">al superamento di un valore</span></div>
+            <div class="listrow" style="padding:9px 0"><span class="cu-mono" style="font-size:13px">luogo</span><span class="cu-muted" style="margin-left:auto;font-size:12px">in un posto ricorrente</span></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:10px">Scartate</h5>
+          <div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Promemoria acqua ogni 2 ore</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">18 ago</span></div>
+            <div class="listrow" style="padding:10px 0"><span style="font-size:14px">Riepilogo spese ogni sera</span><span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">11 ago</span></div>
+          </div>
+          <div class="cu-muted" style="font-size:12px;margin-top:10px">Custode non ripropone una regola scartata due volte.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«ogni domenica sera chiedimi cosa voglio fare la settimana prossima»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isImpostazioni }}" hint-placeholder-val="{{ false }}">
+<div class="pg">
+  <nav class="rail">
+    <div style="width:20px;height:20px;background:var(--color-accent);margin-bottom:20px"></div>
+    <button class="rail-item" onClick="{{ goHome }}"><i data-lucide="house" style="width:19px;height:19px"></i><span>Home</span></button>
+    <button class="rail-item" onClick="{{ goDiario }}"><i data-lucide="book-open" style="width:19px;height:19px"></i><span>Diario</span></button>
+    <button class="rail-item" onClick="{{ goLezioni }}"><i data-lucide="graduation-cap" style="width:19px;height:19px"></i><span>Lezioni e corsi</span></button>
+    <div style="width:22px;height:1px;background:var(--color-divider);margin:12px 0"></div>
+    <button class="rail-item" onClick="{{ goTask }}"><i data-lucide="list-todo" style="width:19px;height:19px"></i><span>Task</span></button>
+    <button class="rail-item" onClick="{{ goSpesa }}"><i data-lucide="shopping-cart" style="width:19px;height:19px"></i><span>Lista spesa</span></button>
+    <button class="rail-item" onClick="{{ goSpese }}"><i data-lucide="wallet" style="width:19px;height:19px"></i><span>Spese</span></button>
+    <button class="rail-item" onClick="{{ goAbitudini }}"><i data-lucide="repeat" style="width:19px;height:19px"></i><span>Abitudini</span></button>
+    <button class="rail-item" onClick="{{ goRegole }}"><i data-lucide="zap" style="width:19px;height:19px"></i><span>Regole di contesto</span></button>
+    <div style="margin-top:auto"><button class="rail-item" data-on="1"><i data-lucide="settings" style="width:18px;height:18px"></i><span>Impostazioni</span></button></div>
+  </nav>
+  <div class="main">
+    <header class="hd">
+      <div class="row">
+        <span class="cu-kicker">Impostazioni</span>
+        <button class="btn btn-ghost" style="margin-left:auto" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+      </div>
+      <h1>Come e quando Custode ti parla.</h1>
+    </header>
+
+    <div class="row" style="padding:13px 0;border-bottom:1px solid var(--color-rule);gap:10px">
+      <i data-lucide="check-circle" style="width:15px;height:15px;color:var(--color-accent)"></i>
+      <span style="font-size:13px">Bot Telegram collegato come <b>@custode_bot</b> · ultimo messaggio 22 minuti fa.</span>
+      <span class="cu-muted cu-mono" style="margin-left:auto;font-size:12px">API online · sync 08:40</span>
+    </div>
+
+    <div class="cols">
+      <div class="colL">
+        <div>
+          <h5 style="margin-bottom:14px">Orari</h5>
+          <div style="display:flex;flex-direction:column;gap:18px">
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Digest mattutino</div><div class="cu-muted" style="font-size:12px">Meteo, lezioni, task e spesa</div></div>
+              <input class="input cu-mono" style="width:96px;flex:none;text-align:center" value="07:30">
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Check-in serale lezioni</div><div class="cu-muted" style="font-size:12px">Minuti dopo l'ultima lezione</div></div>
+              <input class="input cu-mono" style="width:96px;flex:none;text-align:center" value="30">
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Voce di diario</div><div class="cu-muted" style="font-size:12px">Quando Custode prepara il riassunto del giorno</div></div>
+              <input class="input cu-mono" style="width:96px;flex:none;text-align:center" value="22:30">
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Riepilogo settimanale</div><div class="cu-muted" style="font-size:12px">Giorno e ora</div></div>
+              <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="sett" defaultChecked="{{ true }}">Domenica</label><label class="seg-opt"><input type="radio" name="sett">Lunedì</label></div>
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Ore di silenzio</div><div class="cu-muted" style="font-size:12px">Nessun messaggio in questa fascia</div></div>
+              <div class="row" style="flex:none;gap:8px"><input class="input cu-mono" style="width:82px;text-align:center" value="23:30"><span class="cu-muted">–</span><input class="input cu-mono" style="width:82px;text-align:center" value="07:00"></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:14px">Approvazioni</h5>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Voci di diario</div><div class="cu-muted" style="font-size:12px">Se disattivi, entrano nel diario senza chiedere</div></div>
+              <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="apDiario" defaultChecked="{{ true }}">Chiedi</label><label class="seg-opt"><input type="radio" name="apDiario">Automatico</label></div>
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Nuove regole di contesto</div><div class="cu-muted" style="font-size:12px">Consigliato: chiedi sempre</div></div>
+              <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="apRegole" defaultChecked="{{ true }}">Chiedi</label><label class="seg-opt"><input type="radio" name="apRegole">Automatico</label></div>
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Categorie di spesa nuove</div><div class="cu-muted" style="font-size:12px">Quando Custode ne inventa una</div></div>
+              <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="apCat">Chiedi</label><label class="seg-opt"><input type="radio" name="apCat" defaultChecked="{{ true }}">Automatico</label></div>
+            </div>
+            <div class="row">
+              <div style="flex:1"><div style="font-size:15px;font-weight:600">Scontrini letti da foto</div><div class="cu-muted" style="font-size:12px">Importo e categoria dedotti dall'immagine</div></div>
+              <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="apScontr" defaultChecked="{{ true }}">Chiedi</label><label class="seg-opt"><input type="radio" name="apScontr">Automatico</label></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:14px">Connessioni</h5>
+          <div>
+            <div class="listrow" style="padding:14px 0"><div style="flex:1"><div style="font-size:15px;font-weight:600">Telegram</div><div class="cu-muted" style="font-size:12px">@custode_bot · chat privata</div></div><span class="tag tag-accent">collegato</span><button class="btn btn-ghost" style="margin-left:10px">Gestisci</button></div>
+            <div class="listrow" style="padding:14px 0"><div style="flex:1"><div style="font-size:15px;font-weight:600">Calendario</div><div class="cu-muted" style="font-size:12px">Lezioni, palestra, impegni · sync ogni 15 min</div></div><span class="tag tag-accent">collegato</span><button class="btn btn-ghost" style="margin-left:10px">Gestisci</button></div>
+            <div class="listrow" style="padding:14px 0"><div style="flex:1"><div style="font-size:15px;font-weight:600">Meteo</div><div class="cu-muted" style="font-size:12px">Posizione: Milano</div></div><span class="tag tag-accent">collegato</span><button class="btn btn-ghost" style="margin-left:10px">Gestisci</button></div>
+            <div class="listrow" style="padding:14px 0"><div style="flex:1"><div style="font-size:15px;font-weight:600">Trascrizione vocali</div><div class="cu-muted" style="font-size:12px">Per i messaggi audio nel diario</div></div><span class="tag tag-accent">attiva</span><button class="btn btn-ghost" style="margin-left:10px">Gestisci</button></div>
+            <div class="listrow" style="padding:14px 0"><div style="flex:1"><div class="cu-muted" style="font-size:15px;font-weight:600">Conto bancario</div><div class="cu-muted" style="font-size:12px">Import automatico dei movimenti</div></div><span class="tag tag-outline">non collegato</span><button class="btn btn-ghost" style="margin-left:10px">Collega</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="colR">
+        <div>
+          <h5 style="margin-bottom:14px">Aspetto</h5>
+          <div class="row" style="margin-bottom:14px">
+            <span style="flex:1;font-size:14px">Tema</span>
+            <button class="btn btn-secondary" onClick="{{ toggleTheme }}"><i data-lucide="moon" style="width:15px;height:15px"></i><span>{{ themeLabel }}</span></button>
+          </div>
+          <div class="row">
+            <span style="flex:1;font-size:14px">Prima settimana</span>
+            <div class="seg" style="flex:none"><label class="seg-opt"><input type="radio" name="wk" defaultChecked="{{ true }}">Lunedì</label><label class="seg-opt"><input type="radio" name="wk">Domenica</label></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:14px">Budget</h5>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div class="row"><span style="flex:1;font-size:14px">Settimanale</span><input class="input cu-mono" style="width:110px;flex:none;text-align:right" value="250,00 €"></div>
+            <div class="row"><span style="flex:1;font-size:14px">Mensile</span><input class="input cu-mono" style="width:110px;flex:none;text-align:right" value="1.000,00 €"></div>
+            <div class="row"><span style="flex:1;font-size:14px">Soglia di avviso</span><input class="input cu-mono" style="width:110px;flex:none;text-align:right" value="80 %"></div>
+          </div>
+        </div>
+
+        <div>
+          <h5 style="margin-bottom:14px">Dati</h5>
+          <div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Voci di diario</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">312</span></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Spese registrate</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">1.048</span></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Messaggi al bot</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">4.291</span></div>
+            <div class="listrow" style="padding:11px 0"><span style="font-size:14px">Ultimo backup</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">stanotte 03:00</span></div>
+          </div>
+          <div class="row" style="gap:6px;margin-top:14px"><button class="btn btn-secondary"><i data-lucide="download" style="width:15px;height:15px"></i>Esporta tutto</button><button class="btn btn-ghost">Cancella un periodo</button></div>
+        </div>
+
+        <div style="margin-top:auto">
+          <h5 style="margin-bottom:10px">Sistema</h5>
+          <div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">API</span><span class="tag tag-accent" style="margin-left:auto">online</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Ultimo sync calendario</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">08:40</span></div>
+            <div class="listrow" style="padding:9px 0"><span style="font-size:14px">Versione</span><span class="cu-mono cu-muted" style="margin-left:auto;font-size:13px">v1.0.0</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ask">
+      <span class="cu-kicker" style="flex:none">A Custode</span>
+      <input class="input" placeholder="«manda il digest alle 7 invece che alle 7:30»">
+      <button class="btn btn-primary"><i data-lucide="send" style="width:15px;height:15px"></i>Invia</button>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;giorno&quot;,&quot;notte&quot;],&quot;default&quot;:&quot;giorno&quot;,&quot;tsType&quot;:&quot;'giorno' | 'notte'&quot;,&quot;section&quot;:&quot;Aspetto&quot;}}">
+class Component extends DCLogic {
+  state = { theme: this.props.tema ?? 'giorno', page: 'home' };
+  icons() { if (window.lucide) window.lucide.createIcons(); else setTimeout(() => this.icons(), 120); }
+  componentDidMount() { this.icons(); }
+  componentDidUpdate() { this.icons(); }
+  renderVals() {
+    const go = (p) => () => this.setState({ page: p });
+    return {
+      theme: this.state.theme,
+      themeLabel: this.state.theme === 'giorno' ? 'Notte' : 'Giorno',
+      isHome: this.state.page === 'home',
+      isDiario: this.state.page === 'diario',
+      isLezioni: this.state.page === 'lezioni',
+      isTask: this.state.page === 'task',
+      isSpesa: this.state.page === 'spesa',
+      isSpese: this.state.page === 'spese',
+      isAbitudini: this.state.page === 'abitudini',
+      isRegole: this.state.page === 'regole',
+      isImpostazioni: this.state.page === 'impostazioni',
+      goHome: go('home'), goDiario: go('diario'), goLezioni: go('lezioni'),
+      goTask: go('task'), goSpesa: go('spesa'), goSpese: go('spese'),
+      goAbitudini: go('abitudini'), goRegole: go('regole'),
+      goImpostazioni: go('impostazioni'),
+      toggleTheme: () => this.setState(s => ({ theme: s.theme === 'giorno' ? 'notte' : 'giorno' })),
+      toggleCheck: (e) => {
+        const b = e.currentTarget, on = b.dataset.on === '1';
+        b.dataset.on = on ? '0' : '1';
+        const row = b.closest('[data-row]');
+        if (row) {
+          row.style.opacity = on ? '1' : '.45';
+          const label = row.querySelector('span');
+          if (label) label.style.textDecoration = on ? 'none' : 'line-through';
+        }
+      },
+      approve: (e) => {
+        const bar = e.currentTarget.parentElement;
+        bar.innerHTML = '';
+        const t = document.createElement('span');
+        t.className = 'tag tag-accent';
+        t.textContent = 'Voce approvata';
+        bar.appendChild(t);
+      }
+    };
+  }
+}
+
+</script>
+</body>
+</html>
