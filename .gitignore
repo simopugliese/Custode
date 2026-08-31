@@ -1,0 +1,41 @@
+# Segreti e configurazione locale — mai nel repo (ARCHITECTURE.md §5, §9).
+# `.env.example` resta tracciato: documenta le variabili senza valori reali.
+.env
+.env.*
+!.env.example
+
+# Database SQLite e i suoi file di appoggio WAL
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+
+# Volumi e dati montati nei container
+volumes/
+backups/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Modelli Whisper scaricati in locale (pesanti, non versionabili)
+models/
+
+# Sistema / editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

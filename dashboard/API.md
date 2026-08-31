@@ -1,7 +1,7 @@
 # API di Custode — contratto per la dashboard
 
 Questo documento descrive gli endpoint REST che il backend (FastAPI, vedi
-`assistente-ia-personale-design.md`) deve esporre perché la dashboard in
+`../ARCHITECTURE.md`) deve esporre perché la dashboard in
 `dashboard/` funzioni. La dashboard non contiene dati finti: ogni pagina
 chiama questi endpoint e mostra uno stato di caricamento/errore/vuoto finché
 non rispondono con dati reali.
