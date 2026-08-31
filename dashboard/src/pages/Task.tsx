@@ -75,43 +75,22 @@ export default function Task() {
                   </button>
                 </div>
 
-                {data.inRitardo.length > 0 && (
-                  <div>
+                {/* Le sezioni e i loro titoli arrivano dal backend: cambiano con la
+                    vista scelta (per scadenza, per provenienza, completati). */}
+                {data.sezioni.map((sezione) => (
+                  <div key={sezione.titolo}>
                     <div className="row" style={{ marginBottom: 4 }}>
-                      <h5>In ritardo</h5>
-                      <span className="cu-muted cu-mono" style={{ marginLeft: 'auto', fontSize: 12 }}>{data.inRitardo.length}</span>
+                      <h5>{sezione.titolo}</h5>
+                      {sezione.task.length > 0 && (
+                        <span className="cu-muted cu-mono" style={{ marginLeft: 'auto', fontSize: 12 }}>{sezione.task.length}</span>
+                      )}
                     </div>
-                    <div>{renderTasks(data.inRitardo)}</div>
+                    <div>{renderTasks(sezione.task)}</div>
+                    {sezione.task.length === 0 && sezione.notaVuoto && (
+                      <div className="cu-muted" style={{ fontSize: 13, padding: '10px 0' }}>{sezione.notaVuoto}</div>
+                    )}
                   </div>
-                )}
-
-                <div>
-                  <div className="row" style={{ marginBottom: 4 }}>
-                    <h5>Oggi</h5>
-                    <span className="cu-muted cu-mono" style={{ marginLeft: 'auto', fontSize: 12 }}>{data.oggi.length}</span>
-                  </div>
-                  <div>{renderTasks(data.oggi)}</div>
-                  {data.oggi.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '10px 0' }}>Niente per oggi.</div>}
-                </div>
-
-                {data.prossimiSetteGiorni.length > 0 && (
-                  <div>
-                    <div className="row" style={{ marginBottom: 4 }}>
-                      <h5>Prossimi sette giorni</h5>
-                    </div>
-                    <div>{renderTasks(data.prossimiSetteGiorni)}</div>
-                  </div>
-                )}
-
-                {data.senzaScadenza.length > 0 && (
-                  <div>
-                    <div className="row" style={{ marginBottom: 4 }}>
-                      <h5>Senza scadenza</h5>
-                      <span className="cu-muted cu-mono" style={{ marginLeft: 'auto', fontSize: 12 }}>{data.senzaScadenza.length}</span>
-                    </div>
-                    <div>{renderTasks(data.senzaScadenza)}</div>
-                  </div>
-                )}
+                ))}
               </div>
 
               <div className="colR">

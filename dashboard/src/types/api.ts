@@ -49,26 +49,32 @@ export interface CategoriaSpesa {
 
 // — Home —
 
+/**
+ * Riepilogo di oggi. I campi opzionali appartengono a moduli che possono non
+ * essere ancora attivi: in quel caso il backend li **omette** invece di
+ * mandare zero o lista vuota, e la pagina non disegna il blocco. Una lista
+ * vuota significa invece "il modulo c'è e oggi non ha niente da dire".
+ */
 export interface HomeData {
   dataLabel: string; // "sabato 30 agosto, 08:41"
   titolo: string; // frase-riepilogo
-  proposteAutomazioni: number;
+  proposteAutomazioni?: number;
   stats: {
     taskAperti: number;
-    spesaSettimana: number;
-    streakPiuLunga: number;
     listaSpesaDaPrendere: number;
+    spesaSettimana?: number;
+    streakPiuLunga?: number;
   };
   taskOggi: TaskItem[];
-  calendarioOggi: CalendarEventItem[];
-  abitudini: HabitRow[];
-  speseSettimana: {
+  listaSpesa: ShoppingItem[];
+  calendarioOggi?: CalendarEventItem[];
+  abitudini?: HabitRow[];
+  speseSettimana?: {
     categorie: CategoriaSpesa[];
     budget: number;
     speso: number;
     scontriniInAttesa: number;
   };
-  listaSpesa: ShoppingItem[];
 }
 
 // — Diario —
@@ -167,15 +173,24 @@ export interface LezioniData {
 
 // — Task —
 
+/**
+ * Una sezione della colonna principale della pagina Task. I titoli li decide
+ * il backend in base alla vista richiesta (per scadenza: "In ritardo", "Oggi",
+ * …; completati: per data di chiusura; per progetto: per provenienza), così la
+ * pagina non deve sapere quali raggruppamenti esistono.
+ */
+export interface SezioneTask {
+  titolo: string;
+  task: TaskItem[];
+  notaVuoto?: string; // testo da mostrare quando la sezione è vuota ma va comunque mostrata
+}
+
 export interface TaskData {
   dataLabel: string;
   titolo: string;
   avviso?: string;
   stats: { aperti: number; oggi: number; inRitardo: number; chiusiSettimana: number };
-  inRitardo: TaskItem[];
-  oggi: TaskItem[];
-  prossimiSetteGiorni: TaskItem[];
-  senzaScadenza: TaskItem[];
+  sezioni: SezioneTask[];
   chiusiPerGiorno: number[]; // 7 valori, lun -> dom
   ricorrenti: { nome: string; frequenzaLabel: string }[];
   provenienza: { origine: string; conteggio: number }[];
@@ -187,7 +202,9 @@ export interface ListaSpesaData {
   aggiornataAlleLabel: string;
   titolo: string;
   suggerimento?: { testo: string; voci: string[] };
-  stats: { daPrendere: number; presi: number; stimaCarrello: number; ultimaSpesaGiorni: number };
+  // stimaCarrello e ultimaSpesaGiorni dipendono dallo storico spese (§8.5):
+  // assenti finché quel modulo non esiste.
+  stats: { daPrendere: number; presi: number; stimaCarrello?: number; ultimaSpesaGiorni?: number };
   reparti: { nome: string; voci: ShoppingItem[] }[];
   presi: ShoppingItem[];
   suggeriti: { nome: string; frequenzaLabel: string }[];

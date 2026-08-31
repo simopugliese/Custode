@@ -4,13 +4,23 @@ Il backend che serve la dashboard e, più avanti, la logica di dominio comune
 al bot (ARCHITECTURE.md §4). Tutti gli endpoint stanno sotto `/api`, come da
 contratto in [`../dashboard/API.md`](../dashboard/API.md).
 
-- `custode_api/main.py` — costruzione dell'app, CORS, `GET /api/health`.
+- `custode_api/main.py` — costruzione dell'app, CORS, migrazioni all'avvio,
+  `GET /api/health`.
+- `custode_api/schemi.py` — i modelli di risposta, in camelCase come il contratto.
+- `custode_api/dipendenze.py` — impostazioni, connessione per richiesta, "adesso".
+- `custode_api/rotte/` — una rotta per area; `non_attivi.py` raccoglie i moduli
+  che ancora non esistono e risponde `501` dicendo quale manca.
+
+La logica di dominio non sta qui ma in `core/custode_core/dominio/`: la userà
+identica anche il bot Telegram.
 
 ## Stato
 
-Presente: health check (serve allo smoke test post-deploy, §10).
-Da fare: gli endpoint di pagina, a partire da task/promemoria e lista della
-spesa (§8.2, §8.3) con persistenza reale su SQLite (§7).
+Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
+`PATCH`), `/api/lista-spesa` (+ `POST`, `PATCH`, `svuota-presi`), e
+`GET /api/health` per lo smoke test post-deploy (§10).
+
+Tutto il resto risponde `501` finché non arriva il suo modulo (§8.4-§8.13).
 
 ## Avvio locale
 
