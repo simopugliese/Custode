@@ -1,0 +1,125 @@
+/* Custode — scoped overrides on the Modernist design system.
+   The design system's own stylesheet is loaded first and owns type, spacing,
+   radii, shadows and every component class (.btn, .tag, .input, .table…).
+   Here we only do what the user asked for on top of it:
+     1. the accent role becomes green instead of red,
+     2. a white day ground and an anthracite night theme,
+     3. the few interface parts the system has no component for
+        (icon rail, bento cell, list row, checkbox, kicker label). */
+
+.cu {
+  --color-bg: #ffffff;
+  --color-surface: #f5f5f4;
+  --color-text: #1b1d1c;
+  --color-accent: #189d5a;
+  --color-accent-2: #189d5a;
+  --color-divider: color-mix(in srgb, #1b1d1c 32%, transparent);
+  --color-rule: color-mix(in srgb, #1b1d1c 12%, transparent);
+
+  --color-accent-100: #eef8f2;
+  --color-accent-200: #d2ecdd;
+  --color-accent-300: #a6d8bc;
+  --color-accent-400: #5fb989;
+  --color-accent-500: #189d5a;
+  --color-accent-600: #108049;
+  --color-accent-700: #0c6339;
+  --color-accent-800: #0a4a2b;
+  --color-accent-900: #0b3220;
+  --color-accent-2-100: #eef8f2;
+  --color-accent-2-500: #189d5a;
+  --color-accent-2-800: #0a4a2b;
+
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.cu[data-theme="notte"] {
+  --color-bg: #1b1e1d;
+  --color-surface: #242827;
+  --color-text: #e8e9e8;
+  --color-accent: #3fc37c;
+  --color-accent-2: #3fc37c;
+  --color-divider: color-mix(in srgb, #e8e9e8 30%, transparent);
+  --color-rule: color-mix(in srgb, #e8e9e8 13%, transparent);
+  --color-accent-100: #16281f;
+  --color-accent-200: #1c3a29;
+  --color-accent-300: #245038;
+  --color-accent-400: #2d7d51;
+  --color-accent-500: #3fc37c;
+  --color-accent-600: #63d095;
+  --color-accent-700: #9ae2bb;
+  --color-accent-800: #c6f0da;
+  --color-accent-900: #e3f8ec;
+  --color-neutral-100: #2b302e;
+  --color-neutral-800: #cfd2d0;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.5);
+  --shadow-md: 0 3px 10px rgba(0,0,0,.55);
+}
+
+/* layout resets: the system's default heading/paragraph bottom margins fight
+   the gap-based bento layout */
+.cu h1, .cu h2, .cu h3, .cu h4, .cu h5, .cu h6, .cu p { margin: 0; }
+.cu a { color: var(--color-accent-700); }
+.cu a:hover { color: var(--color-accent); }
+.cu[data-theme="notte"] a { color: var(--color-accent); }
+.cu[data-theme="notte"] a:hover { color: var(--color-accent-600); }
+.cu button { font: inherit; }
+
+/* the accent is reserved for what is alive or urgent — an outline tag is a
+   neutral label here, not an accented one */
+.cu .tag-outline { border-color: var(--color-divider); color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.cu .tag-accent { background: var(--color-accent-200); color: var(--color-accent-800); }
+.cu[data-theme="notte"] .tag-accent { color: var(--color-accent-900); }
+.cu .btn { font-size: 13px; font-weight: 600; }
+.cu .btn-ghost { color: var(--color-accent-700); }
+.cu[data-theme="notte"] .btn-ghost { color: var(--color-accent); }
+.cu .btn-icon { width: 34px; height: 34px; }
+.cu .input { min-height: 38px; padding: 8px 12px; }
+.cu .input::placeholder { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
+
+/* — parts the system has no component for — */
+.cu-kicker {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-weight: 600; color: color-mix(in srgb, var(--color-text) 52%, transparent);
+}
+.cu-mono { font-variant-numeric: tabular-nums; }
+.cu-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+.cu .cbx {
+  width: 17px; height: 17px; flex: none; border: 1.5px solid var(--color-divider);
+  display: grid; place-items: center; cursor: pointer; background: transparent;
+  color: transparent; border-radius: var(--radius-sm);
+}
+.cu .cbx:hover { border-color: var(--color-accent); }
+.cu .cbx[data-on="1"] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-bg); }
+
+.cu .rail-item {
+  width: 100%; height: 44px; display: grid; place-items: center; cursor: pointer;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  background: transparent; border: 0; border-left: 2px solid transparent; position: relative;
+}
+.cu .rail-item:hover { color: var(--color-text); background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.cu .rail-item[data-on="1"] { color: var(--color-accent); border-left-color: var(--color-accent); }
+.cu .rail-item[data-soon="1"] { opacity: .45; }
+.cu .rail-item span {
+  position: absolute; left: calc(100% + 10px); white-space: nowrap; font-size: 12px;
+  padding: 4px 8px; background: var(--color-text); color: var(--color-bg);
+  opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 5;
+}
+.cu .rail-item:hover span { opacity: 1; }
+
+.cu .cell {
+  display: flex; flex-direction: column; gap: var(--space-4);
+  padding: var(--space-6); background: var(--color-bg);
+}
+.cu .cell-fill { background: var(--color-surface); }
+.cu .row { display: flex; align-items: center; gap: var(--space-3); }
+.cu .listrow { display: flex; align-items: center; gap: var(--space-3); padding: 10px 0; border-bottom: 1px solid var(--color-rule); }
+.cu .listrow:last-child { border-bottom: 0; }
+.cu .listrow:hover .rowact { opacity: 1; }
+.cu .rowact { opacity: 0; transition: opacity .12s; margin-left: auto; }
+.cu .table th { padding: var(--space-2) 0; }
+.cu .table td { padding: 11px 0; border-bottom: 1px solid var(--color-rule); }

@@ -1,0 +1,53 @@
+/* Custode — page chrome that isn't part of a reusable component: the
+   two-column bento layout, the icon rail, the stat row, the "ask Custode"
+   bar. Lifted from the design prototype's inline <style> block, adapted
+   from a fixed 1380px canvas to a fluid viewport. */
+
+html, body, #root { height: 100%; margin: 0; }
+
+.cu { min-height: 100vh; width: 100%; }
+
+.pg { display: flex; min-height: 100vh; }
+
+.rail {
+  width: 58px; flex: none; border-right: 2px solid var(--color-divider);
+  display: flex; flex-direction: column; align-items: center; padding: 14px 0; gap: 2px;
+}
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 0 44px; }
+.main-inner { max-width: 1320px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; flex: 1; }
+
+.hd { padding: 36px 0 28px; border-bottom: 2px solid var(--color-divider); }
+.hd h1 { font-size: 56px; margin-top: 20px; max-width: 30ch; text-wrap: pretty; line-height: 1.05; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; border-bottom: 2px solid var(--color-divider); }
+.stats > div { padding: 22px 0 22px 24px; border-left: 1px solid var(--color-rule); }
+.stats > div:first-child { padding-left: 0; border-left: 0; }
+
+.num { font-variant-numeric: tabular-nums; font-size: 46px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+.num small { font-size: 22px; font-weight: 400; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+.cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0 44px; flex: 1; align-items: start; }
+.colL { padding: 28px 0; display: flex; flex-direction: column; gap: 32px; }
+.colR { padding: 28px 0 28px 44px; border-left: 1px solid var(--color-rule); display: flex; flex-direction: column; gap: 34px; }
+
+.ask { display: flex; align-items: center; gap: 14px; padding: 18px 0; border-top: 2px solid var(--color-divider); margin-top: auto; }
+.ask .input { background: transparent; border: 0; border-bottom: 1px solid var(--color-divider); padding-left: 0; border-radius: 0; }
+.ask .input:focus-visible { outline: none; border-bottom-color: var(--color-accent); }
+
+.tm { width: 48px; flex: none; font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; }
+.cal { display: flex; gap: 18px; padding: 13px 0; border-bottom: 1px solid var(--color-rule); }
+.cal:last-child { border-bottom: 0; }
+
+.hb { width: 15px; height: 15px; flex: none; border: 1px solid var(--color-divider); }
+.hb-on { background: var(--color-accent); border-color: var(--color-accent); }
+
+/* NavLink renders an <a>: mirror the .rail-item[data-on="1"] look for its
+   own .active class, and cancel the anchor's default underline. */
+.cu .rail-item { text-decoration: none; }
+.cu .rail-item.active { color: var(--color-accent); border-left-color: var(--color-accent); }
+
+/* — data loading / error / empty states, shared by every page — */
+.state-msg { padding: 40px 0; font-size: 14px; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+.state-msg.is-error { color: var(--color-accent-700); }
+.cu[data-theme="notte"] .state-msg.is-error { color: var(--color-accent); }
