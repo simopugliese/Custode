@@ -70,7 +70,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
 ```
 /repo
   /bot            # logica Telegram
-  /api            # FastAPI backend (+ Dockerfile multi-stage: runtime e test)
+  /api            # FastAPI backend
   /router         # logica di scelta DeepSeek/Claude
   /worker         # job schedulati (riepilogo settimanale, backup, reminder)
   /core           # codice condiviso: configurazione, accesso SQLite, dominio
@@ -79,6 +79,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
   /.github/workflows  # CI: lint + test ad ogni push
   pyproject.toml  # dipendenze Python di tutti i servizi
   uv.lock         # versioni bloccate (installazioni riproducibili)
+  Dockerfile      # multi-stage: un target per servizio (api, bot) + test
   docker-compose.yml
   docker-compose.test.yml
   .env.example    # SOLO placeholder, mai valori reali
@@ -150,6 +151,8 @@ lezioni_log(id, corso_id, data, seguita, appunti_presi)
 
 ### 8.1 Bot Telegram (testo + voce)
 Funziona identico via testo o audio. L'audio passa da Whisper locale → testo → stessa pipeline del testo. Nessuna differenza di funzionalità tra le due modalità, solo di input.
+
+**Stato attuale.** Il bot esiste e copre task e lista della spesa (§8.2, §8.3) con comandi espliciti e bottoni inline, in long polling e con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Il linguaggio naturale e i vocali arrivano col router (§6) e Whisper: si aggiungeranno sopra i comandi, non al loro posto. Le scadenze si scelgono con dei bottoni proprio perché senza il router una data scritta a parole non è interpretabile in modo affidabile.
 
 **Colonne aggiunte alla bozza, costruendo i moduli** (le migrazioni reali sono in `core/custode_core/migrazioni/`):
 - `tasks.origine` — dashboard, Telegram, piano di ripasso o regola di contesto: serve a raggruppare i task per provenienza e a etichettare la riga ("da piano di ripasso", §8.11).

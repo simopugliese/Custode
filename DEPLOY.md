@@ -49,9 +49,14 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `CUSTODE_DB_PATH` | `/data/custode.db` (percorso **dentro** il container) |
 | `CUSTODE_TIMEZONE` | `Europe/Rome` |
 | `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard su Pages, es. `https://custode.pages.dev` |
+| `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
+| `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 
-Le altre (token Telegram, chiavi DeepSeek/Claude, token del tunnel) restano
-commentate finché non arriva il modulo che le usa.
+Le altre (chiavi DeepSeek/Claude, token del tunnel) restano commentate finché
+non arriva il modulo che le usa.
+
+Il bot non parte senza token **e** senza user ID: lo dice nei log e si ferma,
+invece di restare in ascolto con la whitelist vuota.
 
 `.env` non deve mai finire nel repo: è in `.gitignore`, verificalo prima di
 ogni commit con `git status`.
@@ -82,7 +87,21 @@ Le migrazioni dello schema girano da sole ad ogni avvio e sono idempotenti:
 non c'è nessun passo manuale da ricordare quando si aggiorna.
 
 L'API è pubblicata solo su `127.0.0.1:8000`: nessun'altra macchina della rete di
-casa la vede, e sul router non va aperta nessuna porta (§2, §9).
+casa la vede, e sul router non va aperta nessuna porta (§2, §9). Anche il bot
+non espone niente: in long polling è lui a chiamare Telegram.
+
+### Provare il bot
+
+Con lo stack in piedi, da Telegram: `/aiuto` deve rispondere con l'elenco dei
+comandi, `/nuovo Prova` deve creare un task che compare anche nella dashboard.
+
+```bash
+docker compose logs -f bot
+```
+
+All'avvio il log dice qual è l'unico mittente ammesso. Se scrivi da un altro
+account non ricevi risposta — è il comportamento voluto (§9) — e nel log compare
+una riga `messaggio ignorato da un mittente non autorizzato`.
 
 ## 4. Cloudflare Tunnel + Access **[da fare — fase 8]**
 

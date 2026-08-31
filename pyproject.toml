@@ -15,6 +15,12 @@ dependencies = [
     "uvicorn[standard]==0.34.0",
 ]
 
+[project.optional-dependencies]
+# Serve solo al servizio `bot`: l'immagine dell'API non se lo porta dietro.
+bot = [
+    "python-telegram-bot==22.8",
+]
+
 [dependency-groups]
 # Strumenti di sviluppo/CI: lint, type check, test. Non finiscono nell'immagine
 # di runtime (vedi lo stage `test` in api/Dockerfile).
@@ -38,6 +44,7 @@ build-backend = "hatchling.build"
 packages = [
     "core/custode_core",
     "api/custode_api",
+    "bot/custode_bot",
 ]
 
 [tool.uv]
@@ -60,7 +67,7 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "tests"]
+files = ["core", "api", "bot", "tests"]
 
 [tool.ruff.lint.isort]
 # Senza questo isort tratterebbe i pacchetti del repo come librerie di terze
@@ -72,3 +79,14 @@ known-first-party = [
     "custode_router",
     "custode_worker",
 ]
+
+# `telegram.ext.Application` è generica su sei parametri che python-telegram-bot
+# stesso lascia impliciti nei propri esempi: scriverli per esteso ovunque
+# renderebbe le firme illeggibili senza guadagnare nulla in sicurezza.
+[[tool.mypy.overrides]]
+module = [
+    "custode_bot.applicazione",
+    "tests.unit.test_bot_whitelist",
+    "tests.integration.test_bot_end_to_end",
+]
+disallow_any_generics = false

@@ -14,10 +14,10 @@ cartella puntano lì.
 
 ```
 /api          backend FastAPI — il contratto REST è in dashboard/API.md
-/bot          bot Telegram (testo + voce)                    — da fare, fase 3
+/bot          bot Telegram: comandi, whitelist, task e lista della spesa
 /router       scelta del modello DeepSeek / Claude (§6)      — da fare, fase 4
 /worker       job schedulati: scadenze, riepiloghi, backup   — da fare
-/core         codice condiviso: configurazione e accesso SQLite
+/core         codice condiviso: configurazione, SQLite, dominio
 /dashboard    frontend React + Vite (deploy su Cloudflare Pages)
 /tests        unit + integration test
 ```
@@ -34,8 +34,9 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Contratto REST (`dashboard/API.md`) | fatto |
 | Scheletro repo, configurazione, SQLite in WAL, `GET /api/health`, CI | fatto |
 | API con persistenza reale su SQLite: Home, Task, Lista della spesa | fatto |
-| Bot Telegram | prossimo |
-| Router DeepSeek/Claude, Whisper, diario, spese, abitudini, calendario | da fare |
+| Bot Telegram: comandi, whitelist, task e lista della spesa | fatto |
+| Router DeepSeek/Claude e Whisper (linguaggio naturale e vocali) | prossimo |
+| Diario, spese, abitudini, calendario, corsi, meteo | da fare |
 
 Home, Task e Lista della spesa mostrano dati veri, letti e scritti su SQLite.
 Le altre pagine ricevono un `501` che dice quale modulo manca, e mostrano quel
@@ -47,7 +48,7 @@ Serve [uv](https://docs.astral.sh/uv/) (gestisce Python e dipendenze).
 
 ```bash
 cp .env.example .env          # riempi i valori locali; .env non è versionato
-uv sync                       # crea .venv dalle versioni bloccate in uv.lock
+uv sync --all-extras          # crea .venv dalle versioni bloccate in uv.lock
 uv run uvicorn custode_api.main:app --reload
 curl localhost:8000/api/health
 ```
@@ -63,8 +64,14 @@ uv run pytest
 In container, come sul Pi:
 
 ```bash
-docker compose up --build -d          # API su 127.0.0.1:8000
+docker compose up --build -d          # API su 127.0.0.1:8000, bot in polling
 docker compose -f docker-compose.test.yml run --rm tests
+```
+
+Il bot Telegram si avvia anche da solo, vedi [`bot/README.md`](./bot/README.md):
+
+```bash
+uv run python -m custode_bot.main      # servono TELEGRAM_* nel .env
 ```
 
 La dashboard si avvia a parte, vedi [`dashboard/README.md`](./dashboard/README.md):
