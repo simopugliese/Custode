@@ -1,0 +1,27 @@
+.git/
+.github/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Mai dentro un'immagine: segreti e database
+.env
+.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+data/
+backups/
+
+# Non serve al backend
+dashboard/node_modules/
+dashboard/dist/
+chats/
+project/
+models/

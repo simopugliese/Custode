@@ -1,6 +1,6 @@
 /**
  * Tipi condivisi per le risposte dell'API di Custode.
- * Rispecchiano lo schema dati in project/uploads/assistente-ia-personale-design.md (§7).
+ * Rispecchiano lo schema dati in ARCHITECTURE.md (§7), alla radice del repo.
  * Il contratto REST completo è documentato in /API.md.
  */
 

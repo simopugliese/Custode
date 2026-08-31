@@ -1,0 +1,71 @@
+[project]
+name = "custode"
+version = "0.1.0"
+description = "Custode — assistente personale (bot Telegram + API) self-hosted su Raspberry Pi 5"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi==0.115.6",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "uvicorn[standard]==0.34.0",
+]
+
+[dependency-groups]
+# Strumenti di sviluppo/CI: lint, type check, test. Non finiscono nell'immagine
+# di runtime (vedi lo stage `test` in api/Dockerfile).
+dev = [
+    "httpx==0.28.1",
+    "mypy==1.14.1",
+    "pytest==8.3.4",
+    "pytest-cov==6.0.0",
+    "ruff==0.8.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Le cartelle sono quelle di ARCHITECTURE.md §5; dentro ognuna vive un pacchetto
+# Python con prefisso `custode_` per avere import non ambigui. Qui compaiono solo
+# i pacchetti che esistono davvero: bot/, router/ e worker/ si aggiungono quando
+# arriva la loro fase (vedi il README di ciascuna cartella).
+[tool.hatch.build.targets.wheel]
+packages = [
+    "core/custode_core",
+    "api/custode_api",
+]
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: test che esercitano l'API completa contro un DB reale su disco",
+]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["core", "api", "tests"]
+
+[tool.ruff.lint.isort]
+# Senza questo isort tratterebbe i pacchetti del repo come librerie di terze
+# parti e li mescolerebbe con fastapi/pydantic.
+known-first-party = [
+    "custode_core",
+    "custode_api",
+    "custode_bot",
+    "custode_router",
+    "custode_worker",
+]

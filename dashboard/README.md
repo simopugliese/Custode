@@ -1,7 +1,7 @@
 # Custode — Dashboard
 
 Frontend statico della dashboard di controllo di Custode (React + Vite +
-TypeScript). Consuma la REST API descritta in `../project/uploads/assistente-ia-personale-design.md`
+TypeScript). Consuma la REST API descritta in [`../ARCHITECTURE.md`](../ARCHITECTURE.md)
 tramite il contratto documentato in [`API.md`](./API.md): nessun dato finto,
 ogni pagina mostra caricamento/errore finché l'API non è raggiungibile.
 
@@ -22,6 +22,11 @@ npm run dev
 Senza `VITE_API_BASE_URL` configurato ogni pagina mostra lo stato d'errore
 ("VITE_API_BASE_URL non configurato…") invece di dati finti — è il
 comportamento atteso finché bot/API/DB non sono in piedi.
+
+Con l'API in esecuzione in locale (vedi il [README alla radice](../README.md)),
+imposta `VITE_API_BASE_URL=http://localhost:8000` e aggiungi l'origine del dev
+server al `.env` del backend — `CUSTODE_CORS_ORIGINS=http://localhost:5173` —
+altrimenti il browser blocca le chiamate.
 
 ## Struttura
 

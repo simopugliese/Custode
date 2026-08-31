@@ -1,0 +1,44 @@
+# Custode — stack di esecuzione sul Raspberry Pi 5 (ARCHITECTURE.md §4).
+#
+# Per ora c'è solo l'API: bot, router, worker, Whisper e cloudflared entrano
+# qui quando arriva la loro fase (vedi il README di ciascuna cartella). Nessuna
+# porta è pubblicata verso l'esterno: da fuori si passa da Cloudflare Tunnel,
+# che apre una connessione in uscita dal Pi (§2, §9).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      target: runtime
+    image: custode-api:0.1.0
+    container_name: custode-api
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      CUSTODE_DB_PATH: /data/custode.db
+    volumes:
+      - custode-data:/data
+    ports:
+      # Solo loopback: raggiungibile dal Pi (e dal tunnel, che gira lì),
+      # invisibile al resto della rete di casa.
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/api/health').read()",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  # Il database vive qui: è l'unica cosa da backuppare (§3, §9).
+  custode-data:
+    name: custode-data

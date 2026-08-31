@@ -1,0 +1,18 @@
+# Pipeline di test in container (ARCHITECTURE.md §10).
+#
+#   docker compose -f docker-compose.test.yml run --rm tests
+#
+# Il DB di test è un file usa-e-getta dentro il container: nessun volume, così
+# ogni esecuzione parte da zero e non tocca mai i dati reali.
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      target: test
+    image: custode-tests:0.1.0
+    environment:
+      CUSTODE_AMBIENTE: test
+      CUSTODE_DB_PATH: /tmp/custode-test.db
+    command: ["pytest", "-q"]

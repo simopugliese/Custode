@@ -70,21 +70,31 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
 ```
 /repo
   /bot            # logica Telegram
-  /api            # FastAPI backend
+  /api            # FastAPI backend (+ Dockerfile multi-stage: runtime e test)
   /router         # logica di scelta DeepSeek/Claude
   /worker         # job schedulati (riepilogo settimanale, backup, reminder)
+  /core           # codice condiviso: configurazione, accesso SQLite, dominio
   /dashboard      # frontend (build separata, deploy su Pages)
   /tests          # unit + integration test
+  /.github/workflows  # CI: lint + test ad ogni push
+  pyproject.toml  # dipendenze Python di tutti i servizi
+  uv.lock         # versioni bloccate (installazioni riproducibili)
   docker-compose.yml
   docker-compose.test.yml
   .env.example    # SOLO placeholder, mai valori reali
   .gitignore      # .env, *.db, volumi docker
-  ARCHITECTURE.md
+  .dockerignore
+  ARCHITECTURE.md # questo documento
   DEPLOY.md
   README.md
 ```
 
 Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale. Il `.env.example` documenta ogni variabile richiesta senza esporre segreti.
+
+**Note di implementazione** (decisioni prese costruendo lo scheletro, non previste dalla bozza originale):
+- `/core` non era nell'elenco iniziale. È stato aggiunto perché api, bot, router e worker hanno bisogno della stessa configurazione e dello stesso schema §7: l'alternativa era duplicarli in quattro punti destinati a divergere. Dentro ogni cartella vive un pacchetto Python con prefisso `custode_` (`core/custode_core`, `api/custode_api`, …) per avere import non ambigui.
+- Le dipendenze Python sono gestite con **uv** e un `uv.lock` unico per tutti i servizi: un lockfile vero serve alla riproducibilità richiesta in §1, e su Pi 5 arm64 le installazioni restano veloci.
+- L'API espone `GET /api/health`, che risponde 503 se SQLite non è raggiungibile: è il segnale su cui lo smoke test post-deploy di §10 fa scattare il rollback.
 
 ## 6. Router DeepSeek / Claude
 
