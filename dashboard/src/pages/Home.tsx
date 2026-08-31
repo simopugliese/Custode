@@ -25,7 +25,7 @@ export default function Home() {
       <AsyncState isLoading={isLoading} error={error} onRetry={refetch}>
         {data && (
           <>
-            {data.proposteAutomazioni > 0 && (
+            {data.proposteAutomazioni !== undefined && data.proposteAutomazioni > 0 && (
               <AvvisoRow
                 icon="zap"
                 actionLabel="Vedi in Regole di contesto"
@@ -40,15 +40,23 @@ export default function Home() {
             <StatsBar
               items={[
                 { label: 'Task aperti', value: data.stats.taskAperti },
-                { label: 'Spesa settimana', value: <Money value={data.stats.spesaSettimana} /> },
+                {
+                  label: 'Spesa settimana',
+                  // Assente = modulo spese non ancora attivo: un trattino dice
+                  // "non lo so", uno zero direbbe "non hai speso niente".
+                  value: data.stats.spesaSettimana === undefined ? '—' : <Money value={data.stats.spesaSettimana} />,
+                },
                 {
                   label: 'Streak più lunga',
-                  value: (
-                    <>
-                      {data.stats.streakPiuLunga}
-                      <small style={{ opacity: 0.55 }}> giorni</small>
-                    </>
-                  ),
+                  value:
+                    data.stats.streakPiuLunga === undefined ? (
+                      '—'
+                    ) : (
+                      <>
+                        {data.stats.streakPiuLunga}
+                        <small style={{ opacity: 0.55 }}> giorni</small>
+                      </>
+                    ),
                   accent: true,
                 },
                 {
@@ -86,6 +94,7 @@ export default function Home() {
                   </div>
                 </div>
 
+                {data.calendarioOggi && (
                 <div>
                   <h5 style={{ marginBottom: 4 }}>Calendario</h5>
                   <div>
@@ -103,7 +112,9 @@ export default function Home() {
                     {data.calendarioOggi.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '10px 0' }}>Nessun evento oggi.</div>}
                   </div>
                 </div>
+                )}
 
+                {data.abitudini && (
                 <div>
                   <h5 style={{ marginBottom: 12 }}>Abitudini</h5>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -112,9 +123,11 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+                )}
               </div>
 
               <div className="colR">
+                {data.speseSettimana && (
                 <div>
                   <div className="row" style={{ marginBottom: 12 }}>
                     <h5>Spese · settimana</h5>
@@ -165,6 +178,7 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+                )}
 
                 <div>
                   <div className="row" style={{ marginBottom: 6 }}>

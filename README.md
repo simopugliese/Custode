@@ -33,11 +33,13 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Dashboard (9 pagine, tema giorno/notte, chiamate API reali) | fatto |
 | Contratto REST (`dashboard/API.md`) | fatto |
 | Scheletro repo, configurazione, SQLite in WAL, `GET /api/health`, CI | fatto |
-| Endpoint API con persistenza reale (task, lista spesa) | prossimo |
-| Bot Telegram, router DeepSeek/Claude, Whisper, diario, spese, abitudini | da fare |
+| API con persistenza reale su SQLite: Home, Task, Lista della spesa | fatto |
+| Bot Telegram | prossimo |
+| Router DeepSeek/Claude, Whisper, diario, spese, abitudini, calendario | da fare |
 
-La dashboard oggi mostra stato di caricamento/errore finché il backend non
-espone gli endpoint di pagina: è il comportamento previsto, non un bug.
+Home, Task e Lista della spesa mostrano dati veri, letti e scritti su SQLite.
+Le altre pagine ricevono un `501` che dice quale modulo manca, e mostrano quel
+messaggio: è il comportamento previsto, non un bug.
 
 ## Sviluppo locale
 

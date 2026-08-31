@@ -8,6 +8,8 @@ Cloudflare Access, che lascia passare solo l'identità autorizzata (§2, §9).
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 
@@ -16,8 +18,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from custode_api.rotte import home, lista_spesa, non_attivi, task
 from custode_core.config import Settings, get_settings
-from custode_core.db import db_raggiungibile
+from custode_core.db import connessione, db_raggiungibile
+from custode_core.migrazioni import migra
 
 
 def _versione() -> str:
@@ -34,15 +38,38 @@ class StatoSalute(BaseModel):
     versione: str
     ambiente: str
     db: Literal["ok", "irraggiungibile"]
+    migrazioni: Literal["ok", "fallite"]
 
 
 def crea_app(settings: Settings | None = None) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
     logging.basicConfig(level=impostazioni.log_level.upper())
+    log = logging.getLogger("custode.api")
+
+    @asynccontextmanager
+    async def ciclo_di_vita(app: FastAPI) -> AsyncIterator[None]:
+        # Le migrazioni girano ad ogni avvio: sono idempotenti, e così un
+        # deploy non richiede un passo manuale che ci si può dimenticare.
+        #
+        # Se falliscono l'app parte lo stesso, degradata: un processo che muore
+        # all'avvio dà solo "connection refused" allo smoke test, mentre così
+        # `/api/health` risponde 503 dicendo cosa non va (§10).
+        app.state.migrazioni_ok = True
+        try:
+            with connessione(impostazioni.db_path) as conn:
+                applicate = migra(conn)
+        except Exception:
+            app.state.migrazioni_ok = False
+            log.exception("migrazioni fallite: l'API parte in stato degradato")
+        else:
+            if applicate:
+                log.info("migrazioni applicate: %s", ", ".join(applicate))
+        yield
 
     in_produzione = impostazioni.ambiente == "production"
     app = FastAPI(
+        lifespan=ciclo_di_vita,
         title="Custode API",
         version=_versione(),
         # In produzione l'API sta dietro Cloudflare Access, ma non c'è motivo
@@ -65,15 +92,28 @@ def crea_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health", response_model=StatoSalute, summary="Health check")
     def health() -> JSONResponse:
         db_ok = db_raggiungibile(impostazioni.db_path)
+        migrazioni_ok = bool(getattr(app.state, "migrazioni_ok", False))
+        sano = db_ok and migrazioni_ok
         corpo = StatoSalute(
-            stato="ok" if db_ok else "degradato",
+            stato="ok" if sano else "degradato",
             versione=_versione(),
             ambiente=impostazioni.ambiente,
             db="ok" if db_ok else "irraggiungibile",
+            migrazioni="ok" if migrazioni_ok else "fallite",
         )
         # 503 quando il DB non risponde: è il segnale su cui lo smoke test
         # post-deploy fa scattare il rollback (§10).
-        return JSONResponse(status_code=200 if db_ok else 503, content=corpo.model_dump())
+        return JSONResponse(status_code=200 if sano else 503, content=corpo.model_dump())
+
+    app.include_router(home.router)
+    app.include_router(task.router)
+    app.include_router(lista_spesa.router)
+    # Per ultimo: i moduli non ancora attivi non devono coprire una rotta vera.
+    app.include_router(non_attivi.router)
+
+    # Le rotte leggono le impostazioni da qui (vedi `dipendenze.py`), così i
+    # test possono costruire l'app puntandola a un database temporaneo.
+    app.state.settings = impostazioni
 
     return app
 

@@ -121,8 +121,8 @@ Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale.
 ## 7. Schema dati (bozza)
 
 ```
-tasks(id, titolo, note, scadenza, stato, creato_il)
-shopping_list(id, item, quantita, aggiunto_il, comprato)
+tasks(id, titolo, note, scadenza, stato, origine, rinvii, creato_il, completato_il)
+shopping_list(id, item, quantita, reparto, comprato, aggiunto_il, comprato_il)
 
 diary_entries(id, data, trascrizione_raw, riassunto_approvato, tag[], stato_approvazione)
 diary_weekly_summary(id, settimana_inizio, testo, generato_il)
@@ -150,6 +150,16 @@ lezioni_log(id, corso_id, data, seguita, appunti_presi)
 
 ### 8.1 Bot Telegram (testo + voce)
 Funziona identico via testo o audio. L'audio passa da Whisper locale → testo → stessa pipeline del testo. Nessuna differenza di funzionalità tra le due modalità, solo di input.
+
+**Colonne aggiunte alla bozza, costruendo i moduli** (le migrazioni reali sono in `core/custode_core/migrazioni/`):
+- `tasks.origine` — dashboard, Telegram, piano di ripasso o regola di contesto: serve a raggruppare i task per provenienza e a etichettare la riga ("da piano di ripasso", §8.11).
+- `tasks.rinvii` — quante volte un task è stato rinviato; è ciò che permette di accorgersi dei task che si trascinano invece di essere fatti.
+- `tasks.completato_il` — data di chiusura, senza la quale non si può dire quanti task sono stati chiusi in una settimana.
+- `shopping_list.reparto` — raggruppa la lista per reparto del supermercato; finché non c'è il router (§6) lo scrive chi aggiunge la voce, altrimenti resta "Altro".
+- `shopping_list.comprato_il` — quando una voce è stata spuntata.
+- `schema_migrations` — tabella di servizio del runner delle migrazioni.
+
+Le scadenze stanno in un'unica colonna in ISO-8601: dieci caratteri (`2026-09-04`) significano "per tutto il giorno", una forma più lunga (`2026-09-04T18:00`) un'ora precisa.
 
 ### 8.2 Task / promemoria
 CRUD via linguaggio naturale ("ricordami di...", "segna fatto..."). Un job cron controlla le scadenze e scrive su Telegram se qualcosa non è stato segnato come fatto.

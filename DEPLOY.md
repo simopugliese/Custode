@@ -67,11 +67,19 @@ curl -s localhost:8000/api/health
 Risposta attesa:
 
 ```json
-{"stato":"ok","versione":"0.1.0","ambiente":"production","db":"ok"}
+{"stato":"ok","versione":"0.1.0","ambiente":"production","db":"ok","migrazioni":"ok"}
 ```
 
-Se `db` è `irraggiungibile` l'endpoint risponde **503**: il volume `custode-data`
-non è montato o non è scrivibile dall'utente `custode` (uid 10001) del container.
+Se qualcosa non va l'endpoint risponde **503** dicendo cosa:
+
+- `"db":"irraggiungibile"` → il volume `custode-data` non è montato, o non è
+  scrivibile dall'utente `custode` (uid 10001) del container.
+- `"migrazioni":"fallite"` → lo schema non è aggiornato; il motivo preciso è
+  nei log (`docker compose logs api`). L'API parte lo stesso, in stato
+  degradato, apposta per poterlo dire qui invece di limitarsi a morire.
+
+Le migrazioni dello schema girano da sole ad ogni avvio e sono idempotenti:
+non c'è nessun passo manuale da ricordare quando si aggiorna.
 
 L'API è pubblicata solo su `127.0.0.1:8000`: nessun'altra macchina della rete di
 casa la vede, e sul router non va aperta nessuna porta (§2, §9).

@@ -46,8 +46,21 @@ export default function ListaSpesa() {
               items={[
                 { label: 'Da prendere', value: data.stats.daPrendere },
                 { label: 'Presi', value: data.stats.presi, accent: true },
-                { label: 'Stima carrello', value: <Money value={data.stats.stimaCarrello} /> },
-                { label: 'Ultima spesa', value: <span style={{ fontSize: 34, paddingTop: 8, display: 'block' }}>{data.stats.ultimaSpesaGiorni} giorni</span> },
+                {
+                  // Assenti finché non c'è il modulo spese: un trattino, non uno zero
+                  // che sembrerebbe un carrello vuoto o una spesa fatta oggi.
+                  label: 'Stima carrello',
+                  value: data.stats.stimaCarrello === undefined ? '—' : <Money value={data.stats.stimaCarrello} />,
+                },
+                {
+                  label: 'Ultima spesa',
+                  value:
+                    data.stats.ultimaSpesaGiorni === undefined ? (
+                      '—'
+                    ) : (
+                      <span style={{ fontSize: 34, paddingTop: 8, display: 'block' }}>{data.stats.ultimaSpesaGiorni} giorni</span>
+                    ),
+                },
               ]}
             />
 

@@ -9,6 +9,9 @@ dependencies = [
     "fastapi==0.115.6",
     "pydantic==2.10.4",
     "pydantic-settings==2.7.0",
+    # I nomi dei fusi orari non sono garantiti nelle immagini slim: portarseli
+    # dietro evita che ZoneInfo("Europe/Rome") fallisca solo in container.
+    "tzdata==2024.2",
     "uvicorn[standard]==0.34.0",
 ]
 
