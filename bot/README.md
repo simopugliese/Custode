@@ -1,14 +1,60 @@
 # bot — interfaccia Telegram
 
-Il canale principale di Custode (ARCHITECTURE.md §8.1): stesso comportamento
-via testo o vocale, con l'audio che passa da Whisper locale e poi imbocca la
-stessa pipeline del testo.
+Il canale principale di Custode (ARCHITECTURE.md §8.1). Parla direttamente al
+database attraverso gli stessi servizi di dominio che usa l'API
+(`custode_core.dominio`): nessuna regola duplicata fra i due canali.
 
-## Stato
+- `config.py` — token e whitelist, da variabili `TELEGRAM_*`.
+- `azioni.py` — codifica dei `callback_data` dei bottoni inline.
+- `risposte.py` — **cosa** dice il bot, come funzioni pure: niente qui sa cosa
+  sia python-telegram-bot, ed è il livello che i test esercitano davvero.
+- `applicazione.py` — l'adattatore verso python-telegram-bot: handler, filtri,
+  invio dei messaggi.
+- `main.py` — avvio.
 
-Vuota. Arriva alla fase 3 del piano di lavoro, dopo API + DB reali, così il bot
-può appoggiarsi ai servizi di dominio in `core/` invece di riscriverli.
+## Sicurezza
 
-Quando esisterà: `python-telegram-bot` (§4), whitelist sul solo user ID
-Telegram autorizzato e ogni altro mittente ignorato (§9), collegamento ai
-moduli task e lista della spesa (§8.2, §8.3).
+Whitelist su un solo user ID Telegram (§9): ogni altro mittente viene ignorato
+**senza risposta** — a uno sconosciuto non si conferma nemmeno che il bot
+esista. La whitelist copre comandi, testo libero e tap sui bottoni: i bottoni
+vanno controllati a mano, perché `CallbackQueryHandler` non accetta un filtro
+sul mittente come gli altri handler.
+
+Il default `TELEGRAM_ALLOWED_USER_ID=0` significa "nessuno", mai "chiunque", e
+senza token o senza user ID il bot si rifiuta di partire.
+
+Il bot lavora in **long polling**: è lui a chiamare Telegram, quindi non serve
+nessuna porta in ingresso né un tunnel già configurato (§2, §9).
+
+## Cosa capisce
+
+| Comando | Cosa fa |
+|---|---|
+| `/oggi` | Task scaduti, in scadenza oggi, e quanto manca sulla lista |
+| `/task` | I task aperti, con un bottone per spuntarli e uno per rinviarli |
+| `/nuovo <titolo>` | Crea un task, poi chiede la scadenza con dei bottoni |
+| `/lista` | La lista della spesa per reparto, spuntabile |
+| `/aggiungi <voce>` | Aggiunge alla lista della spesa |
+| `/svuota` | Toglie le voci già prese, previa conferma |
+| `/aiuto` | L'elenco qui sopra |
+
+Il **linguaggio naturale e i vocali** non ci sono ancora: arrivano col router
+DeepSeek/Claude (§6) e Whisper (§4), e si aggiungeranno sopra questi comandi
+senza sostituirli. A un messaggio libero il bot risponde dicendo esattamente
+questo, invece di restare muto.
+
+Le scadenze si scelgono con dei bottoni (oggi / domani / fra una settimana /
+senza scadenza) invece di essere lette da una frase: senza il router una data
+scritta a parole non si può interpretare in modo affidabile, e quattro bottoni
+si premono più in fretta di quanto si scriva una data.
+
+## Provarlo
+
+```bash
+# nel .env: TELEGRAM_BOT_TOKEN e TELEGRAM_ALLOWED_USER_ID
+uv run python -m custode_bot.main
+```
+
+I test non hanno bisogno di un token: `tests/integration/test_bot_end_to_end.py`
+fa passare aggiornamenti veri attraverso l'applicazione con un bot finto al
+posto della rete.

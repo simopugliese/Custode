@@ -1,26 +1,34 @@
 # Custode — stack di esecuzione sul Raspberry Pi 5 (ARCHITECTURE.md §4).
 #
-# Per ora c'è solo l'API: bot, router, worker, Whisper e cloudflared entrano
-# qui quando arriva la loro fase (vedi il README di ciascuna cartella). Nessuna
-# porta è pubblicata verso l'esterno: da fuori si passa da Cloudflare Tunnel,
-# che apre una connessione in uscita dal Pi (§2, §9).
+# Un servizio per componente. Router, Whisper e cloudflared entrano qui quando
+# arriva la loro fase (vedi il README di ciascuna cartella). Nessuna porta è
+# pubblicata verso l'esterno: da fuori si passa da Cloudflare Tunnel, che apre
+# una connessione in uscita dal Pi (§2, §9).
+
+x-comune: &comune
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    CUSTODE_DB_PATH: /data/custode.db
+  volumes:
+    # Bot e API scrivono sullo stesso file SQLite: SQLite è in modalità WAL e
+    # con `busy_timeout`, che è esattamente il caso per cui servono (§3).
+    - custode-data:/data
 
 services:
   api:
+    <<: *comune
     build:
       context: .
-      dockerfile: api/Dockerfile
-      target: runtime
+      dockerfile: Dockerfile
+      target: api
     image: custode-api:0.1.0
     container_name: custode-api
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      CUSTODE_DB_PATH: /data/custode.db
-    volumes:
-      - custode-data:/data
     ports:
       # Solo loopback: raggiungibile dal Pi (e dal tunnel, che gira lì),
       # invisibile al resto della rete di casa.
@@ -37,6 +45,23 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+
+  bot:
+    <<: *comune
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: bot
+    image: custode-bot:0.1.0
+    container_name: custode-bot
+    # Il bot legge TELEGRAM_BOT_TOKEN e TELEGRAM_ALLOWED_USER_ID dal .env:
+    # senza, si ferma subito dicendo cosa manca invece di restare in ascolto
+    # con la whitelist vuota.
+    #
+    # Nessun `depends_on` sull'api: il bot parla direttamente al database, e
+    # legarlo alla salute dell'API vorrebbe dire perdere il canale principale
+    # (§8.1) proprio quando qualcosa non va nel canale secondario. Le migrazioni
+    # concorrenti sono gestite dal lock del runner, non dall'ordine di avvio.
 
 volumes:
   # Il database vive qui: è l'unica cosa da backuppare (§3, §9).

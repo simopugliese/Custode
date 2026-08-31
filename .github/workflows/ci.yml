@@ -26,7 +26,9 @@ jobs:
           enable-cache: true
 
       - name: Installa le dipendenze bloccate
-        run: uv sync --frozen
+        # --all-extras: i test coprono anche il bot, che ha python-telegram-bot
+        # in un extra per non appesantire l'immagine dell'API.
+        run: uv sync --frozen --all-extras
 
       - name: Lint
         run: |

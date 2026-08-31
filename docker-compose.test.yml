@@ -9,7 +9,7 @@ services:
   tests:
     build:
       context: .
-      dockerfile: api/Dockerfile
+      dockerfile: Dockerfile
       target: test
     image: custode-tests:0.1.0
     environment:
