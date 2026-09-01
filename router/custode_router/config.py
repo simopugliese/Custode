@@ -33,7 +33,18 @@ class ImpostazioniRouter(BaseSettings):
     """Un comando dal telefono non può restare appeso: meglio un errore chiaro."""
 
     max_token_risposta: int = 1024
-    """Le risposte del router sono JSON strutturati, non testi lunghi."""
+    """Le risposte di DeepSeek sono JSON strutturati brevi, non testi lunghi."""
+
+    max_token_risposta_claude: int = 8000
+    """Perché Claude ha un tetto suo, molto più alto.
+
+    Su `claude-opus-5` il ragionamento adattivo è attivo per impostazione
+    predefinita e i suoi token **rientrano in `max_tokens`**: un tetto da 1024,
+    che a DeepSeek basta e avanza, qui verrebbe consumato dal ragionamento e la
+    risposta arriverebbe troncata (`stop_reason: "max_tokens"`) invece che in
+    JSON. Finché nessun modulo chiamava Claude il problema non si vedeva; il
+    diario (§8.4) è il primo che lo farebbe scattare.
+    """
 
 
 @lru_cache(maxsize=1)

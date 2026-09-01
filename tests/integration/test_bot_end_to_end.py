@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -17,13 +17,17 @@ import pytest
 from telegram import Bot, CallbackQuery, Chat, Message, MessageEntity, Update, User, Voice
 from telegram.ext import Application
 
+from custode_bot import azioni
 from custode_bot.applicazione import crea_applicazione
 from custode_bot.config import ImpostazioniBot
 from custode_bot.trascrizione import ClientWhisper, TrascrizioneNonRiuscita
 from custode_core.config import Settings
 from custode_core.db import connessione
+from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
+from custode_core.formato import adesso
+from custode_router.compiti import Compito
 from custode_router.errori import ProviderNonConfigurato
 
 pytestmark = pytest.mark.integration
@@ -53,6 +57,9 @@ class BotFinto:
     async def answer_callback_query(self, *_: Any, **__: Any) -> None:
         self.risposte_ai_tap += 1
 
+    async def send_chat_action(self, *_: Any, **__: Any) -> None:
+        """«sta scrivendo…»: il bot lo manda prima delle attese lunghe."""
+
     @property
     def ultimo(self) -> str:
         return self.messaggi[-1][1]
@@ -76,14 +83,20 @@ class RouterFinto:
 
     def __init__(self) -> None:
         self.risposta: dict[str, Any] = {"azione": "nessuna"}
+        # Per compito, quando un test ne esercita più d'uno nello stesso giro:
+        # l'interpretazione del messaggio e il riassunto del diario tornano
+        # forme diverse (§6 li manda anche a provider diversi).
+        self.per_compito: dict[Any, dict[str, Any]] = {}
         self.errore: Exception | None = None
         self.messaggi_visti: list[str] = []
+        self.compiti_visti: list[Any] = []
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         self.messaggi_visti.append(kwargs.get("utente", ""))
+        self.compiti_visti.append(compito)
         if self.errore is not None:
             raise self.errore
-        return self.risposta
+        return self.per_compito.get(compito, self.risposta)
 
 
 class WhisperFinto(ClientWhisper):
@@ -143,6 +156,7 @@ def _manda(app: Application, finto: BotFinto, testo: str, da: int = IO) -> None:
         entities=entita,
     )
     messaggio.set_bot(cast(Bot, finto))
+    messaggio.chat.set_bot(cast(Bot, finto))
     asyncio.run(app.process_update(Update(update_id=1, message=messaggio)))
 
 
@@ -194,6 +208,7 @@ def _manda_vocale(
         voice=Voice(file_id="f", file_unique_id="u", duration=durata),
     )
     messaggio.set_bot(cast(Bot, finto))
+    messaggio.chat.set_bot(cast(Bot, finto))
     # Il download passa per l'oggetto Voice: qui lo si sostituisce con uno che
     # restituisce i byte senza rete.
     object.__setattr__(messaggio, "voice", _VoceFinta(audio, durata))
@@ -372,3 +387,131 @@ def test_un_estraneo_non_puo_nemmeno_premere_un_bottone(
     with connessione(db_path) as conn:
         assert dom_task.leggi(conn, task_id).fatto is False
     assert finto.modificati == []
+
+
+# — diario (§8.4): il giro completo da Telegram —
+
+
+def _adesso() -> datetime:
+    """L'ora con cui ragiona il bot: quella vera nel fuso configurato.
+
+    A differenza dell'API il bot non riceve "adesso" iniettato, quindi la voce
+    di diario finisce sul giorno di calendario corrente — ed è su quello che i
+    test devono guardare.
+    """
+    return adesso(Settings(ambiente="test").timezone)
+
+
+def _oggi() -> date:
+    return _adesso().date()
+
+
+def test_giro_completo_del_diario(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    """Racconto → /diario → bozza → approvo. Nel diario entra solo l'approvato."""
+    modello.per_compito[Compito.PARSING_LISTA_SPESA] = {
+        "azione": "annota_diario",
+        "titolo": "mattina in biblioteca, pomeriggio buttato",
+    }
+    modello.per_compito[Compito.RIASSUNTO_DIARIO] = {
+        "riassunto": "Hai studiato la mattina, il pomeriggio è andato perso.",
+        "tag": ["studio", "umore"],
+    }
+
+    _manda(app, finto, "stamattina biblioteca, poi pomeriggio buttato")
+    assert "Annotato nel diario" in finto.ultimo
+
+    # Finché non si chiude la giornata, nel diario non c'è ancora niente.
+    with connessione(db_path) as conn:
+        voce = dom_diario.leggi_giorno(conn, _oggi())
+        assert voce is not None and voce.riassunto_approvato is None
+
+    _manda(app, finto, "/diario")
+    assert "Hai studiato la mattina" in finto.ultimo
+    assert "solo se lo approvi" in finto.ultimo
+
+    with connessione(db_path) as conn:
+        voce = dom_diario.leggi_giorno(conn, _oggi())
+        assert voce is not None
+        assert voce.riassunto_approvato is None  # ancora solo una bozza
+
+    _tap(app, finto, azioni.diario("approva", voce.id))
+    assert "già nel diario" in finto.ultimo
+
+    with connessione(db_path) as conn:
+        approvata = dom_diario.leggi(conn, voce.id)
+    assert approvata.riassunto_approvato == "Hai studiato la mattina, il pomeriggio è andato perso."
+    assert approvata.tag == ["studio", "umore"]
+
+
+def test_il_diario_si_puo_riscrivere_a_parole_proprie(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    """§8.4 punto 5: «approvi così com'è o lo modifichi»."""
+    modello.per_compito[Compito.PARSING_LISTA_SPESA] = {
+        "azione": "annota_diario",
+        "titolo": "giornata storta",
+    }
+    modello.per_compito[Compito.RIASSUNTO_DIARIO] = {
+        "riassunto": "Versione del modello.",
+        "tag": ["umore"],
+    }
+
+    _manda(app, finto, "che giornata storta")
+    _manda(app, finto, "/diario")
+
+    with connessione(db_path) as conn:
+        voce = dom_diario.leggi_giorno(conn, _oggi())
+    assert voce is not None
+
+    _tap(app, finto, azioni.diario("modifica", voce.id))
+    assert "parola per parola" in finto.ultimo
+
+    prima = len(modello.messaggi_visti)
+    _manda(app, finto, "Giornata storta, ma almeno ho chiuso il capitolo 3.")
+
+    # La riscrittura non passa dal modello: entra nel diario com'è stata scritta.
+    assert len(modello.messaggi_visti) == prima
+    with connessione(db_path) as conn:
+        approvata = dom_diario.leggi(conn, voce.id)
+    assert approvata.riassunto_approvato == "Giornata storta, ma almeno ho chiuso il capitolo 3."
+
+
+def test_un_vocale_raccontato_entra_nel_diario(
+    app: Application,
+    finto: BotFinto,
+    modello: RouterFinto,
+    whisper: WhisperFinto,
+    db_path: Path,
+) -> None:
+    """§8.1: dettare e scrivere sono la stessa cosa, anche per il diario."""
+    whisper.testo = "oggi mi sono sentito addosso tutta la settimana"
+    modello.per_compito[Compito.PARSING_LISTA_SPESA] = {
+        "azione": "annota_diario",
+        "titolo": "mi sono sentito addosso tutta la settimana",
+    }
+
+    _manda_vocale(app, finto, b"audio")
+
+    assert "Annotato nel diario" in finto.ultimo
+    with connessione(db_path) as conn:
+        voce = dom_diario.leggi_giorno(conn, _oggi())
+    assert voce is not None
+    assert (voce.n_vocali, voce.n_messaggi) == (1, 0)
+
+
+def test_senza_chiave_di_claude_il_materiale_non_si_perde(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    """Il guasto del modello non deve costare quello che hai già raccontato."""
+    with connessione(db_path) as conn:
+        dom_diario.aggiungi_materiale(conn, giorno=_oggi(), testo="giornata piena", ora=_adesso())
+
+    modello.errore = ProviderNonConfigurato("manca la chiave")
+    _manda(app, finto, "/diario")
+
+    assert "chiave di Claude" in finto.ultimo
+    with connessione(db_path) as conn:
+        voce = dom_diario.leggi_giorno(conn, _oggi())
+    assert voce is not None and voce.grezzo == "giornata piena"

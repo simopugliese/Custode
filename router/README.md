@@ -14,6 +14,8 @@ richiedono qualità, visione o ragionamento a Claude.
 - `router.py` — mette insieme le due cose.
 - `assistente.py` — dal testo libero all'azione: è ciò che rende utile tutto il
   resto (§8.1).
+- `diario.py` — dal materiale grezzo di una giornata al riassunto proposto
+  (§8.4). È il primo modulo che manda traffico vero a Claude.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
 condiviso non deve sapere che esistono dei modelli.
@@ -32,9 +34,17 @@ l'interpretazione è automatica e tornare indietro deve costare un tap.
 
 ## Stato
 
-Instradati e in uso: parsing della lista della spesa e CRUD dei task
-(entrambi DeepSeek). Gli altri compiti della tabella hanno il loro provider già
-deciso e il client pronto, ma nessun modulo li chiama ancora.
+Instradati e in uso: parsing della lista della spesa, CRUD dei task e
+riconoscimento del materiale da diario (tutti DeepSeek), più il **riassunto del
+diario**, che è la prima cosa a passare davvero da Claude. Gli altri compiti
+della tabella hanno il loro provider già deciso e il client pronto, ma nessun
+modulo li chiama ancora.
+
+Nota sul tetto dei token: DeepSeek e Claude ne hanno due distinti
+(`max_token_risposta` e `max_token_risposta_claude`). Su `claude-opus-5` il
+ragionamento adattivo è attivo di default e i suoi token rientrano in
+`max_tokens`: col tetto basso che basta a DeepSeek, la risposta arriverebbe
+troncata invece che in JSON.
 
 L'unica riga di §6 non implementata è **la lettura degli scontrini**, che ha
 bisogno di mandare un'immagine al modello: chiederla ora solleva
@@ -46,5 +56,8 @@ approvata è logica pura, costo zero, e va tenuta così.
 ## Chiavi
 
 `ROUTER_DEEPSEEK_API_KEY` e `ROUTER_ANTHROPIC_API_KEY` nel `.env` (vedi
-`.env.example`). Senza, comandi e bottoni continuano a funzionare: si perde solo
-il linguaggio libero, e il bot lo dice invece di fallire in silenzio.
+`.env.example`). Senza DeepSeek si perde il linguaggio libero; senza Anthropic
+si perde il riassunto del diario. In entrambi i casi comandi e bottoni
+continuano a funzionare, il bot dice cosa manca invece di fallire in silenzio, e
+**il materiale già raccolto resta sul disco**: un guasto del modello non deve
+costare quello che hai già raccontato.

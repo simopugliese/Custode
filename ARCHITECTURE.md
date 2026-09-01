@@ -123,7 +123,9 @@ Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale.
 | Report narrativo settimanale/mensile abitudini | **Claude** | sintesi che incrocia più segnali (abitudini, diario, spese) |
 | (futuro) Riassunto email | **Claude** | contenuto sensibile, serve qualità e un solo fornitore fidato |
 
-**Stato attuale.** La tabella è codificata per intero in `router/custode_router/compiti.py`, motivi compresi, e chi chiama nomina il *compito*, mai il modello. Oggi passano di qui solo il parsing della lista della spesa e il CRUD dei task, entrambi su DeepSeek; per gli altri compiti il provider è deciso e il client pronto, ma nessun modulo li chiama ancora. L'unica riga non implementata è **la lettura degli scontrini**, che richiede di mandare un'immagine al modello: arriverà col modulo spese (§8.5).
+**Stato attuale.** La tabella è codificata per intero in `router/custode_router/compiti.py`, motivi compresi, e chi chiama nomina il *compito*, mai il modello. Oggi passano di qui il parsing della lista della spesa, il CRUD dei task e il riconoscimento del materiale da diario (tutti DeepSeek), più il **riassunto/categorizzazione del diario**, che è il primo compito a mandare traffico vero a **Claude** (§8.4). Per gli altri il provider è deciso e il client pronto, ma nessun modulo li chiama ancora. L'unica riga non implementata è **la lettura degli scontrini**, che richiede di mandare un'immagine al modello: arriverà col modulo spese (§8.5).
+
+**Un tetto di token per Claude, separato da quello di DeepSeek.** Costruendo il diario è emerso che `max_token_risposta`, tarato su risposte JSON brevi, non può valere per entrambi: su `claude-opus-5` il ragionamento adattivo è attivo di default e i suoi token rientrano in `max_tokens`, quindi un tetto basso verrebbe consumato dal ragionamento e la risposta arriverebbe troncata invece che in JSON. Da qui `max_token_risposta_claude`, molto più alto, e un errore esplicito quando `stop_reason` è `max_tokens` — così il sintomo dice cosa alzare invece di somigliare a un prompt sbagliato. Il problema esisteva già ma non si era mai visto: a Claude non arrivava traffico.
 
 ## 7. Schema dati (bozza)
 
@@ -158,7 +160,7 @@ lezioni_log(id, corso_id, data, seguita, appunti_presi)
 ### 8.1 Bot Telegram (testo + voce)
 Funziona identico via testo o audio. L'audio passa da Whisper locale → testo → stessa pipeline del testo. Nessuna differenza di funzionalità tra le due modalità, solo di input.
 
-**Stato attuale.** Il bot copre task e lista della spesa (§8.2, §8.3) in tre modi che convivono: comandi espliciti con bottoni inline, testo libero interpretato dal router (§6), e vocali trascritti da Whisper locale che imboccano lo stesso percorso del testo. Gira in long polling, con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Ogni azione decisa da un modello lascia un bottone «Annulla»: l'interpretazione è automatica, quindi disfare deve costare un tap.
+**Stato attuale.** Il bot copre task, lista della spesa e diario (§8.2, §8.3, §8.4) in tre modi che convivono: comandi espliciti con bottoni inline, testo libero interpretato dal router (§6), e vocali trascritti da Whisper locale che imboccano lo stesso percorso del testo. Gira in long polling, con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Ogni azione decisa da un modello lascia un bottone «Annulla»: l'interpretazione è automatica, quindi disfare deve costare un tap.
 
 **Colonne aggiunte alla bozza, costruendo i moduli** (le migrazioni reali sono in `core/custode_core/migrazioni/`):
 - `tasks.origine` — dashboard, Telegram, piano di ripasso o regola di contesto: serve a raggruppare i task per provenienza e a etichettare la riga ("da piano di ripasso", §8.11).
@@ -167,6 +169,8 @@ Funziona identico via testo o audio. L'audio passa da Whisper locale → testo �
 - `shopping_list.reparto` — raggruppa la lista per reparto del supermercato; finché non c'è il router (§6) lo scrive chi aggiunge la voce, altrimenti resta "Altro".
 - `shopping_list.comprato_il` — quando una voce è stata spuntata.
 - `schema_migrations` — tabella di servizio del runner delle migrazioni.
+
+Col diario si aggiungono `diary_entries` e `diary_fragments`: la loro forma, e perché si discosta dalla bozza di §7, è spiegata in §8.4.
 
 Le scadenze stanno in un'unica colonna in ISO-8601: dieci caratteri (`2026-09-04`) significano "per tutto il giorno", una forma più lunga (`2026-09-04T18:00`) un'ora precisa.
 
@@ -188,6 +192,20 @@ Aggiunta dinamica ("sto finendo il latte" → aggiunge "latte"). Vista anche nel
 **Canale passivo (oltre al vocale di fine giornata).** Non tutto quello che è utile per il profilo passa dal diario strutturato — a volte è una frase buttata lì in chat ("oggi ho fatto un sito, che palle il frontend, a me piace il backend"). Per questo, ogni messaggio (non solo il vocale serale) passa da un controllo leggero (DeepSeek): "c'è un segnale utile per il profilo (preferenze, modo di lavorare, opinioni ricorrenti)?".
 - Segnale **chiaro** → finisce silenziosamente in `profile_candidates`, nessuna interruzione della chat, va in revisione nel batch settimanale insieme al resto.
 - Segnale **ambiguo** (es. uno sfogo del momento vs una preferenza reale) → il bot fa una domanda breve, lì per lì ("lo segno come preferenza generale o era solo la giornata storta?"), e la risposta chiarisce subito il candidato prima che entri in coda — così il grosso del lavoro di disambiguazione è già fatto quando arrivi alla revisione settimanale.
+
+**Stato attuale.** Il ciclo dei punti 1-6 è costruito e funziona: si racconta la giornata a parole (scritte o dettate), `/diario` la chiude e chiede a Claude il riassunto, il bot lo rimanda con tre uscite — approva, modifica, scarta — e **solo la versione approvata** finisce in `riassunto_approvato`, l'unica che dashboard, statistiche e job settimanale leggeranno. `GET /api/diario` e le sue due mutazioni non rispondono più `501`. Restano da fare il **canale passivo** (`profile_candidates` e la domanda di chiarimento) e il **punto 7**, cioè il job settimanale con la rifusione del profilo, che nasceranno insieme a `worker/`.
+
+È il primo modulo che manda traffico vero a Claude (§6): l'interpretazione del messaggio resta su DeepSeek — decide solo *dove va* quello che hai detto — mentre il riassunto, che è il pezzo dove servono qualità e sfumature, va a Claude.
+
+**Una voce per giorno, fatta di frammenti.** La bozza di §7 prevedeva `diary_entries(… trascrizione_raw …)`, un campo di testo solo. Nel costruirlo sono emerse due cose che quel campo non regge:
+- La voce è **del giorno**, non del messaggio: il punto 7 parla di «7 entry approvate» per una settimana, la dashboard conta le giornate (`coperturaMese`) e attribuisce una voce a più fonti insieme («da 3 vocali e 11 messaggi»). Quindi `data` è chiave unica, e tutto ciò che racconti quel giorno confluisce lì.
+- §8.1 vuole che ogni azione decisa da un modello si possa disfare con un tap, e capire che un messaggio è materiale da diario è una decisione di un modello. Con un unico campo concatenato, «Annulla» potrebbe solo tagliare testo a occhio. Il materiale grezzo sta quindi in una tabella figlia `diary_fragments(id, entry_id, testo, da_vocale, creato_il)`: «Annulla» toglie esattamente la frase che aveva aggiunto, e `n_vocali`/`n_messaggi` si contano da lì invece di essere contatori da tenere allineati a mano. `trascrizione_raw` non sparisce: è la concatenazione di quei frammenti, ed è ciò che viene passato al modello.
+
+**Colonne aggiunte alla bozza:** `riassunto_proposto` (la bozza, in una colonna separata da quella approvata: la dashboard mostra le voci «da approvare», quindi le bozze vanno persistite, altrimenti sparirebbero ad ogni riavvio del bot — resta però vero che nel *diario* entra solo l'approvato); `creata_il` e `approvata_il` (senza il secondo non si può scrivere `approvataAlleLabel`). Lo `stato_approvazione` ha quattro valori invece di due: `in_raccolta` → `da_approvare` → `approvata`, più `in_modifica` mentre il bot aspetta la tua riscrittura. Quello stato sta sul database e non nella memoria del processo apposta: se il bot riparte a metà, la conversazione riprende da dov'era invece di scambiare la riscrittura per una frase qualsiasi.
+
+**Il «modifichi» del punto 5 è una riscrittura tua, verbatim.** «Modifica» chiede il testo corretto e quel testo diventa la voce approvata parola per parola, senza passare da nessun modello: ciò che resta nel diario è tuo, e non c'è un secondo giro in cui il modello possa reinterpretare la correzione.
+
+**Scartare butta anche il grezzo.** «Solo la versione approvata viene salvata» letto fino in fondo: scartare significa «questo non deve restare», quindi non si conserva una bozza rifiutata da nessuna parte e il giorno torna vuoto.
 
 **Il profilo non si accoda, si riscrive (rifusione).** Se ogni settimana si limitasse ad aggiungere testo, `profile_document` crescerebbe all'infinito: diventerebbe costoso da passare ad ogni chiamata e via via meno utile (rumore che copre segnale). Il job settimanale quindi non accoda: Claude legge la versione attuale del profilo + i candidati approvati della settimana e **produce una nuova versione compatta** che integra le novità e scarta ciò che è superato o ridondante — il profilo resta sempre snello (poche centinaia di parole) e sempre più su misura per te, non un log infinito. Ogni versione resta comunque salvata (`profile_document` versionato), quindi è sempre possibile tornare indietro se una riscrittura perde qualcosa di importante.
 
@@ -266,7 +284,7 @@ Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/l
 
 1. **Scheletro**: bot Telegram (testo+voce) + Whisper locale + router DeepSeek/Claude + DB SQLite + Docker Compose + Cloudflare Tunnel/Access + CI base.
 2. **Task/promemoria + lista della spesa** (moduli semplici, valore d'uso immediato).
-3. **Diario** (flusso trascrizione → riassunto → approvazione → salvataggio, + job settimanale).
+3. **Diario** (flusso trascrizione → riassunto → approvazione → salvataggio, + job settimanale). *Fatto il flusso di approvazione; restano il canale passivo e il job settimanale, che nascono con `worker/`.*
 4. **Tracciamento spese** (testo + foto scontrino con conferma prima del salvataggio).
 5. **Tracciatore abitudini** (dinamico, log da linguaggio libero, statistiche di aderenza + report settimanale/mensile).
 6. **Calendario + motore di contesto** (sync in sola lettura, tagging eventi, regole dettate da te, poi le auto-proposte basate su pattern).

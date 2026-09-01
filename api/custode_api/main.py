@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from custode_api.rotte import assistente, home, lista_spesa, non_attivi, task
+from custode_api.rotte import assistente, diario, home, lista_spesa, non_attivi, task
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.migrazioni import migra
@@ -108,6 +108,7 @@ def crea_app(settings: Settings | None = None, router: Router | None = None) -> 
         return JSONResponse(status_code=200 if sano else 503, content=corpo.model_dump())
 
     app.include_router(assistente.router)
+    app.include_router(diario.router)
     app.include_router(home.router)
     app.include_router(task.router)
     app.include_router(lista_spesa.router)

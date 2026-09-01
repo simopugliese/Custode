@@ -18,8 +18,18 @@ def _tabelle(conn: sqlite3.Connection) -> set[str]:
 def test_crea_lo_schema(db_path: Path) -> None:
     conn = connect(db_path)
     applicate = migrazioni.migra(conn)
-    assert applicate == ["001_task_lista_spesa.sql"]
-    assert {"tasks", "shopping_list", "schema_migrations"} <= _tabelle(conn)
+    # Tutte quelle presenti, in ordine di numero: elencarle a mano qui
+    # significherebbe aggiornare questo test ad ogni modulo nuovo senza
+    # verificare niente di più.
+    assert applicate == [p.name for p in migrazioni._file_migrazioni()]
+    assert applicate[0] == "001_task_lista_spesa.sql"
+    assert {
+        "tasks",
+        "shopping_list",
+        "diary_entries",
+        "diary_fragments",
+        "schema_migrations",
+    } <= _tabelle(conn)
     conn.close()
 
 
@@ -75,7 +85,7 @@ def test_due_processi_insieme_non_riapplicano_le_stesse_migrazioni(db_path: Path
     primo = connect(db_path)
     secondo = connect(db_path)
 
-    assert migrazioni.migra(primo) == ["001_task_lista_spesa.sql"]
+    assert migrazioni.migra(primo) == [p.name for p in migrazioni._file_migrazioni()]
     # Il secondo trova il registro già aggiornato e non ritenta il DDL.
     assert migrazioni.migra(secondo) == []
     assert "tasks" in _tabelle(secondo)

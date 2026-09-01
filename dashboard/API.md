@@ -41,9 +41,10 @@ file ne descrive solo la forma a endpoint per endpoint.
 
 ## Stato di implementazione
 
-Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa** e la
-barra **«A Custode»**. Tutti gli altri endpoint qui sotto rispondono `501`
-finché non arriva il loro modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
+Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
+**Diario** e la barra **«A Custode»**. Tutti gli altri endpoint qui sotto
+rispondono `501` finché non arriva il loro modulo — vedi la roadmap in
+`../ARCHITECTURE.md` §12.
 
 C'è inoltre `GET /api/health`, non consumato dalla dashboard: serve allo smoke
 test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
@@ -60,7 +61,37 @@ lista della spesa, conteggio automazioni proposte.
 `POST /api/diario/:id/approva` → `VoceDiario`
 `POST /api/diario/:id/scarta` → `204`
 (la modifica testo di una voce non ha endpoint dedicato in questa v1 della
-dashboard: il pulsante "Modifica" apre un'interazione da rifinire più avanti)
+dashboard: il pulsante "Modifica" apre un'interazione da rifinire più avanti.
+Da Telegram la riscrittura invece c'è, ed è il «modifichi» di §8.4 punto 5)
+
+Una voce è una **giornata** (§8.4): tutto quello che racconti in un giorno
+confluisce sulla stessa voce, e `fonteLabel` dice di cosa è fatta — «da 3
+vocali e 11 messaggi». Gli `id` delle voci vere sono numerici come stringa;
+quelli sintetici hanno un prefisso (`assente-2026-09-01`, `periodo-2026-08-31`)
+e non sono indirizzabili dalle mutazioni.
+
+- `vista=timeline` → una riga per giorno del **mese corrente**, dalla più
+  recente. I giorni senza voce compaiono con `stato: "assente"`, ma solo
+  *dentro* l'intervallo già coperto (più oggi, se oggi è vuoto): su un diario
+  appena avviato, trenta righe "nessuna voce" direbbero solo che è nuovo.
+- `vista=settimane` / `vista=mesi` → una riga per periodo (ultime 8 settimane,
+  ultimi 6 mesi), che riassume le giornate scritte. Il testo narrativo del
+  periodo lo scriverà il job settimanale di §8.4.
+- **Le bozze si vedono sempre**, in tutte le viste e fuori dal periodo
+  comprese, e `vociInAttesa` le conta tutte: una voce lasciata da approvare il
+  31 non deve sparire dalla pagina il primo del mese dopo.
+
+`stato` è `"da_approvare"` finché non l'hai confermata (`testo` è allora la
+bozza proposta), `"approvata"` dopo — e da quel momento `testo` è la versione
+approvata e `approvataAlleLabel` dice a che ora. `scarta` **cancella anche il
+materiale grezzo**: nel diario entra solo ciò che approvi (§8.4), quindi una
+bozza rifiutata non resta da nessuna parte e il giorno torna `assente`.
+
+`riepilogoSettimanale` e `riepilogoMensile` sono **omessi** finché non esiste il
+job settimanale in `worker/`: campo assente ≠ campo vuoto.
+
+Approvare una giornata la cui raccolta è ancora aperta (nessuna bozza) risponde
+`409`.
 
 ## Lezioni e corsi
 
@@ -140,8 +171,10 @@ comando come «sto finendo il latte» si riflette appena il backend lo elabora.
 
 Il testo passa dal router (§6), che ne ricava un'intenzione strutturata; il
 backend la esegue subito e restituisce in `rispostaLabel` la frase da mostrare
-(«Aggiunto alla lista: latte»). Oggi copre task e lista della spesa: per un
-messaggio che non chiede nulla di previsto la risposta lo dice, senza errore.
+(«Aggiunto alla lista: latte»). Oggi copre task, lista della spesa e diario —
+un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
+il materiale del diario di oggi (§8.4). Per un messaggio che non chiede nulla
+di previsto la risposta lo dice, senza errore.
 
 **Risponde sempre 200**, anche quando il modello non è configurato o non
 risponde: il motivo arriva in `rispostaLabel` in italiano, perché è una cosa
