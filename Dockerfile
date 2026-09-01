@@ -26,6 +26,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 COPY core/ core/
 COPY api/ api/
 COPY bot/ bot/
+COPY README.md .
 COPY router/ router/
 COPY whisper/ whisper/
 RUN uv sync --frozen --no-dev
@@ -73,12 +74,12 @@ ARG WHISPER_VERSION=v1.7.4
 ARG WHISPER_MODEL=base-q5_1
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y build-essential cmake git ca-certificates \
+    && apt-get install --no-install-recommends -y build-essential cmake git curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch "${WHISPER_VERSION}" \
         https://github.com/ggml-org/whisper.cpp /tmp/whisper.cpp \
-    && cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release \
+    && cmake -S /tmp/whisper.cpp -B /tmp/whisper.cpp/build -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
     && cmake --build /tmp/whisper.cpp/build --target whisper-cli -j "$(nproc)" \
     && mkdir -p /opt/whisper/models \
     && cp /tmp/whisper.cpp/build/bin/whisper-cli /opt/whisper/whisper-cli \
@@ -90,7 +91,7 @@ FROM base AS whisper
 
 # ffmpeg converte i vocali OGG/Opus di Telegram in WAV 16 kHz mono.
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ffmpeg \
+    && apt-get install --no-install-recommends -y ffmpeg libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=whisper-build /opt/whisper /opt/whisper
