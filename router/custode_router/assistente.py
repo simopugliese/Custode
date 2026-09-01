@@ -19,13 +19,14 @@ abitudini si aggiungono qui man mano.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import task as dom_task
 from custode_core.formato import etichetta_scadenza
 from custode_router.compiti import Compito
@@ -77,6 +78,34 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
             ),
         },
         "giorni": {"type": "integer", "description": "Giorni di rinvio, se l'azione è rinvia."},
+        # Il canale passivo di §8.4 viaggia nella stessa risposta dell'azione:
+        # sono due compiti distinti nella tabella §6, ma entrambi instradati a
+        # DeepSeek, e farne due chiamate raddoppierebbe latenza e costo su ogni
+        # singolo messaggio.
+        "segnale": {
+            "type": "string",
+            "enum": ["nessuno", "chiaro", "ambiguo"],
+            "description": (
+                "C'è in questo messaggio un segnale utile a descrivere com'è fatto"
+                " il proprietario (preferenze, modo di lavorare o studiare, opinioni"
+                " ricorrenti)? «chiaro» se è una cosa che vale in generale, «ambiguo»"
+                " se potrebbe essere solo lo sfogo del momento, «nessuno» quasi sempre."
+            ),
+        },
+        "segnale_estratto": {
+            "type": "string",
+            "description": (
+                "Il segnale in una frase breve in terza persona, come starebbe in un"
+                " profilo: «Preferisce il backend al frontend». Vuoto se «nessuno»."
+            ),
+        },
+        "segnale_domanda": {
+            "type": "string",
+            "description": (
+                "Solo se «ambiguo»: la domanda breve da fare per capire se vale in"
+                " generale o era il momento. Una riga, in italiano, dando del tu."
+            ),
+        },
     },
     "required": ["azione"],
     "additionalProperties": False,
@@ -105,7 +134,21 @@ Regole:
 - Un messaggio che chiede un'azione pratica è quell'azione, non una nota di
   diario: «ricordami di chiamare l'officina» è un task e basta. Il diario è per
   ciò che nessuno degli altri moduli registrerebbe.
-- Non inventare mai un riferimento che non compare nell'elenco fornito."""
+- Non inventare mai un riferimento che non compare nell'elenco fornito.
+
+Oltre all'azione, in ogni messaggio guarda se c'è un **segnale sul profilo**:
+qualcosa che descrive com'è fatto il proprietario e che gli tornerà utile fra
+mesi — preferenze, come lavora o studia, cosa lo stanca, opinioni che ripete.
+
+- La stragrande maggioranza dei messaggi non ne ha: «segnale: nessuno» è la
+  risposta normale, non una resa. Un fatto della giornata («oggi ho fatto un
+  sito») non è un segnale; ciò che quel fatto dice di lui («il frontend lo
+  annoia») lo è.
+- «chiaro» se vale in generale e lo diresti anche fra sei mesi.
+- «ambiguo» se potrebbe essere solo la giornata storta: allora scrivi in
+  `segnale_domanda` una riga per chiederglielo.
+- L'azione e il segnale sono indipendenti: un messaggio può essere insieme un
+  task e un segnale, oppure nessuno dei due."""
 
 
 @dataclass(frozen=True)
@@ -117,6 +160,9 @@ class Intenzione:
     quantita: str = ""
     reparto: str = ""
     giorni: int = 1
+    segnale: str = "nessuno"
+    segnale_estratto: str = ""
+    segnale_domanda: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,6 +177,10 @@ class Esito:
     """Il frammento di diario appena scritto, da togliere se si annulla."""
     giorni: int = 1
     """Giorni di rinvio applicati, per poterli togliere se si annulla."""
+    candidato_id: int | None = None
+    """Il candidato per il profilo pescato da questo messaggio, se c'era (§8.4)."""
+    domanda_chiarimento: str = ""
+    """La domanda da fare subito su un segnale ambiguo. Vuota = non chiedere niente."""
 
     @property
     def ha_cambiato_qualcosa(self) -> bool:
@@ -196,7 +246,24 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         quantita=str(dati.get("quantita") or "").strip(),
         reparto=str(dati.get("reparto") or "").strip(),
         giorni=giorni if isinstance(giorni, int) and giorni >= 1 else 1,
+        segnale=_leggi_segnale(dati.get("segnale")),
+        segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
+        segnale_domanda=str(dati.get("segnale_domanda") or "").strip(),
     )
+
+
+SEGNALI = ("nessuno", "chiaro", "ambiguo")
+
+
+def _leggi_segnale(grezzo: object) -> str:
+    """Un valore fuori dai tre previsti vale «nessuno».
+
+    Sul profilo si sbaglia per difetto: non registrare un segnale vero costa
+    poco (tornerà), registrarne uno inventato sporca il documento che poi
+    condiziona tutto il resto.
+    """
+    valore = str(grezzo or "").strip().lower()
+    return valore if valore in SEGNALI else "nessuno"
 
 
 def _leggi_scadenza(testo: str) -> date | datetime | None:
@@ -346,7 +413,46 @@ def interpreta_ed_esegui(
         intenzione = interpreta(conn, ora, testo, router)
     except ErroreRouter as errore:
         return Esito(testo=_messaggio_errore(errore))
-    return esegui(conn, ora, intenzione, da_vocale=da_vocale)
+
+    esito = esegui(conn, ora, intenzione, da_vocale=da_vocale)
+    return _registra_segnale(conn, ora, intenzione, testo, esito)
+
+
+def _registra_segnale(
+    conn: sqlite3.Connection,
+    ora: datetime,
+    intenzione: Intenzione,
+    messaggio: str,
+    esito: Esito,
+) -> Esito:
+    """Il canale passivo di §8.4: mette da parte il segnale, se ce n'è uno.
+
+    Succede in silenzio e **dopo** l'azione: che il messaggio dicesse qualcosa
+    sul proprietario non deve cambiare cosa Custode fa, né far fallire l'azione
+    se qualcosa qui va storto.
+    """
+    if intenzione.segnale == "nessuno" or not intenzione.segnale_estratto:
+        return esito
+
+    ambiguo = intenzione.segnale == "ambiguo" and bool(intenzione.segnale_domanda)
+    # Una domanda alla volta: se ce n'è già una senza risposta, questo segnale
+    # entra in coda in silenzio e finirà nella revisione settimanale. Meglio un
+    # candidato da guardare fra qualche giorno che due domande sospese in chat.
+    if ambiguo and dom_profilo.in_chiarimento(conn) is not None:
+        ambiguo = False
+
+    candidato = dom_profilo.aggiungi_candidato(
+        conn,
+        messaggio_origine=messaggio.strip(),
+        estratto=intenzione.segnale_estratto,
+        ora=ora,
+        domanda=intenzione.segnale_domanda if ambiguo else None,
+    )
+    return replace(
+        esito,
+        candidato_id=candidato.id,
+        domanda_chiarimento=intenzione.segnale_domanda if ambiguo else "",
+    )
 
 
 def _messaggio_errore(errore: ErroreRouter) -> str:

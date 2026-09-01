@@ -64,6 +64,18 @@ services:
     # Lo stesso vale per whisper: se la trascrizione è giù, i comandi e il testo
     # scritto devono continuare a funzionare.
 
+  worker:
+    <<: *comune
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    image: custode-worker:0.1.0
+    container_name: custode-worker
+    # Nessuna porta e nessun `depends_on`: il worker legge lo stesso file SQLite
+    # e chiama Telegram da sé. Se l'API è giù il riepilogo settimanale parte lo
+    # stesso, ed è giusto così — sono due cose indipendenti.
+
   whisper:
     build:
       context: .

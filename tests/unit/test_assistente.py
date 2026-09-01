@@ -15,6 +15,7 @@ import pytest
 
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import task as dom_task
 from custode_router import assistente
 from custode_router.assistente import Azione
@@ -346,3 +347,114 @@ def test_il_diario_e_fra_le_azioni_offerte_al_modello() -> None:
     """Un'azione che non è nell'enum dello schema il modello non la può scegliere."""
     consentite = assistente.SCHEMA_INTENZIONE["properties"]["azione"]["enum"]
     assert "annota_diario" in consentite
+
+
+# — canale passivo per il profilo (§8.4) —
+
+
+def test_un_segnale_chiaro_diventa_un_candidato(conn: sqlite3.Connection, ora: datetime) -> None:
+    _esegui(
+        conn,
+        ora,
+        "oggi ho fatto un sito, che palle il frontend",
+        {
+            "azione": "annota_diario",
+            "titolo": "ho fatto un sito, che palle il frontend",
+            "segnale": "chiaro",
+            "segnale_estratto": "Preferisce il backend al frontend",
+        },
+    )
+
+    (candidato,) = dom_profilo.da_rivedere(conn)
+    assert candidato.estratto == "Preferisce il backend al frontend"
+    # Il messaggio intero resta: alla revisione serve poter vedere il contesto.
+    assert "che palle il frontend" in candidato.messaggio_origine
+
+
+def test_azione_e_segnale_sono_indipendenti(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Un messaggio può essere insieme un task e un segnale sul profilo."""
+    esito = _esegui(
+        conn,
+        ora,
+        "devo finire il sito",
+        {
+            "azione": "aggiungi_task",
+            "titolo": "Finire il sito",
+            "segnale": "chiaro",
+            "segnale_estratto": "Lavora a progetti web",
+        },
+    )
+
+    assert esito.task_id is not None
+    assert esito.candidato_id is not None
+    assert len(dom_task.elenco(conn)) == 1
+    assert len(dom_profilo.da_rivedere(conn)) == 1
+
+
+def test_l_annulla_punta_all_azione_non_al_candidato(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Il bottone disfa quello che Custode ha fatto, non la raccolta silenziosa."""
+    esito = _esegui(
+        conn,
+        ora,
+        "devo finire il sito",
+        {
+            "azione": "aggiungi_task",
+            "titolo": "Finire il sito",
+            "segnale": "chiaro",
+            "segnale_estratto": "Lavora a progetti web",
+        },
+    )
+    assert esito.identificatore == esito.task_id
+
+
+@pytest.mark.parametrize("segnale", ["nessuno", "boh", "", None])
+def test_niente_segnale_niente_candidato(
+    conn: sqlite3.Connection, ora: datetime, segnale: object
+) -> None:
+    """Un valore fuori dai tre previsti vale «nessuno»: sul profilo si sbaglia
+    per difetto."""
+    _esegui(
+        conn,
+        ora,
+        "ciao",
+        {"azione": "nessuna", "segnale": segnale, "segnale_estratto": "Qualcosa"},
+    )
+    assert dom_profilo.da_rivedere(conn) == []
+
+
+def test_un_segnale_ambiguo_porta_la_domanda_nell_esito(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "che palle",
+        {
+            "azione": "nessuna",
+            "segnale": "ambiguo",
+            "segnale_estratto": "Non sopporta il frontend",
+            "segnale_domanda": "Vale sempre o era la giornata?",
+        },
+    )
+
+    assert esito.domanda_chiarimento == "Vale sempre o era la giornata?"
+    assert esito.candidato_id is not None
+
+
+def test_il_segnale_si_registra_anche_se_l_azione_non_fa_niente(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """«nessuna» è una risposta corretta, e non deve buttare via il segnale."""
+    _esegui(
+        conn,
+        ora,
+        "il frontend mi annoia",
+        {
+            "azione": "nessuna",
+            "segnale": "chiaro",
+            "segnale_estratto": "Il frontend lo annoia",
+        },
+    )
+    assert len(dom_profilo.da_rivedere(conn)) == 1

@@ -20,11 +20,13 @@ from custode_bot import azioni
 from custode_bot.azioni import Vista
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import task as dom_task
 from custode_core.formato import etichetta_giorno_voce, etichetta_scadenza, plurale
 from custode_router import Router
 from custode_router import assistente as dom_assistente
 from custode_router import diario as router_diario
+from custode_router import profilo as router_profilo
 from custode_router.errori import ErroreRouter
 
 # I bottoni di Telegram vanno a capo male: meglio un titolo tagliato che una
@@ -76,6 +78,7 @@ def aiuto() -> Risposta:
             "/aggiungi &lt;voce&gt; — aggiungi alla lista\n"
             "/svuota — togli dalla lista le voci già prese\n"
             "/diario — chiudi la giornata e leggi il riassunto da approvare\n"
+            "/profilo — cosa ho capito di te\n"
             "/aiuto — questo messaggio\n\n"
             "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
             "chiamare l'officina», «sto finendo il latte», «fatto la bolletta». "
@@ -244,7 +247,20 @@ def messaggio_libero(
                 )
             ]
         ]
-    return Risposta(testo=escape(esito.testo), bottoni=bottoni)
+
+    testo_risposta = escape(esito.testo)
+    # Il segnale ambiguo di §8.4: la domanda si attacca alla risposta normale
+    # invece di essere un secondo messaggio. Una notifica sola, e resta chiaro
+    # che è una parentesi rispetto a quello che il bot ha appena fatto.
+    if esito.domanda_chiarimento and esito.candidato_id is not None:
+        testo_risposta += f"\n\n<i>{escape(esito.domanda_chiarimento)}</i>"
+        bottoni = bottoni + [
+            [
+                Bottone("Sono fatto così", azioni.profilo("si", esito.candidato_id)),
+                Bottone("Era il momento", azioni.profilo("no", esito.candidato_id)),
+            ]
+        ]
+    return Risposta(testo=testo_risposta, bottoni=bottoni)
 
 
 # — diario (§8.4) —————————————————————————————————————
@@ -314,6 +330,10 @@ def diario_oggi(conn: sqlite3.Connection, ora: datetime, router: Router) -> Risp
             giorno=voce.giorno,
             grezzo=voce.grezzo,
             precedente=voce.riassunto_approvato,
+            # §8.4: il profilo serve a dare contesto senza rispiegarsi. Il
+            # riassunto della giornata è l'unico posto, oggi, dove conoscerti
+            # cambia davvero l'uscita — e costa una chiamata al giorno.
+            profilo=dom_profilo.testo_corrente(conn),
         )
     except ErroreRouter as errore:
         # Il materiale resta salvato: si riprova con un altro /diario, e nel
@@ -375,6 +395,156 @@ def _azione_diario(conn: sqlite3.Connection, ora: datetime, nome: str, voce_id: 
     return Risposta(testo="Questo bottone non è più valido.")
 
 
+# — profilo (§8.4) ————————————————————————————————————
+
+
+def _riga_candidato(candidato: dom_profilo.Candidato, indice: int) -> str:
+    riga = f"{indice}. {escape(candidato.estratto)}"
+    if candidato.chiarimento_risposta:
+        riga += f"\n   <i>chiarito: {escape(candidato.chiarimento_risposta)}</i>"
+    elif candidato.chiarimento_domanda:
+        # Domanda fatta e mai risposta: qui è il momento di guardarla.
+        riga += f"\n   <i>non hai risposto a: {escape(candidato.chiarimento_domanda)}</i>"
+    return riga
+
+
+def revisione_settimanale(conn: sqlite3.Connection) -> Risposta:
+    """L'elenco dei candidati, con un tap per buttare quelli sbagliati (§8.4).
+
+    Funziona per sottrazione: si scarta ciò che non ti rappresenta e il resto
+    passa. Confermare uno per uno sarebbe più lavoro senza più controllo, e
+    §8.4 dice che il grosso della disambiguazione è già stato fatto al momento
+    della domanda.
+    """
+    candidati = dom_profilo.da_rivedere(conn)
+    if not candidati:
+        return Risposta(testo="Non ho raccolto niente di nuovo su di te questa settimana.")
+
+    quanti = plurale(len(candidati), "segnale raccolto", "segnali raccolti")
+    righe = [f"<b>Da mettere nel profilo</b>\n{quanti}:", ""]
+    righe += [_riga_candidato(c, i) for i, c in enumerate(candidati, start=1)]
+    righe += ["", "<i>Butta quelli che non ti rappresentano, poi aggiorno il profilo.</i>"]
+
+    bottoni = [
+        [Bottone(f"✕ {i}. {_taglia(c.estratto, 22)}", azioni.profilo("scarta", c.id))]
+        for i, c in enumerate(candidati, start=1)
+    ]
+    bottoni.append([Bottone("Aggiorna il profilo", azioni.profilo("rifondi"))])
+    return Risposta(testo="\n".join(righe), bottoni=bottoni)
+
+
+def _testo_profilo(versione: dom_profilo.Versione, cambiamenti: list[str] | None = None) -> str:
+    righe = [
+        f"<b>Il tuo profilo</b> — versione {versione.versione}",
+        "",
+        escape(versione.testo),
+    ]
+    if cambiamenti:
+        righe += ["", "<i>Cos'è cambiato:</i>"]
+        righe += [f"<i>• {escape(c)}</i>" for c in cambiamenti]
+    return "\n".join(righe)
+
+
+def profilo(conn: sqlite3.Connection) -> Risposta:
+    """`/profilo`: cosa Custode ha capito di te, e da quanti segnali."""
+    versione = dom_profilo.corrente(conn)
+    in_coda = len(dom_profilo.da_rivedere(conn))
+    if versione is None:
+        testo = (
+            "Non ho ancora un profilo di te.\n\n"
+            "<i>Si costruisce da solo con quello che mi racconti, e lo riscrivo "
+            "una volta a settimana facendotelo vedere.</i>"
+        )
+        if in_coda:
+            testo += f"\n\n{plurale(in_coda, 'segnale', 'segnali')} già in attesa."
+        return Risposta(testo=testo)
+
+    testo = _testo_profilo(versione)
+    if in_coda:
+        testo += (
+            f"\n\n<i>{plurale(in_coda, 'segnale nuovo', 'segnali nuovi')} in attesa "
+            "della prossima revisione.</i>"
+        )
+    return Risposta(testo=testo)
+
+
+def rifondi_profilo(conn: sqlite3.Connection, ora: datetime, router: Router) -> Risposta:
+    """Chiude la revisione e riscrive il profilo con Claude (§8.4).
+
+    Il ritorno indietro è un bottone e non un'approvazione preventiva: §8.4
+    tratta il versionamento proprio come la rete di sicurezza della rifusione.
+    """
+    approvati = dom_profilo.approva_rimanenti(conn)
+    if not approvati:
+        return Risposta(testo="Non è rimasto niente da mettere nel profilo.")
+
+    attuale = dom_profilo.corrente(conn)
+    ultimo = dom_diario.ultimo_riepilogo(conn)
+    try:
+        testo, cambiamenti = router_profilo.rifondi(
+            router,
+            profilo=attuale.testo if attuale else None,
+            riepilogo=ultimo.testo if ultimo else None,
+            candidati=[c.estratto for c in approvati],
+        )
+    except ErroreRouter as errore:
+        # I candidati restano approvati e non rifusi: rientrano nella prossima
+        # rifusione invece di perdersi.
+        return Risposta(testo=escape(router_profilo.messaggio_errore(errore)))
+
+    nuova = dom_profilo.salva_versione(conn, testo=testo, ora=ora, candidati=approvati)
+    bottoni = (
+        [[Bottone("Torna alla precedente", azioni.profilo("indietro"))]]
+        if nuova.versione > 1
+        else []
+    )
+    return Risposta(testo=_testo_profilo(nuova, cambiamenti), bottoni=bottoni)
+
+
+def _azione_profilo(
+    conn: sqlite3.Connection, ora: datetime, nome: str, argomento: str, router: Router | None
+) -> Risposta:
+    if nome in ("si", "no"):
+        candidato = dom_profilo.chiarisci(
+            conn,
+            int(argomento),
+            risposta="vale in generale" if nome == "si" else "era il momento",
+            vale=nome == "si",
+        )
+        if nome == "si":
+            return Risposta(
+                testo=f"Segnato: <i>{escape(candidato.estratto)}</i>\nLo rivedremo insieme."
+            )
+        return Risposta(testo="Va bene, lascio perdere.")
+
+    if nome == "scarta":
+        dom_profilo.scarta_candidato(conn, int(argomento))
+        return revisione_settimanale(conn)
+
+    if nome == "rifondi":
+        if router is None:
+            return Risposta(testo="Non posso aggiornare il profilo da qui.")
+        return rifondi_profilo(conn, ora, router)
+
+    if nome == "indietro":
+        # Va guardato *prima*: `torna_indietro` risponde None sia quando non
+        # c'era niente da annullare, sia quando ha annullato l'unica versione
+        # che c'era. Dire «non c'è nessuna versione precedente» nel secondo caso
+        # farebbe credere che il profilo sia ancora lì.
+        if dom_profilo.corrente(conn) is None:
+            return Risposta(testo="Non c'è nessun profilo da annullare.")
+
+        precedente = dom_profilo.torna_indietro(conn)
+        coda = "\n\n<i>Riscrittura annullata: i segnali tornano in attesa.</i>"
+        if precedente is None:
+            return Risposta(
+                testo="Annullata la prima versione: il profilo è di nuovo vuoto." + coda
+            )
+        return Risposta(testo=_testo_profilo(precedente) + coda)
+
+    return Risposta(testo="Questo bottone non è più valido.")
+
+
 def _dopo_azione(conn: sqlite3.Connection, ora: datetime, vista: Vista) -> Risposta:
     """Ridisegna l'elenco da cui è partito il tap, aggiornato."""
     if vista == "oggi":
@@ -387,8 +557,14 @@ def _dopo_azione(conn: sqlite3.Connection, ora: datetime, vista: Vista) -> Rispo
 SCADENZE_RAPIDE = {"oggi": 0, "domani": 1, "settimana": 7}
 
 
-def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Risposta:
-    """Applica il tap su un bottone e ritorna il messaggio aggiornato."""
+def esegui_azione(
+    conn: sqlite3.Connection, ora: datetime, dato: str, router: Router | None = None
+) -> Risposta:
+    """Applica il tap su un bottone e ritorna il messaggio aggiornato.
+
+    `router` serve al solo bottone «Aggiorna il profilo», che fa una chiamata a
+    Claude (§8.4): tutti gli altri bottoni sono logica pura sul database.
+    """
     try:
         azione = azioni.leggi(dato)
     except azioni.AzioneNonValida:
@@ -405,6 +581,8 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
             dom_lista.imposta_preso(conn, int(azione.argomento), True, ora)
         elif azione.dominio == "d":
             return _azione_diario(conn, ora, azione.nome, int(azione.argomento))
+        elif azione.dominio == "p":
+            return _azione_profilo(conn, ora, azione.nome, azione.argomento, router)
         elif azione.dominio == "x" and azione.nome == "annulla":
             return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":
@@ -412,7 +590,12 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
                 dom_lista.svuota_presi(conn)
         else:
             return Risposta(testo="Questo bottone non è più valido.")
-    except (dom_task.TaskInesistente, dom_lista.VoceInesistente, dom_diario.VoceInesistente):
+    except (
+        dom_task.TaskInesistente,
+        dom_lista.VoceInesistente,
+        dom_diario.VoceInesistente,
+        dom_profilo.CandidatoInesistente,
+    ):
         # Capita col messaggio vecchio in cronologia, dopo aver cancellato la riga.
         return Risposta(testo="Quella voce non esiste più.")
     except ValueError:

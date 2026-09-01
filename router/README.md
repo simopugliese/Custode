@@ -14,8 +14,11 @@ richiedono qualità, visione o ragionamento a Claude.
 - `router.py` — mette insieme le due cose.
 - `assistente.py` — dal testo libero all'azione: è ciò che rende utile tutto il
   resto (§8.1).
-- `diario.py` — dal materiale grezzo di una giornata al riassunto proposto
-  (§8.4). È il primo modulo che manda traffico vero a Claude.
+- `diario.py` — dal materiale grezzo di una giornata al riassunto proposto, e
+  dalle voci approvate di una settimana al riepilogo (§8.4).
+- `profilo.py` — la **rifusione**: Claude riscrive il profilo da capo fondendo
+  il vecchio con i segnali nuovi (§8.4). Non è un accodamento, ed è il motivo
+  per cui §6 la manda a Claude e non a DeepSeek.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
 condiviso non deve sapere che esistono dei modelli.
@@ -34,11 +37,13 @@ l'interpretazione è automatica e tornare indietro deve costare un tap.
 
 ## Stato
 
-Instradati e in uso: parsing della lista della spesa, CRUD dei task e
-riconoscimento del materiale da diario (tutti DeepSeek), più il **riassunto del
-diario**, che è la prima cosa a passare davvero da Claude. Gli altri compiti
-della tabella hanno il loro provider già deciso e il client pronto, ma nessun
-modulo li chiama ancora.
+Instradati e in uso, su DeepSeek: parsing della lista, CRUD dei task,
+riconoscimento del materiale da diario e rilevazione dei segnali per il profilo
+— tutti e quattro **nella stessa chiamata**, perché sono compiti diversi di §6
+ma con lo stesso provider, e farne quattro giri costerebbe quattro volte tanto
+su ogni messaggio. Su Claude: riassunto del diario, riepilogo settimanale e
+rifusione del profilo. Gli altri compiti della tabella hanno il provider già
+deciso e il client pronto, ma nessun modulo li chiama ancora.
 
 Nota sul tetto dei token: DeepSeek e Claude ne hanno due distinti
 (`max_token_risposta` e `max_token_risposta_claude`). Su `claude-opus-5` il

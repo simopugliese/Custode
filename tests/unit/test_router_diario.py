@@ -146,3 +146,66 @@ def test_il_messaggio_rassicura_sul_materiale() -> None:
     for errore in (ProviderNonRaggiungibile("x"), RispostaNonValida("x")):
         testo = diario.messaggio_errore(errore)
         assert "salv" in testo
+
+
+# — riepilogo settimanale (§8.4 punto 7) —
+
+
+def test_il_riepilogo_settimanale_va_a_claude() -> None:
+    assert provider_per(Compito.RIEPILOGO_SETTIMANALE_DIARIO) is Provider.CLAUDE
+
+
+def test_il_riepilogo_riceve_le_voci_in_ordine_di_giorno() -> None:
+    router = RouterFinto({"riepilogo": "Andata così."})
+    testo = diario.riepilogo_settimanale(
+        router,  # type: ignore[arg-type]
+        lunedi=GIORNO,
+        voci=[(date(2026, 8, 31), "Lunedì."), (date(2026, 9, 2), "Mercoledì.")],
+    )
+
+    assert testo == "Andata così."
+    utente = router.chiamate[0]["compito"], router.chiamate[0]["utente"]
+    assert utente[0] is Compito.RIEPILOGO_SETTIMANALE_DIARIO
+    assert utente[1].index("Lunedì.") < utente[1].index("Mercoledì.")
+
+
+def test_il_sistema_chiede_i_fili_non_un_incollaggio() -> None:
+    """Un elenco di riassunti giornalieri ce l'ha già: non serve a niente."""
+    assert "fili che attraversano i giorni" in diario.SISTEMA_SETTIMANA
+    assert "Non inventare niente" in diario.SISTEMA_SETTIMANA
+
+
+def test_una_settimana_senza_voci_non_chiama_nessuno() -> None:
+    router = RouterFinto()
+    with pytest.raises(diario.RiassuntoNonRiuscito):
+        diario.riepilogo_settimanale(router, lunedi=GIORNO, voci=[])  # type: ignore[arg-type]
+    assert router.chiamate == []
+
+
+def test_un_riepilogo_vuoto_non_si_salva() -> None:
+    router = RouterFinto({"riepilogo": "   "})
+    with pytest.raises(RispostaNonValida):
+        diario.riepilogo_settimanale(
+            router,  # type: ignore[arg-type]
+            lunedi=GIORNO,
+            voci=[(GIORNO, "Qualcosa.")],
+        )
+
+
+# — il profilo nel prompt del riassunto giornaliero (§8.4) —
+
+
+def test_il_profilo_entra_nel_prompt_del_riassunto() -> None:
+    router = RouterFinto()
+    _riassumi(router, profilo="Preferisce il backend.")
+
+    utente = router.chiamate[0]["utente"]
+    assert "Preferisce il backend." in utente
+    # E si dice al modello a cosa serve, per non farglielo ripetere nella voce.
+    assert "non ripeterlo nel riassunto" in utente
+
+
+def test_senza_profilo_il_prompt_non_ne_parla() -> None:
+    router = RouterFinto()
+    _riassumi(router)
+    assert "Cosa sai già di lui" not in router.chiamate[0]["utente"]

@@ -84,8 +84,19 @@ class RiassuntoNonRiuscito(ErroreRouter):
     """Il riassunto non è disponibile: il motivo è già in italiano leggibile."""
 
 
-def _contesto(giorno: date, grezzo: str, precedente: str | None) -> str:
+def _contesto(giorno: date, grezzo: str, precedente: str | None, profilo: str | None = None) -> str:
     righe = [f"Giornata del {giorno.isoformat()}.", ""]
+    if profilo:
+        # Il profilo entra qui e non nel prompt di sistema: è dato, non
+        # istruzione, e cambia da settimana a settimana mentre il sistema resta
+        # fisso. Serve a cogliere le sfumature — «di nuovo il frontend» invece
+        # di «ha lavorato al frontend» — non a farsi raccontare cose diverse.
+        righe += [
+            "Cosa sai già di lui (non ripeterlo nel riassunto: serve solo a",
+            "riconoscere ciò che per lui è ricorrente o fuori dal solito):",
+            profilo,
+            "",
+        ]
     if precedente:
         # Succede quando aggiungi qualcosa a una giornata già approvata: la
         # nuova voce deve integrare quella vecchia, non ripartire da zero e
@@ -100,9 +111,19 @@ def _contesto(giorno: date, grezzo: str, precedente: str | None) -> str:
 
 
 def riassumi(
-    router: Router, *, giorno: date, grezzo: str, precedente: str | None = None
+    router: Router,
+    *,
+    giorno: date,
+    grezzo: str,
+    precedente: str | None = None,
+    profilo: str | None = None,
 ) -> Riassunto:
-    """Chiede a Claude la voce di diario per una giornata (§6, §8.4)."""
+    """Chiede a Claude la voce di diario per una giornata (§6, §8.4).
+
+    `profilo` è il documento cumulativo di §8.4: è l'unico posto, oggi, in cui
+    conoscere il proprietario cambia davvero l'uscita, e costa una chiamata al
+    giorno invece di una per messaggio.
+    """
     if not grezzo.strip():
         raise RiassuntoNonRiuscito("Non c'è ancora niente da riassumere per questa giornata.")
 
@@ -110,7 +131,7 @@ def riassumi(
         # Si nomina il compito, mai il modello: la tabella §6 lo manda a Claude.
         Compito.RIASSUNTO_DIARIO,
         sistema=SISTEMA,
-        utente=_contesto(giorno, grezzo, precedente),
+        utente=_contesto(giorno, grezzo, precedente, profilo),
         schema=SCHEMA_RIASSUNTO,
     )
     return leggi_riassunto(dati)
@@ -133,6 +154,65 @@ def leggi_riassunto(dati: dict[str, Any]) -> Riassunto:
         else []
     )
     return Riassunto(testo=testo, tag=tag)
+
+
+# — riepilogo settimanale (§8.4 punto 7) —
+
+# Più lungo di una voce giornaliera perché copre sette giorni, ma resta una
+# cosa che si legge: è un riepilogo, non un secondo diario.
+PAROLE_SETTIMANA_MAX = 250
+
+SCHEMA_SETTIMANA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "riepilogo": {
+            "type": "string",
+            "description": (
+                f"Il riepilogo della settimana, al massimo {PAROLE_SETTIMANA_MAX}"
+                " parole, in italiano, dando del tu al proprietario."
+            ),
+        }
+    },
+    "required": ["riepilogo"],
+    "additionalProperties": False,
+}
+
+SISTEMA_SETTIMANA = f"""Sei il diarista di Custode.
+
+Ricevi le voci di diario **già approvate** di una settimana, in ordine di
+giorno. Ne scrivi un riepilogo che il proprietario rileggerà per capire com'è
+andata nel suo insieme.
+
+Regole:
+- **Non inventare niente**: vale solo ciò che c'è nelle voci.
+- Cerca i **fili che attraversano i giorni** — cosa è tornato più volte, cosa è
+  cambiato dal lunedì alla domenica, cosa è rimasto in sospeso. Un elenco di
+  riassunti giornalieri incollati non serve a niente: quello ce l'ha già.
+- Dagli del tu, al passato, in prosa continua. Al massimo
+  {PAROLE_SETTIMANA_MAX} parole.
+- Se la settimana ha poche voci, dillo e sii breve: meglio corto che gonfiato.
+- Niente incoraggiamenti, niente consigli, niente morale. È un resoconto."""
+
+
+def riepilogo_settimanale(router: Router, *, lunedi: date, voci: list[tuple[date, str]]) -> str:
+    """Il riepilogo di una settimana dalle sue voci approvate (§6, §8.4)."""
+    if not voci:
+        raise RiassuntoNonRiuscito("Questa settimana non hai nessuna voce approvata.")
+
+    righe = [f"Settimana dal {lunedi.isoformat()}.", ""]
+    for giorno, testo in voci:
+        righe += [f"{giorno.isoformat()}: {testo}"]
+
+    dati = router.chiedi_json(
+        Compito.RIEPILOGO_SETTIMANALE_DIARIO,
+        sistema=SISTEMA_SETTIMANA,
+        utente="\n".join(righe),
+        schema=SCHEMA_SETTIMANA,
+    )
+    testo = str(dati.get("riepilogo") or "").strip()
+    if not testo:
+        raise RispostaNonValida("il riepilogo settimanale è arrivato vuoto")
+    return testo
 
 
 def messaggio_errore(errore: Exception) -> str:

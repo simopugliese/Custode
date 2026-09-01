@@ -52,14 +52,15 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
-| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: serve al riassunto del diario (§8.4) |
+| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: riassunto del diario, riepilogo settimanale, profilo (§8.4) |
 
 Il token del tunnel resta commentato finché non arriva la sua fase.
 
 Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
-perdono il linguaggio libero (DeepSeek) e il riassunto del diario (Anthropic), e
-il bot lo dice invece di fallire in silenzio. Quello che avevi già raccontato
-resta comunque salvato.
+perdono il linguaggio libero (DeepSeek) e tutto ciò che passa da Claude —
+riassunto del diario, riepilogo settimanale, profilo — e il bot lo dice invece
+di fallire in silenzio. Quello che avevi già raccontato resta comunque salvato,
+e i segnali approvati aspettano la rifusione successiva.
 
 Il bot non parte senza token **e** senza user ID: lo dice nei log e si ferma,
 invece di restare in ascolto con la whitelist vuota.
@@ -115,6 +116,30 @@ voce compare nella pagina Diario della dashboard.
 
 Se manca `ROUTER_ANTHROPIC_API_KEY`, `/diario` lo dice e il materiale resta
 salvato: si riprova dopo aver messo la chiave, senza aver perso niente.
+
+### Provare il profilo e il job settimanale
+
+Il worker (`docker compose logs -f worker`) dice all'avvio quando farà scattare
+il riepilogo — di norma la domenica alle 21:00, configurabile con
+`WORKER_GIORNO_RIEPILOGO` e `WORKER_ORA_RIEPILOGO`.
+
+`/profilo` mostra cosa Custode ha capito di te e quanti segnali sono in attesa.
+All'inizio è vuoto: si riempie da solo con quello che gli racconti.
+
+Per non aspettare domenica, si può spostare l'orario avanti di qualche minuto
+nel `.env` e riavviare il solo worker:
+
+```bash
+docker compose up -d worker
+docker compose logs -f worker
+```
+
+Il job si segna come fatto per quella settimana, quindi non si ripete: per
+riprovarlo davvero da capo bisogna togliere la riga dal registro.
+
+```bash
+docker compose exec api python -c 'import sqlite3; c = sqlite3.connect("/data/custode.db"); c.execute("DELETE FROM job_runs WHERE nome = ?", ("riepilogo_settimanale",)); c.commit()'
+```
 
 ### Provare i vocali
 

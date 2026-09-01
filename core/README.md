@@ -11,7 +11,7 @@ schema §7 in quattro servizi.
   scritte a mano invece che col locale di sistema, che nelle immagini slim non
   c'è. Le usano sia l'API sia il bot.
 - `migrazioni/` — lo schema di §7, un file `NNN_nome.sql` per volta.
-- `dominio/` — i servizi che API e bot usano identici: `task.py`,
-  `lista_spesa.py`, `diario.py`.
+- `dominio/` — i servizi che API, bot e worker usano identici: `task.py`,
+  `lista_spesa.py`, `diario.py`, `profilo.py`.
 
 Da fare, con i moduli funzionali: spese, abitudini, calendario, corsi.

@@ -52,6 +52,7 @@ COMANDI = [
     BotCommand("aggiungi", "Aggiungi alla lista della spesa"),
     BotCommand("svuota", "Togli dalla lista le voci già prese"),
     BotCommand("diario", "Chiudi la giornata e leggi il riassunto"),
+    BotCommand("profilo", "Cosa ho capito di te"),
     BotCommand("aiuto", "Cosa so fare"),
 ]
 
@@ -133,6 +134,11 @@ def crea_applicazione(
             risposta = risposte.diario_oggi(conn, ora(), instradatore)
         await _rispondi(update, risposta)
 
+    async def cmd_profilo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        with connessione() as conn:
+            risposta = risposte.profilo(conn)
+        await _rispondi(update, risposta)
+
     async def su_bottone(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
         if query is None:
@@ -151,8 +157,14 @@ def crea_applicazione(
         # resta a girare sul telefono.
         await query.answer()
 
+        # «Aggiorna il profilo» chiama Claude e non è istantaneo: senza un
+        # segnale il tap sembra non aver fatto niente.
+        messaggio_query = query.message
+        if messaggio_query is not None and (query.data or "").startswith("p:rifondi"):
+            await messaggio_query.chat.send_action(ChatAction.TYPING)
+
         with connessione() as conn:
-            risposta = risposte.esegui_azione(conn, ora(), query.data or "")
+            risposta = risposte.esegui_azione(conn, ora(), query.data or "", instradatore)
 
         try:
             await query.edit_message_text(
@@ -262,6 +274,7 @@ def crea_applicazione(
     )
     applicazione.add_handler(CommandHandler("svuota", cmd_svuota, filters=solo_io))
     applicazione.add_handler(CommandHandler("diario", cmd_diario, filters=solo_io))
+    applicazione.add_handler(CommandHandler("profilo", cmd_profilo, filters=solo_io))
 
     async def su_errore(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.exception("errore non gestito", exc_info=context.error)

@@ -27,6 +27,12 @@ router = [
 whisper = [
     "python-multipart==0.0.32",
 ]
+# Il worker manda i suoi messaggi su Telegram con una sola chiamata HTTP
+# (`custode_worker.telegram`), quindi gli basta httpx: `python-telegram-bot`
+# resta fuori dalla sua immagine.
+worker = [
+    "httpx==0.28.1",
+]
 
 [dependency-groups]
 # Strumenti di sviluppo/CI: lint, type check, test. Non finiscono nell'immagine
@@ -45,8 +51,7 @@ build-backend = "hatchling.build"
 
 # Le cartelle sono quelle di ARCHITECTURE.md §5; dentro ognuna vive un pacchetto
 # Python con prefisso `custode_` per avere import non ambigui. Qui compaiono solo
-# i pacchetti che esistono davvero: bot/, router/ e worker/ si aggiungono quando
-# arriva la loro fase (vedi il README di ciascuna cartella).
+# i pacchetti che esistono davvero (vedi il README di ciascuna cartella).
 [tool.hatch.build.targets.wheel]
 packages = [
     "core/custode_core",
@@ -54,6 +59,7 @@ packages = [
     "bot/custode_bot",
     "router/custode_router",
     "whisper/custode_whisper",
+    "worker/custode_worker",
 ]
 
 [tool.uv]
@@ -72,11 +78,17 @@ addopts = "-q"
 markers = [
     "integration: test che esercitano l'API completa contro un DB reale su disco",
 ]
+filterwarnings = [
+    # I segnaposto numerati di sqlite3 (`?1`) mescolati a una sequenza sono
+    # deprecati e in Python 3.14 diventano un errore. Farli fallire già adesso
+    # costa niente ed evita di scoprirlo con un aggiornamento di Python.
+    "error:.*named parameter.*:DeprecationWarning",
+]
 
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "bot", "router", "whisper", "tests"]
+files = ["core", "api", "bot", "router", "whisper", "worker", "tests"]
 
 [tool.ruff.lint.isort]
 # Senza questo isort tratterebbe i pacchetti del repo come librerie di terze

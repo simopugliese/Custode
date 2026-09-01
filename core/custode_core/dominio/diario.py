@@ -50,6 +50,15 @@ class Stato(StrEnum):
 
 
 @dataclass(frozen=True)
+class RiepilogoSettimana:
+    """Il riepilogo di §8.4 punto 7, scritto da Claude sulle voci approvate."""
+
+    settimana_inizio: date
+    testo: str
+    generato_il: datetime
+
+
+@dataclass(frozen=True)
 class Frammento:
     id: int
     testo: str
@@ -399,6 +408,59 @@ def scarta(conn: sqlite3.Connection, voce_id: int) -> None:
     """
     leggi(conn, voce_id)
     conn.execute("DELETE FROM diary_entries WHERE id = ?", (voce_id,))
+
+
+# — riepilogo settimanale (§8.4 punto 7) —
+
+
+def riepilogo(conn: sqlite3.Connection, settimana_inizio: date) -> RiepilogoSettimana | None:
+    riga = conn.execute(
+        "SELECT * FROM diary_weekly_summary WHERE settimana_inizio = ?",
+        (settimana_inizio.isoformat(),),
+    ).fetchone()
+    if riga is None:
+        return None
+    return RiepilogoSettimana(
+        settimana_inizio=date.fromisoformat(riga["settimana_inizio"]),
+        testo=riga["testo"],
+        generato_il=datetime.fromisoformat(riga["generato_il"]),
+    )
+
+
+def ultimo_riepilogo(conn: sqlite3.Connection) -> RiepilogoSettimana | None:
+    riga = conn.execute(
+        "SELECT * FROM diary_weekly_summary ORDER BY settimana_inizio DESC LIMIT 1"
+    ).fetchone()
+    if riga is None:
+        return None
+    return riepilogo(conn, date.fromisoformat(riga["settimana_inizio"]))
+
+
+def salva_riepilogo(
+    conn: sqlite3.Connection, *, settimana_inizio: date, testo: str, ora: datetime
+) -> RiepilogoSettimana:
+    """Scrive (o riscrive) il riepilogo di una settimana.
+
+    `settimana_inizio` è chiave unica: se il job gira due volte per la stessa
+    settimana il riepilogo viene sostituito, non duplicato.
+    """
+    pulito = testo.strip()
+    if not pulito:
+        raise ValueError("il riepilogo settimanale non può essere vuoto")
+    conn.execute(
+        # `excluded` è la riga che si stava inserendo: si riusa quella invece di
+        # ripetere i parametri, così i segnaposto restano anonimi. Numerarli
+        # (`?1`) mescolandoli a una sequenza è deprecato e in Python 3.14
+        # diventa un errore.
+        "INSERT INTO diary_weekly_summary (settimana_inizio, testo, generato_il)"
+        " VALUES (?, ?, ?)"
+        " ON CONFLICT (settimana_inizio) DO UPDATE SET"
+        " testo = excluded.testo, generato_il = excluded.generato_il",
+        (settimana_inizio.isoformat(), pulito, ora.isoformat(timespec="seconds")),
+    )
+    risultato = riepilogo(conn, settimana_inizio)
+    assert risultato is not None  # appena scritto
+    return risultato
 
 
 # — statistiche, tutte in codice: nessuna di queste passa da un modello —

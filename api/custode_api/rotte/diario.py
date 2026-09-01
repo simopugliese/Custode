@@ -17,6 +17,7 @@ from custode_api import schemi
 from custode_api.dipendenze import ConnDip, OraDip
 from custode_core.dominio import diario as dom
 from custode_core.formato import (
+    etichetta_giorno,
     etichetta_giorno_voce,
     etichetta_mese,
     etichetta_ora,
@@ -120,9 +121,10 @@ def _etichetta_settimana(lunedi: date, oggi: date) -> str:
 def _aggregate(voci: list[dom.Voce], vista: Vista, oggi: date) -> list[schemi.VoceDiario]:
     """Le viste "settimane" e "mesi": una riga per periodo, non per giorno.
 
-    Il riepilogo scritto da Claude arriverà col job settimanale (§8.4); finché
-    non c'è, la riga di un periodo elenca le giornate che contiene, così la
-    vista dice comunque qualcosa di vero invece di restare vuota.
+    La riga di un periodo dice quante giornate contiene e con che temi. Il
+    testo narrativo scritto da Claude sta in `riepilogoSettimanale`, che è dove
+    il contratto lo colloca: qui servirebbe un riepilogo per *ogni* riga, cioè
+    una chiamata al modello per ogni settimana mostrata.
     """
     if not voci:
         return []
@@ -224,8 +226,26 @@ def pagina_diario(conn: ConnDip, ora: OraDip, vista: Vista = "timeline") -> sche
             schemi.TemaRicorrente(nome=nome, occorrenze=n, quota=n / massimo)
             for nome, n in temi[:6]
         ],
+        riepilogoSettimanale=_riepilogo(conn, oggi),
         coperturaMese=dom.copertura(del_mese, da=primo, giorni=giorni_mese),
         coperturaNota=_nota_copertura(len(approvate_mese), giorni_mese, oggi),
+    )
+
+
+def _riepilogo(conn: ConnDip, oggi: date) -> schemi.RiepilogoDiario | None:
+    """L'ultimo riepilogo scritto dal job settimanale (§8.4 punto 7).
+
+    Assente finché il job non ne ha scritto uno: campo omesso, non vuoto, e la
+    dashboard non disegna il blocco. `riepilogoMensile` resta invece sempre
+    assente — un job mensile non esiste, e §8.4 non lo prevede.
+    """
+    ultimo = dom.ultimo_riepilogo(conn)
+    if ultimo is None:
+        return None
+    return schemi.RiepilogoDiario(
+        label=_etichetta_settimana(ultimo.settimana_inizio, oggi),
+        testo=ultimo.testo,
+        generatoLabel=etichetta_giorno(ultimo.generato_il.date(), oggi),
     )
 
 

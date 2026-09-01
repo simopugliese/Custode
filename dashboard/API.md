@@ -87,8 +87,10 @@ approvata e `approvataAlleLabel` dice a che ora. `scarta` **cancella anche il
 materiale grezzo**: nel diario entra solo ciò che approvi (§8.4), quindi una
 bozza rifiutata non resta da nessuna parte e il giorno torna `assente`.
 
-`riepilogoSettimanale` e `riepilogoMensile` sono **omessi** finché non esiste il
-job settimanale in `worker/`: campo assente ≠ campo vuoto.
+`riepilogoSettimanale` porta l'ultimo riepilogo scritto dal job settimanale in
+`worker/` (§8.4 punto 7); è **omesso** finché il job non ne ha scritto uno.
+`riepilogoMensile` resta invece sempre omesso: un job mensile non esiste e §8.4
+non lo prevede — campo assente ≠ campo vuoto.
 
 Approvare una giornata la cui raccolta è ancora aperta (nessuna bozza) risponde
 `409`.
@@ -171,7 +173,11 @@ comando come «sto finendo il latte» si riflette appena il backend lo elabora.
 
 Il testo passa dal router (§6), che ne ricava un'intenzione strutturata; il
 backend la esegue subito e restituisce in `rispostaLabel` la frase da mostrare
-(«Aggiunto alla lista: latte»). Oggi copre task, lista della spesa e diario —
+(«Aggiunto alla lista: latte»). La stessa risposta del modello porta anche il
+controllo passivo di §8.4 sui segnali per il profilo: quello succede in
+silenzio, non cambia `rispostaLabel`, e la revisione avviene su Telegram (il
+profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
+Oggi copre task, lista della spesa e diario —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
 il materiale del diario di oggi (§8.4). Per un messaggio che non chiede nulla
 di previsto la risposta lo dice, senza errore.
