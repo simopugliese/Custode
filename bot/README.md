@@ -38,15 +38,21 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/svuota` | Toglie le voci già prese, previa conferma |
 | `/aiuto` | L'elenco qui sopra |
 
-Il **linguaggio naturale e i vocali** non ci sono ancora: arrivano col router
-DeepSeek/Claude (§6) e Whisper (§4), e si aggiungeranno sopra questi comandi
-senza sostituirli. A un messaggio libero il bot risponde dicendo esattamente
-questo, invece di restare muto.
+Oltre ai comandi il bot capisce il **linguaggio libero**, scritto o dettato:
+«ricordami di chiamare l'officina», «sto finendo il latte», «fatto la
+bolletta». Il messaggio passa dal router (§6), che ne ricava un'intenzione
+strutturata; il bot esegue subito e dice cosa ha fatto, lasciando un bottone
+«Annulla» — l'interpretazione è automatica, quindi disfare deve costare un tap.
 
-Le scadenze si scelgono con dei bottoni (oggi / domani / fra una settimana /
-senza scadenza) invece di essere lette da una frase: senza il router una data
-scritta a parole non si può interpretare in modo affidabile, e quattro bottoni
-si premono più in fretta di quanto si scriva una data.
+I **vocali** seguono esattamente lo stesso percorso: whisper.cpp locale li
+trascrive e da lì in poi non c'è differenza col testo (§8.1). Il bot rimanda
+anche la trascrizione, così se qualcosa esce storto si vede subito se la colpa
+è di Whisper o dell'interpretazione.
+
+Le scadenze del comando `/nuovo` si scelgono con dei bottoni (oggi / domani /
+fra una settimana / senza scadenza) invece di essere lette da una frase: quattro
+bottoni si premono più in fretta di quanto si scriva una data. In linguaggio
+libero la scadenza la ricava il modello.
 
 ## Provarlo
 

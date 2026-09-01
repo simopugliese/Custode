@@ -18,10 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from custode_api.rotte import home, lista_spesa, non_attivi, task
+from custode_api.rotte import assistente, home, lista_spesa, non_attivi, task
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.migrazioni import migra
+from custode_router import Router
 
 
 def _versione() -> str:
@@ -41,9 +42,10 @@ class StatoSalute(BaseModel):
     migrazioni: Literal["ok", "fallite"]
 
 
-def crea_app(settings: Settings | None = None) -> FastAPI:
+def crea_app(settings: Settings | None = None, router: Router | None = None) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
+    instradatore = router or Router()
     logging.basicConfig(level=impostazioni.log_level.upper())
     log = logging.getLogger("custode.api")
 
@@ -105,6 +107,7 @@ def crea_app(settings: Settings | None = None) -> FastAPI:
         # post-deploy fa scattare il rollback (§10).
         return JSONResponse(status_code=200 if sano else 503, content=corpo.model_dump())
 
+    app.include_router(assistente.router)
     app.include_router(home.router)
     app.include_router(task.router)
     app.include_router(lista_spesa.router)
@@ -114,6 +117,7 @@ def crea_app(settings: Settings | None = None) -> FastAPI:
     # Le rotte leggono le impostazioni da qui (vedi `dipendenze.py`), così i
     # test possono costruire l'app puntandola a un database temporaneo.
     app.state.settings = impostazioni
+    app.state.router = instradatore
 
     return app
 

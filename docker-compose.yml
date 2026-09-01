@@ -1,9 +1,8 @@
 # Custode — stack di esecuzione sul Raspberry Pi 5 (ARCHITECTURE.md §4).
 #
-# Un servizio per componente. Router, Whisper e cloudflared entrano qui quando
-# arriva la loro fase (vedi il README di ciascuna cartella). Nessuna porta è
-# pubblicata verso l'esterno: da fuori si passa da Cloudflare Tunnel, che apre
-# una connessione in uscita dal Pi (§2, §9).
+# Un servizio per componente. cloudflared entra qui quando arriva la sua fase.
+# Nessuna porta è pubblicata verso l'esterno: da fuori si passa da Cloudflare
+# Tunnel, che apre una connessione in uscita dal Pi (§2, §9).
 
 x-comune: &comune
   build:
@@ -62,6 +61,37 @@ services:
     # legarlo alla salute dell'API vorrebbe dire perdere il canale principale
     # (§8.1) proprio quando qualcosa non va nel canale secondario. Le migrazioni
     # concorrenti sono gestite dal lock del runner, non dall'ordine di avvio.
+    # Lo stesso vale per whisper: se la trascrizione è giù, i comandi e il testo
+    # scritto devono continuare a funzionare.
+
+  whisper:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: whisper
+    image: custode-whisper:0.1.0
+    container_name: custode-whisper
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    # Nessuna porta pubblicata: ci parla solo il bot, sulla rete interna.
+    # Il limite di CPU è il motivo per cui whisper sta in un container suo:
+    # una trascrizione lunga non deve rallentare le risposte del bot (§13).
+    cpus: 2.0
+    mem_limit: 2g
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request as u; u.urlopen('http://127.0.0.1:8100/health').read()",
+        ]
+      interval: 60s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
 
 volumes:
   # Il database vive qui: è l'unica cosa da backuppare (§3, §9).

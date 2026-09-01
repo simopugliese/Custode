@@ -51,9 +51,13 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard su Pages, es. `https://custode.pages.dev` |
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
+| `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
+| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: nessun modulo la usa ancora, può restare vuota |
 
-Le altre (chiavi DeepSeek/Claude, token del tunnel) restano commentate finché
-non arriva il modulo che le usa.
+Il token del tunnel resta commentato finché non arriva la sua fase.
+
+Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
+perde solo il linguaggio libero, e il bot lo dice invece di fallire in silenzio.
 
 Il bot non parte senza token **e** senza user ID: lo dice nei log e si ferma,
 invece di restare in ascolto con la whitelist vuota.
@@ -97,6 +101,29 @@ comandi, `/nuovo Prova` deve creare un task che compare anche nella dashboard.
 
 ```bash
 docker compose logs -f bot
+```
+
+### Provare i vocali
+
+Il primo `docker compose build` compila whisper.cpp e scarica il modello: su un
+Pi 5 richiede diversi minuti, ma succede una volta sola (il layer resta in
+cache). Poi:
+
+```bash
+docker compose logs -f whisper          # deve dire modello_presente
+docker compose exec whisper python -c \
+  "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8100/health').read())"
+```
+
+Da Telegram, manda un vocale: il bot risponde con la trascrizione fra
+virgolette e poi con quello che ha fatto. Se la trascrizione è giusta ma
+l'azione no, il problema è nell'interpretazione (router); se è sbagliata la
+trascrizione, è Whisper — ed è per questo che il bot le mostra entrambe.
+
+Per cambiare modello (più accurato, più lento):
+
+```bash
+docker compose build --build-arg WHISPER_MODEL=small-q5_1 whisper
 ```
 
 All'avvio il log dice qual è l'unico mittente ammesso. Se scrivi da un altro

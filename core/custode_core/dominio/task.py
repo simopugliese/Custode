@@ -165,6 +165,27 @@ def rinvia(conn: sqlite3.Connection, task_id: int, giorni: int, ora: datetime) -
     return leggi(conn, task_id)
 
 
+def elimina(conn: sqlite3.Connection, task_id: int) -> None:
+    """Cancella un task. Serve ad annullare una creazione appena fatta."""
+    leggi(conn, task_id)  # solleva TaskInesistente se non c'è
+    conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+
+def annulla_rinvio(conn: sqlite3.Connection, task_id: int, giorni: int) -> Task:
+    """Riporta indietro la scadenza e scala il contatore dei rinvii.
+
+    Non è `rinvia` con giorni negativi: quella incrementerebbe il contatore, e
+    un rinvio annullato non deve restare scritto nella storia del task.
+    """
+    task = leggi(conn, task_id)
+    nuova = task.scadenza - timedelta(days=giorni) if task.scadenza is not None else None
+    conn.execute(
+        "UPDATE tasks SET scadenza = ?, rinvii = max(rinvii - 1, 0) WHERE id = ?",
+        (scrivi_scadenza(nuova), task_id),
+    )
+    return leggi(conn, task_id)
+
+
 def chiusi_per_giorno(conn: sqlite3.Connection, lunedi: date) -> list[int]:
     """Quanti task chiusi in ciascuno dei 7 giorni a partire da `lunedi`."""
     conteggi = [0] * 7

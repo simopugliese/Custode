@@ -1,13 +1,50 @@
 # router — scelta del modello DeepSeek / Claude
 
-Decide quale modello serve per ogni tipo di task, secondo la tabella di
-ARCHITECTURE.md §6: DeepSeek per i task ad alto volume e bassa difficoltà
-(lista spesa, CRUD task, log abitudini, classificazioni leggere), Claude dove
-serve qualità, vision o ragionamento (scontrini, diario, rifusione del profilo,
-piani di ripasso, report narrativi).
+Decide quale modello serve per ogni tipo di compito, secondo la tabella di
+ARCHITECTURE.md §6, e ci parla. Il principio di §1 è "massima resa, minima
+spesa": i compiti banali e ad alto volume vanno a DeepSeek, quelli che
+richiedono qualità, visione o ragionamento a Claude.
+
+- `compiti.py` — **la tabella di §6 in codice**, con il motivo di ogni riga
+  accanto alla scelta. Chi chiama nomina il *compito*, mai il modello: cambiare
+  instradamento non richiede di toccare i moduli.
+- `deepseek.py` — client httpx (l'API di DeepSeek è compatibile con quella di
+  OpenAI, ma qui se ne usa una sola chiamata: non vale l'SDK di OpenAI).
+- `claude.py` — client sull'SDK ufficiale `anthropic`, con structured outputs.
+- `router.py` — mette insieme le due cose.
+- `assistente.py` — dal testo libero all'azione: è ciò che rende utile tutto il
+  resto (§8.1).
+
+Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
+condiviso non deve sapere che esistono dei modelli.
+
+## Il modello non tocca il database
+
+`assistente.py` chiede al modello solo un'**intenzione strutturata** (`azione`,
+`titolo`, `riferimento`, …) e la traduce lui in chiamate ai servizi di dominio.
+Un modello che sbaglia può quindi far fare a Custode una cosa sbagliata fra
+quelle previste, mai una cosa non prevista. I riferimenti a task e voci
+esistenti vengono risolti in codice, e un riferimento ambiguo non chiude nulla:
+meglio non fare niente che indovinare.
+
+Ogni azione dell'assistente lascia un bottone «Annulla», perché
+l'interpretazione è automatica e tornare indietro deve costare un tap.
 
 ## Stato
 
-Vuota. Arriva alla fase 4, insieme a Whisper locale, per sbloccare gli input
-vocali. Nota di §6: le regole di contesto già approvate si valutano con logica
-pura, senza passare da qui — costo zero.
+Instradati e in uso: parsing della lista della spesa e CRUD dei task
+(entrambi DeepSeek). Gli altri compiti della tabella hanno il loro provider già
+deciso e il client pronto, ma nessun modulo li chiama ancora.
+
+L'unica riga di §6 non implementata è **la lettura degli scontrini**, che ha
+bisogno di mandare un'immagine al modello: chiederla ora solleva
+`CompitoNonSupportato`, e arriverà col modulo spese (§8.5).
+
+§6 dice anche cosa **non** passa di qui: valutare una regola di contesto già
+approvata è logica pura, costo zero, e va tenuta così.
+
+## Chiavi
+
+`ROUTER_DEEPSEEK_API_KEY` e `ROUTER_ANTHROPIC_API_KEY` nel `.env` (vedi
+`.env.example`). Senza, comandi e bottoni continuano a funzionare: si perde solo
+il linguaggio libero, e il bot lo dice invece di fallire in silenzio.

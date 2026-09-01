@@ -101,6 +101,12 @@ def imposta_preso(conn: sqlite3.Connection, voce_id: int, preso: bool, ora: date
     return leggi(conn, voce_id)
 
 
+def elimina(conn: sqlite3.Connection, voce_id: int) -> None:
+    """Cancella una voce. Serve ad annullare un'aggiunta appena fatta."""
+    leggi(conn, voce_id)  # solleva VoceInesistente se non c'è
+    conn.execute("DELETE FROM shopping_list WHERE id = ?", (voce_id,))
+
+
 def svuota_presi(conn: sqlite3.Connection) -> int:
     """Rimuove le voci già prese. Ritorna quante ne ha tolte."""
     cursore = conn.execute("DELETE FROM shopping_list WHERE comprato = 1")
