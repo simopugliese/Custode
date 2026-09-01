@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
 from custode_router import assistente
@@ -278,3 +279,70 @@ def test_annulla_una_spunta(conn: sqlite3.Connection, ora: datetime) -> None:
 def test_annullare_qualcosa_che_non_c_e_piu(conn: sqlite3.Connection, ora: datetime) -> None:
     testo = assistente.annulla(conn, ora, Azione.AGGIUNGI_TASK, identificatore=999)
     assert "non esiste più" in testo
+
+
+# — diario (§8.4): il messaggio che racconta invece di chiedere —
+
+
+def test_una_frase_raccontata_diventa_materiale_da_diario(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "che giornata pesante",
+        {"azione": "annota_diario", "titolo": "giornata pesante"},
+    )
+
+    assert esito.azione is Azione.ANNOTA_DIARIO
+    assert esito.frammento_id is not None
+    # Il grezzo si salva com'è: il riassunto è un altro passaggio, e passa da
+    # Claude a fine giornata (§6).
+    voce = dom_diario.leggi_giorno(conn, ora.date())
+    assert voce is not None
+    assert voce.grezzo == "giornata pesante"
+    assert voce.riassunto_approvato is None
+
+
+def test_una_nota_di_diario_senza_testo_non_scrive_niente(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(conn, ora, "boh", {"azione": "annota_diario", "titolo": "  "})
+
+    assert esito.ha_cambiato_qualcosa is False
+    assert dom_diario.leggi_giorno(conn, ora.date()) is None
+
+
+def test_il_bottone_annulla_punta_al_frammento_giusto(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """`identificatore` è ciò che il bot impacchetta nel callback_data."""
+    esito = _esegui(conn, ora, "x", {"azione": "annota_diario", "titolo": "prima"})
+    assert esito.identificatore == esito.frammento_id
+
+
+def test_annulla_una_nota_di_diario(conn: sqlite3.Connection, ora: datetime) -> None:
+    _esegui(conn, ora, "x", {"azione": "annota_diario", "titolo": "resta"})
+    esito = _esegui(conn, ora, "y", {"azione": "annota_diario", "titolo": "da togliere"})
+    assert esito.frammento_id is not None
+
+    testo = assistente.annulla(conn, ora, Azione.ANNOTA_DIARIO, identificatore=esito.frammento_id)
+
+    assert "da togliere" in testo
+    voce = dom_diario.leggi_giorno(conn, ora.date())
+    assert voce is not None and voce.grezzo == "resta"
+
+
+def test_annullare_una_nota_gia_tolta(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(conn, ora, "x", {"azione": "annota_diario", "titolo": "unica"})
+    assert esito.frammento_id is not None
+    assistente.annulla(conn, ora, Azione.ANNOTA_DIARIO, identificatore=esito.frammento_id)
+
+    testo = assistente.annulla(conn, ora, Azione.ANNOTA_DIARIO, identificatore=esito.frammento_id)
+    assert "non esiste più" in testo
+
+
+def test_il_diario_e_fra_le_azioni_offerte_al_modello() -> None:
+    """Un'azione che non è nell'enum dello schema il modello non la può scegliere."""
+    consentite = assistente.SCHEMA_INTENZIONE["properties"]["azione"]["enum"]
+    assert "annota_diario" in consentite

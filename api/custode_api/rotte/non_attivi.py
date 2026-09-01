@@ -14,9 +14,6 @@ router = APIRouter(tags=["non ancora attivi"])
 
 # Percorso → (metodi, modulo mancante, fase del piano di lavoro)
 MODULI: dict[str, tuple[list[str], str, str]] = {
-    "/api/diario": (["GET"], "diario", "§8.4"),
-    "/api/diario/{voce_id}/approva": (["POST"], "diario", "§8.4"),
-    "/api/diario/{voce_id}/scarta": (["POST"], "diario", "§8.4"),
     "/api/lezioni": (["GET"], "lezioni e corsi", "§8.11"),
     "/api/lezioni/piani/{piano_id}/rigenera": (["POST"], "lezioni e corsi", "§8.11"),
     "/api/lezioni/piani/{piano_id}/manda-al-bot": (["POST"], "lezioni e corsi", "§8.11"),

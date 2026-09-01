@@ -5,7 +5,7 @@ Averle in un modulo a parte, con parsing e formattazione simmetrici, evita che
 la stringa venga costruita a mano in un punto e letta a mano in un altro.
 
 Forma: `dominio:azione:argomento:vista`
-  dominio  t = task, s = spesa, x = azioni di servizio
+  dominio  t = task, s = spesa, d = diario, x = azioni di servizio
   vista    da quale elenco è partito il tap, per ridisegnare quello giusto
 """
 
@@ -26,7 +26,7 @@ class AzioneNonValida(ValueError):
 
 @dataclass(frozen=True)
 class Azione:
-    dominio: Literal["t", "s", "x"]
+    dominio: Literal["t", "s", "d", "x"]
     nome: str
     argomento: str = ""
     vista: Vista = "task"
@@ -40,7 +40,7 @@ def leggi(dato: str) -> Azione:
     if len(pezzi) != 4:
         raise AzioneNonValida(dato)
     dominio, nome, argomento, sigla_vista = pezzi
-    if dominio not in ("t", "s", "x") or sigla_vista not in VISTE_PER_SIGLA:
+    if dominio not in ("t", "s", "d", "x") or sigla_vista not in VISTE_PER_SIGLA:
         raise AzioneNonValida(dato)
     return Azione(
         dominio=dominio,  # type: ignore[arg-type]
@@ -65,6 +65,11 @@ def task_scadenza(task_id: int, quando: str) -> str:
 
 def voce_presa(voce_id: int, vista: Vista) -> str:
     return Azione("s", "preso", str(voce_id), vista).dato()
+
+
+def diario(nome: str, voce_id: int) -> str:
+    """Approvazione, riscrittura e scarto di una bozza di diario (§8.4)."""
+    return Azione("d", nome, str(voce_id), "task").dato()
 
 
 def svuota(conferma: bool) -> str:

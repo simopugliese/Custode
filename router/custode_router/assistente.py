@@ -9,8 +9,11 @@ che questo modulo traduce in chiamate ai servizi di dominio. Un modello che
 sbaglia può quindi far fare a Custode una cosa sbagliata fra quelle previste,
 mai una cosa non prevista.
 
-Oggi i moduli disponibili sono task e lista della spesa, e §6 instrada
-entrambi su DeepSeek. Diario, spese e abitudini si aggiungono qui man mano.
+Oggi i moduli disponibili sono task, lista della spesa e diario (§8.4), e §6
+instrada l'interpretazione su DeepSeek — anche quella di una nota di diario: qui
+si decide solo *dove va* il messaggio, mentre il riassunto della giornata, che è
+il pezzo che richiede qualità, va a Claude in `custode_router.diario`. Spese e
+abitudini si aggiungono qui man mano.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
+from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
 from custode_core.formato import etichetta_scadenza
@@ -35,6 +39,7 @@ class Azione(StrEnum):
     RINVIA_TASK = "rinvia_task"
     AGGIUNGI_SPESA = "aggiungi_voce_spesa"
     SEGNA_PRESO = "segna_voce_presa"
+    ANNOTA_DIARIO = "annota_diario"
     NESSUNA = "nessuna"
 
 
@@ -44,7 +49,10 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
         "azione": {"type": "string", "enum": [a.value for a in Azione]},
         "titolo": {
             "type": "string",
-            "description": "Titolo del task da creare, o nome della voce della spesa.",
+            "description": (
+                "Titolo del task da creare, il nome della voce della spesa, oppure"
+                " la frase da annotare nel diario, ripulita ma non riassunta."
+            ),
         },
         "riferimento": {
             "type": "string",
@@ -86,9 +94,17 @@ Regole:
 - «ho preso X», «comprato X» → segna_voce_presa, con `riferimento` copiato dal
   nome della voce esistente.
 - «rimanda X», «sposta X di N giorni» → rinvia_task.
-- Se il messaggio non chiede nessuna di queste cose (un saluto, una domanda,
-  uno sfogo), rispondi con azione «nessuna»: è una risposta corretta, non un
-  fallimento.
+- Il messaggio racconta com'è andata, come sta o cosa pensa — «giornata pesante»,
+  «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
+  palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
+  alla frase da annotare (ripulita dagli intercalari, NON riassunta: il
+  riassunto lo fa un altro passaggio, a fine giornata).
+- Se il messaggio non chiede nessuna di queste cose e non racconta niente (un
+  saluto, una domanda, un «ok»), rispondi con azione «nessuna»: è una risposta
+  corretta, non un fallimento.
+- Un messaggio che chiede un'azione pratica è quell'azione, non una nota di
+  diario: «ricordami di chiamare l'officina» è un task e basta. Il diario è per
+  ciò che nessuno degli altri moduli registrerebbe.
 - Non inventare mai un riferimento che non compare nell'elenco fornito."""
 
 
@@ -111,12 +127,22 @@ class Esito:
     azione: Azione = Azione.NESSUNA
     task_id: int | None = None
     voce_id: int | None = None
+    frammento_id: int | None = None
+    """Il frammento di diario appena scritto, da togliere se si annulla."""
     giorni: int = 1
     """Giorni di rinvio applicati, per poterli togliere se si annulla."""
 
     @property
     def ha_cambiato_qualcosa(self) -> bool:
         return self.azione is not Azione.NESSUNA
+
+    @property
+    def identificatore(self) -> int | None:
+        """Cosa deve indicare il bottone «Annulla», qualunque azione sia stata."""
+        for valore in (self.task_id, self.voce_id, self.frammento_id):
+            if valore is not None:
+                return valore
+        return None
 
 
 def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
@@ -210,8 +236,18 @@ def _trova_voce(conn: sqlite3.Connection, riferimento: str) -> dom_lista.Voce | 
     return parziali[0] if len(parziali) == 1 else None
 
 
-def esegui(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> Esito:
-    """Applica l'intenzione ai moduli di dominio."""
+def esegui(
+    conn: sqlite3.Connection,
+    ora: datetime,
+    intenzione: Intenzione,
+    *,
+    da_vocale: bool = False,
+) -> Esito:
+    """Applica l'intenzione ai moduli di dominio.
+
+    `da_vocale` serve solo al diario, che tiene il conto di quante parti della
+    giornata sono state dettate e quante scritte (`fonteLabel`).
+    """
     if intenzione.azione is Azione.AGGIUNGI_TASK:
         if not intenzione.titolo:
             return Esito(testo="Non ho capito cosa segnare.")
@@ -276,11 +312,32 @@ def esegui(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> E
         dom_lista.imposta_preso(conn, trovata.id, True, ora)
         return Esito(testo=f"Preso: {trovata.nome}", azione=intenzione.azione, voce_id=trovata.id)
 
+    if intenzione.azione is Azione.ANNOTA_DIARIO:
+        # Il testo si annota grezzo: il riassunto è un passaggio a parte, a fine
+        # giornata, e passa da Claude (§6, §8.4). Qui non si perde nulla di ciò
+        # che è stato detto.
+        nota = intenzione.titolo or ""
+        if not nota.strip():
+            return Esito(testo="Non ho capito cosa annotare.")
+        _voce, frammento_id = dom_diario.aggiungi_materiale(
+            conn, giorno=ora.date(), testo=nota, ora=ora, da_vocale=da_vocale
+        )
+        return Esito(
+            testo="Annotato nel diario di oggi.",
+            azione=intenzione.azione,
+            frammento_id=frammento_id,
+        )
+
     return Esito(testo="Non ho capito cosa vuoi che faccia.")
 
 
 def interpreta_ed_esegui(
-    conn: sqlite3.Connection, ora: datetime, testo: str, router: Router
+    conn: sqlite3.Connection,
+    ora: datetime,
+    testo: str,
+    router: Router,
+    *,
+    da_vocale: bool = False,
 ) -> Esito:
     """Il giro completo, con gli errori del router tradotti in frasi leggibili."""
     if not testo.strip():
@@ -289,7 +346,7 @@ def interpreta_ed_esegui(
         intenzione = interpreta(conn, ora, testo, router)
     except ErroreRouter as errore:
         return Esito(testo=_messaggio_errore(errore))
-    return esegui(conn, ora, intenzione)
+    return esegui(conn, ora, intenzione, da_vocale=da_vocale)
 
 
 def _messaggio_errore(errore: ErroreRouter) -> str:
@@ -334,6 +391,16 @@ def annulla(
         if azione is Azione.SEGNA_PRESO:
             voce = dom_lista.imposta_preso(conn, identificatore, False, ora)
             return f"Rimesso sulla lista: {voce.nome}"
-    except (dom_task.TaskInesistente, dom_lista.VoceInesistente):
+        if azione is Azione.ANNOTA_DIARIO:
+            # `identificatore` è il frammento, non la voce del giorno: si toglie
+            # esattamente la frase aggiunta, lasciando intatto il resto della
+            # giornata già raccolto.
+            tolto = dom_diario.togli_frammento(conn, identificatore)
+            return f"Tolto dal diario di oggi: «{tolto}»"
+    except (
+        dom_task.TaskInesistente,
+        dom_lista.VoceInesistente,
+        dom_diario.FrammentoInesistente,
+    ):
         return "Quella voce non esiste più: niente da annullare."
     return "Non c'è niente da annullare."

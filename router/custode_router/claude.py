@@ -52,7 +52,10 @@ class ClientClaude:
         try:
             risposta = cliente.messages.create(
                 model=self._impostazioni.claude_modello,
-                max_tokens=self._impostazioni.max_token_risposta,
+                # Tetto suo, non quello di DeepSeek: sui modelli con
+                # ragionamento adattivo i token di ragionamento contano qui
+                # dentro (vedi `config.py`).
+                max_tokens=self._impostazioni.max_token_risposta_claude,
                 system=sistema,
                 messages=[{"role": "user", "content": utente}],
                 # Structured outputs: il formato lo garantisce l'API, non una
@@ -69,8 +72,18 @@ class ClientClaude:
 
         # Una decisione di sicurezza del modello non è un guasto di rete: va
         # distinta, altrimenti chi chiama riproverebbe all'infinito.
-        if getattr(risposta, "stop_reason", None) == "refusal":
+        motivo_arresto = getattr(risposta, "stop_reason", None)
+        if motivo_arresto == "refusal":
             raise RispostaNonValida("Claude ha rifiutato di rispondere a questa richiesta")
+        # Una risposta troncata è JSON incompleto: dirlo così com'è, invece di
+        # lasciare che fallisca più avanti come "non ha risposto in JSON", è la
+        # differenza fra alzare `max_token_risposta_claude` e cercare un bug
+        # nel prompt.
+        if motivo_arresto == "max_tokens":
+            raise RispostaNonValida(
+                "Claude ha esaurito i token prima di finire la risposta:"
+                " alza ROUTER_MAX_TOKEN_RISPOSTA_CLAUDE"
+            )
 
         return _primo_json(risposta)
 

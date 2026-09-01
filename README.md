@@ -37,16 +37,22 @@ in quattro punti sarebbe l'errore più facile da fare.
 | API con persistenza reale su SQLite: Home, Task, Lista della spesa | fatto |
 | Bot Telegram: comandi, whitelist, task e lista della spesa | fatto |
 | Router DeepSeek/Claude + Whisper: linguaggio libero e vocali | fatto |
-| Diario (§8.4) | prossimo |
+| Diario: racconto → riassunto Claude → approvazione (§8.4) | fatto |
+| Diario: canale passivo e job settimanale del profilo (§8.4) | prossimo |
 | Spese, abitudini, calendario, corsi, meteo, digest | da fare |
 
-Home, Task e Lista della spesa mostrano dati veri, letti e scritti su SQLite, e
-la barra «A Custode» funziona in linguaggio libero. Le altre pagine ricevono un
-`501` che dice quale modulo manca, e mostrano quel messaggio: è il
+Home, Task, Lista della spesa e Diario mostrano dati veri, letti e scritti su
+SQLite, e la barra «A Custode» funziona in linguaggio libero. Le altre pagine
+ricevono un `501` che dice quale modulo manca, e mostrano quel messaggio: è il
 comportamento previsto, non un bug.
 
 Da Telegram si può parlare normalmente («sto finendo il latte») o mandare un
 vocale: la trascrizione avviene sul Pi, e l'audio non esce di casa.
+
+Quello che racconti della giornata («capitolo 3 finalmente chiaro», «che palle
+il frontend») Custode lo mette da parte per il diario; `/diario` chiude la
+giornata e ti propone il riassunto scritto da Claude, che entra nel diario solo
+se lo approvi — o riscritto con parole tue, se preferisci.
 
 ## Sviluppo locale
 

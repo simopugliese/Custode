@@ -17,10 +17,16 @@ identica anche il bot Telegram.
 ## Stato
 
 Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
-`PATCH`), `/api/lista-spesa` (+ `POST`, `PATCH`, `svuota-presi`), e
-`GET /api/health` per lo smoke test post-deploy (§10).
+`PATCH`), `/api/lista-spesa` (+ `POST`, `PATCH`, `svuota-presi`),
+`/api/diario` (+ `approva`, `scarta`), e `GET /api/health` per lo smoke test
+post-deploy (§10).
 
-Tutto il resto risponde `501` finché non arriva il suo modulo (§8.4-§8.13).
+Tutto il resto risponde `501` finché non arriva il suo modulo (§8.5-§8.13).
+
+Il diario si *riempie* da Telegram, non da qui (§8.1): questa rotta serve a
+rileggerlo e a smaltire le bozze rimaste da approvare. Le bozze si mostrano
+sempre, anche fuori dal periodo della vista — altrimenti una lasciata in
+sospeso a fine mese diventerebbe irraggiungibile il giorno dopo.
 
 ## Avvio locale
 

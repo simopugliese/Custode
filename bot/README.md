@@ -36,6 +36,7 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/lista` | La lista della spesa per reparto, spuntabile |
 | `/aggiungi <voce>` | Aggiunge alla lista della spesa |
 | `/svuota` | Toglie le voci già prese, previa conferma |
+| `/diario` | Chiude la giornata e propone il riassunto da approvare |
 | `/aiuto` | L'elenco qui sopra |
 
 Oltre ai comandi il bot capisce il **linguaggio libero**, scritto o dettato:
@@ -48,6 +49,31 @@ I **vocali** seguono esattamente lo stesso percorso: whisper.cpp locale li
 trascrive e da lì in poi non c'è differenza col testo (§8.1). Il bot rimanda
 anche la trascrizione, così se qualcosa esce storto si vede subito se la colpa
 è di Whisper o dell'interpretazione.
+
+## Il diario (§8.4)
+
+Non c'è un momento in cui «si scrive il diario»: quello che racconti durante il
+giorno — «capitolo 3 finalmente chiaro», «che palle il frontend» — il router lo
+riconosce come materiale da diario e lo mette da parte sulla **giornata di
+oggi**, grezzo, con un bottone «Annulla» che toglie esattamente quella frase.
+
+`/diario` chiude la giornata: il materiale va a **Claude** (§6), che ne scrive
+un riassunto e dei tag, e il bot te lo rimanda con tre uscite.
+
+- **Approva** — entra nel diario così com'è.
+- **Modifica** — il bot chiede il testo corretto, e il messaggio successivo
+  (scritto o dettato) diventa la voce **parola per parola**, senza passare da
+  nessun modello: ciò che resta scritto è tuo.
+- **Scarta** — butta via tutto, materiale grezzo compreso.
+
+Finché non approvi, nel diario non c'è niente. Un secondo `/diario` non
+richiama Claude: la bozza c'è già, e rigenerarla sarebbe spesa buttata (§1). Se
+Claude non è raggiungibile o la chiave manca, il bot lo dice e **il materiale
+resta sul disco**: si riprova più tardi senza aver perso niente.
+
+Lo stato «sto aspettando la tua riscrittura» sta sul database, non nella memoria
+del processo: se il bot riparte a metà, la conversazione riprende da dov'era
+invece di scambiare la riscrittura per una frase qualsiasi.
 
 Le scadenze del comando `/nuovo` si scelgono con dei bottoni (oggi / domani /
 fra una settimana / senza scadenza) invece di essere lette da una frase: quattro

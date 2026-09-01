@@ -38,6 +38,15 @@ MESI = (
     "novembre",
     "dicembre",
 )
+GIORNI_BREVI = (
+    "Lun",
+    "Mar",
+    "Mer",
+    "Gio",
+    "Ven",
+    "Sab",
+    "Dom",
+)
 MESI_BREVI = (
     "gen",
     "feb",
@@ -113,6 +122,22 @@ def etichetta_data_ora(ora: datetime) -> str:
 
 def etichetta_ora(ora: datetime) -> str:
     return f"{ora.hour:02d}:{ora.minute:02d}"
+
+
+def etichetta_giorno_voce(giorno: date) -> str:
+    """ "Ven 29 agosto" — intestazione di una voce di diario.
+
+    Il giorno della settimana abbreviato e la data per esteso: in una timeline
+    serve sapere subito se era un sabato, e la data completa evita di contare
+    all'indietro quando si scorre un mese intero.
+    """
+    return f"{GIORNI_BREVI[giorno.weekday()]} {giorno.day} {MESI[giorno.month - 1]}"
+
+
+def etichetta_mese(giorno: date, oggi: date) -> str:
+    """ "agosto" per l'anno in corso, "agosto 2025" per gli altri."""
+    mese = MESI[giorno.month - 1]
+    return mese if giorno.year == oggi.year else f"{mese} {giorno.year}"
 
 
 def plurale(quantita: int, singolare: str, plurale_: str) -> str:

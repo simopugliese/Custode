@@ -47,7 +47,7 @@ export default function Diario() {
             <StatsBar
               items={[
                 { label: 'Voci del mese', value: <>{data.stats.vociDelMese}<small> / {data.giorniTotali}</small></> },
-                { label: 'Giorni consecutivi', value: <>{data.stats.giorniConsecutivi}<small style={{ opacity: 0.55 }}> giorni</small></>, accent: true },
+                { label: 'Giorni consecutivi', value: <>{data.stats.giorniConsecutivi}<small style={{ opacity: 0.55 }}> {data.stats.giorniConsecutivi === 1 ? 'giorno' : 'giorni'}</small></>, accent: true },
                 { label: 'Parole in media', value: data.stats.paroleMedia },
                 { label: 'Tema più ricorrente', value: <span style={{ fontSize: 34, paddingTop: 8, display: 'block' }}>{data.stats.temaPiuRicorrente}</span> },
               ]}

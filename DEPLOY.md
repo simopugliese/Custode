@@ -52,12 +52,14 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
-| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: nessun modulo la usa ancora, può restare vuota |
+| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: serve al riassunto del diario (§8.4) |
 
 Il token del tunnel resta commentato finché non arriva la sua fase.
 
 Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
-perde solo il linguaggio libero, e il bot lo dice invece di fallire in silenzio.
+perdono il linguaggio libero (DeepSeek) e il riassunto del diario (Anthropic), e
+il bot lo dice invece di fallire in silenzio. Quello che avevi già raccontato
+resta comunque salvato.
 
 Il bot non parte senza token **e** senza user ID: lo dice nei log e si ferma,
 invece di restare in ascolto con la whitelist vuota.
@@ -102,6 +104,17 @@ comandi, `/nuovo Prova` deve creare un task che compare anche nella dashboard.
 ```bash
 docker compose logs -f bot
 ```
+
+### Provare il diario
+
+Da Telegram, racconta qualcosa della giornata («stamattina biblioteca, capitolo
+3 finalmente chiaro») — il bot risponde «Annotato nel diario di oggi» con un
+bottone per annullare. Poi `/diario` chiude la giornata e propone il riassunto
+scritto da Claude, con Approva / Modifica / Scarta. Solo dopo **Approva** la
+voce compare nella pagina Diario della dashboard.
+
+Se manca `ROUTER_ANTHROPIC_API_KEY`, `/diario` lo dice e il materiale resta
+salvato: si riprova dopo aver messo la chiave, senza aver perso niente.
 
 ### Provare i vocali
 

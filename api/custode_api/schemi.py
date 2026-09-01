@@ -173,6 +173,59 @@ class HomeData(BaseModel):
     speseSettimana: SpeseSettimanaHome | None = None
 
 
+class VoceDiario(BaseModel):
+    id: str
+    dataLabel: str
+    # 'da_approvare' | 'approvata' | 'assente'
+    stato: str
+    approvataAlleLabel: str | None = None
+    testo: str | None = None
+    tag: list[str]
+    fonteLabel: str | None = None
+
+
+class TemaRicorrente(BaseModel):
+    nome: str
+    occorrenze: int
+    quota: float
+
+
+class StatsDiario(BaseModel):
+    vociDelMese: int
+    giorniConsecutivi: int
+    paroleMedia: int
+    temaPiuRicorrente: str
+
+
+class RiepilogoDiario(BaseModel):
+    label: str
+    testo: str
+    generatoLabel: str
+
+
+class RiepilogoMensile(BaseModel):
+    label: str
+    testo: str
+
+
+class DiarioData(BaseModel):
+    periodoLabel: str
+    titolo: str
+    vociApprovate: int
+    giorniTotali: int
+    vociInAttesa: int
+    stats: StatsDiario
+    voci: list[VoceDiario]
+    altreVociVecchie: int
+    # I riepiloghi li scrive il job settimanale in worker/ (§8.4): finché non
+    # esiste restano assenti, e la dashboard non disegna quei due blocchi.
+    riepilogoSettimanale: RiepilogoDiario | None = None
+    riepilogoMensile: RiepilogoMensile | None = None
+    temiDelMese: list[TemaRicorrente]
+    coperturaMese: list[bool]
+    coperturaNota: str
+
+
 # — corpi delle richieste —
 
 

@@ -18,11 +18,14 @@ from html import escape
 
 from custode_bot import azioni
 from custode_bot.azioni import Vista
+from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
-from custode_core.formato import etichetta_scadenza, plurale
+from custode_core.formato import etichetta_giorno_voce, etichetta_scadenza, plurale
 from custode_router import Router
 from custode_router import assistente as dom_assistente
+from custode_router import diario as router_diario
+from custode_router.errori import ErroreRouter
 
 # I bottoni di Telegram vanno a capo male: meglio un titolo tagliato che una
 # riga di bottoni illeggibile.
@@ -72,10 +75,14 @@ def aiuto() -> Risposta:
             "/lista — la lista della spesa\n"
             "/aggiungi &lt;voce&gt; — aggiungi alla lista\n"
             "/svuota — togli dalla lista le voci già prese\n"
+            "/diario — chiudi la giornata e leggi il riassunto da approvare\n"
             "/aiuto — questo messaggio\n\n"
             "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
             "chiamare l'officina», «sto finendo il latte», «fatto la bolletta». "
-            "Eseguo subito e ti lascio un bottone per annullare.</i>"
+            "Eseguo subito e ti lascio un bottone per annullare.</i>\n\n"
+            "<i>Quello che mi racconti — com'è andata, cosa pensi, come stai — "
+            "lo metto da parte per il diario di oggi. A fine giornata /diario "
+            "te ne propone il riassunto: entra nel diario solo se lo approvi.</i>"
         )
     )
 
@@ -205,7 +212,12 @@ def chiedi_svuota(conn: sqlite3.Connection) -> Risposta:
 
 
 def messaggio_libero(
-    conn: sqlite3.Connection, ora: datetime, testo: str, router: Router
+    conn: sqlite3.Connection,
+    ora: datetime,
+    testo: str,
+    router: Router,
+    *,
+    da_vocale: bool = False,
 ) -> Risposta:
     """Testo (o vocale trascritto) in linguaggio libero → azione (§8.1, §6).
 
@@ -213,20 +225,154 @@ def messaggio_libero(
     per tornare indietro: l'interpretazione è automatica, quindi disfare deve
     costare un tap e non una caccia al task creato per sbaglio.
     """
-    esito = dom_assistente.interpreta_ed_esegui(conn, ora, testo, router)
+    # Se una bozza di diario sta aspettando la tua riscrittura, questo messaggio
+    # è la riscrittura: si prende alla lettera, senza passare dal modello (§8.4).
+    # Il testo che entra nel diario resta così esattamente il tuo.
+    attesa = dom_diario.in_modifica(conn)
+    if attesa is not None:
+        return _riscrivi_diario(conn, ora, attesa, testo)
+
+    esito = dom_assistente.interpreta_ed_esegui(conn, ora, testo, router, da_vocale=da_vocale)
 
     bottoni: list[list[Bottone]] = []
-    identificatore = esito.task_id if esito.task_id is not None else esito.voce_id
-    if esito.ha_cambiato_qualcosa and identificatore is not None:
+    if esito.ha_cambiato_qualcosa and esito.identificatore is not None:
         bottoni = [
             [
                 Bottone(
                     "Annulla",
-                    azioni.annulla(esito.azione.value, identificatore, esito.giorni),
+                    azioni.annulla(esito.azione.value, esito.identificatore, esito.giorni),
                 )
             ]
         ]
     return Risposta(testo=escape(esito.testo), bottoni=bottoni)
+
+
+# — diario (§8.4) —————————————————————————————————————
+
+
+def _testo_bozza(voce: dom_diario.Voce, riassunto: str) -> str:
+    righe = [
+        f"<b>{escape(etichetta_giorno_voce(voce.giorno))}</b>",
+        "",
+        escape(riassunto),
+    ]
+    if voce.tag:
+        righe += ["", "<i>" + escape(" · ".join(voce.tag)) + "</i>"]
+    righe += ["", "<i>Entra nel diario solo se lo approvi.</i>"]
+    return "\n".join(righe)
+
+
+def _bozza(voce: dom_diario.Voce) -> Risposta:
+    """La proposta di Claude, con le tre uscite di §8.4: sì, riscrivi, butta."""
+    return Risposta(
+        testo=_testo_bozza(voce, voce.riassunto_proposto or ""),
+        bottoni=[
+            [
+                Bottone("✓ Approva", azioni.diario("approva", voce.id)),
+                Bottone("✎ Modifica", azioni.diario("modifica", voce.id)),
+            ],
+            [Bottone("Scarta", azioni.diario("scarta", voce.id))],
+        ],
+    )
+
+
+def diario_oggi(conn: sqlite3.Connection, ora: datetime, router: Router) -> Risposta:
+    """`/diario`: chiude la giornata e propone il riassunto da approvare.
+
+    La chiusura è esplicita e non automatica: il riassunto costa una chiamata a
+    Claude (§6), e rigenerarlo ad ogni frase sarebbe spesa buttata — oltre che
+    inutile, visto che la giornata non è finita.
+    """
+    voce = dom_diario.leggi_giorno(conn, ora.date())
+    if voce is None or not voce.ha_materiale:
+        if voce is not None and voce.riassunto_approvato:
+            return Risposta(testo=_testo_approvato(voce))
+        return Risposta(
+            testo=(
+                "Oggi non mi hai ancora raccontato niente.\n\n"
+                "<i>Scrivimi o dettami com'è andata: metto tutto da parte e poi "
+                "/diario te ne propone il riassunto.</i>"
+            )
+        )
+
+    # Giornata già chiusa e nessun materiale nuovo dopo: si rilegge e basta.
+    # Rigenerare qui sarebbe una chiamata a Claude per riscrivere una cosa già
+    # decisa, e per giunta riaprirebbe una giornata che avevi chiuso. Quando
+    # arriva materiale nuovo lo stato torna da solo a `in_raccolta`, e il
+    # riassunto si rifà passando per il ramo qui sotto.
+    if voce.stato is dom_diario.Stato.APPROVATA:
+        return Risposta(testo=_testo_approvato(voce))
+
+    if voce.stato is dom_diario.Stato.DA_APPROVARE and voce.riassunto_proposto:
+        return _bozza(voce)
+    if voce.stato is dom_diario.Stato.IN_MODIFICA:
+        return _chiedi_riscrittura(voce)
+
+    try:
+        riassunto = router_diario.riassumi(
+            router,
+            giorno=voce.giorno,
+            grezzo=voce.grezzo,
+            precedente=voce.riassunto_approvato,
+        )
+    except ErroreRouter as errore:
+        # Il materiale resta salvato: si riprova con un altro /diario, e nel
+        # frattempo non si è perso niente di ciò che era stato raccontato.
+        return Risposta(testo=escape(router_diario.messaggio_errore(errore)))
+
+    aggiornata = dom_diario.proponi(conn, voce.id, riassunto=riassunto.testo, tag=riassunto.tag)
+    return _bozza(aggiornata)
+
+
+def _testo_approvato(voce: dom_diario.Voce) -> str:
+    righe = [
+        f"<b>{escape(etichetta_giorno_voce(voce.giorno))}</b> — già nel diario",
+        "",
+        escape(voce.riassunto_approvato or ""),
+    ]
+    if voce.tag:
+        righe += ["", "<i>" + escape(" · ".join(voce.tag)) + "</i>"]
+    return "\n".join(righe)
+
+
+def _chiedi_riscrittura(voce: dom_diario.Voce) -> Risposta:
+    return Risposta(
+        testo=(
+            "Mandami la voce come la vuoi tu: il prossimo messaggio "
+            "(scritto o dettato) diventa il diario di "
+            f"<b>{escape(etichetta_giorno_voce(voce.giorno))}</b>, parola per parola."
+        ),
+        bottoni=[[Bottone("Lascia la bozza", azioni.diario("annmod", voce.id))]],
+    )
+
+
+def _riscrivi_diario(
+    conn: sqlite3.Connection, ora: datetime, voce: dom_diario.Voce, testo: str
+) -> Risposta:
+    pulito = testo.strip()
+    if not pulito:
+        return _chiedi_riscrittura(voce)
+    approvata = dom_diario.approva(conn, voce.id, ora, testo=pulito)
+    return Risposta(testo=_testo_approvato(approvata))
+
+
+def _azione_diario(conn: sqlite3.Connection, ora: datetime, nome: str, voce_id: int) -> Risposta:
+    if nome == "approva":
+        voce = dom_diario.approva(conn, voce_id, ora)
+        return Risposta(testo=_testo_approvato(voce))
+    if nome == "modifica":
+        return _chiedi_riscrittura(dom_diario.chiedi_modifica(conn, voce_id))
+    if nome == "annmod":
+        return _bozza(dom_diario.annulla_modifica(conn, voce_id))
+    if nome == "scarta":
+        dom_diario.scarta(conn, voce_id)
+        return Risposta(
+            testo=(
+                "Buttata via, materiale compreso: di questa giornata non resta "
+                "niente nel diario."
+            )
+        )
+    return Risposta(testo="Questo bottone non è più valido.")
 
 
 def _dopo_azione(conn: sqlite3.Connection, ora: datetime, vista: Vista) -> Risposta:
@@ -257,6 +403,8 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
             return _imposta_scadenza(conn, ora, int(azione.argomento), azione.nome[3:])
         elif azione.dominio == "s" and azione.nome == "preso":
             dom_lista.imposta_preso(conn, int(azione.argomento), True, ora)
+        elif azione.dominio == "d":
+            return _azione_diario(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "x" and azione.nome == "annulla":
             return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":
@@ -264,7 +412,7 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
                 dom_lista.svuota_presi(conn)
         else:
             return Risposta(testo="Questo bottone non è più valido.")
-    except (dom_task.TaskInesistente, dom_lista.VoceInesistente):
+    except (dom_task.TaskInesistente, dom_lista.VoceInesistente, dom_diario.VoceInesistente):
         # Capita col messaggio vecchio in cronologia, dopo aver cancellato la riga.
         return Risposta(testo="Quella voce non esiste più.")
     except ValueError:

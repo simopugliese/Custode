@@ -20,7 +20,7 @@ from html import escape
 from typing import Any
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ParseMode
+from telegram.constants import ChatAction, ParseMode
 from telegram.error import BadRequest
 from telegram.ext import (
     Application,
@@ -51,6 +51,7 @@ COMANDI = [
     BotCommand("lista", "La lista della spesa"),
     BotCommand("aggiungi", "Aggiungi alla lista della spesa"),
     BotCommand("svuota", "Togli dalla lista le voci già prese"),
+    BotCommand("diario", "Chiudi la giornata e leggi il riassunto"),
     BotCommand("aiuto", "Cosa so fare"),
 ]
 
@@ -119,6 +120,17 @@ def crea_applicazione(
     async def cmd_svuota(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         with connessione() as conn:
             risposta = risposte.chiedi_svuota(conn)
+        await _rispondi(update, risposta)
+
+    async def cmd_diario(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        """Chiude la giornata (§8.4). Può volerci qualche secondo: è Claude."""
+        messaggio = update.effective_message
+        if messaggio is not None:
+            # Il riassunto passa da Claude e non è istantaneo: senza un segnale
+            # sembra che il comando sia caduto nel vuoto.
+            await messaggio.reply_chat_action(ChatAction.TYPING)
+        with connessione() as conn:
+            risposta = risposte.diario_oggi(conn, ora(), instradatore)
         await _rispondi(update, risposta)
 
     async def su_bottone(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
@@ -190,7 +202,7 @@ def crea_applicazione(
             return
 
         with connessione() as conn:
-            risposta = risposte.messaggio_libero(conn, ora(), testo, instradatore)
+            risposta = risposte.messaggio_libero(conn, ora(), testo, instradatore, da_vocale=True)
         # Si rimanda anche la trascrizione: se il modello ha capito male, si
         # vede subito se la colpa è di whisper o dell'interpretazione.
         await _rispondi(
@@ -249,6 +261,7 @@ def crea_applicazione(
         CommandHandler("aggiungi", comando(risposte.aggiungi_voce), filters=solo_io)
     )
     applicazione.add_handler(CommandHandler("svuota", cmd_svuota, filters=solo_io))
+    applicazione.add_handler(CommandHandler("diario", cmd_diario, filters=solo_io))
 
     async def su_errore(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.exception("errore non gestito", exc_info=context.error)
