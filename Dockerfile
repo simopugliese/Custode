@@ -29,6 +29,7 @@ COPY bot/ bot/
 COPY README.md .
 COPY router/ router/
 COPY whisper/ whisper/
+COPY worker/ worker/
 RUN uv sync --frozen --no-dev
 
 # Utente non-root (§9), proprietario di /data così può scrivere sul volume.
@@ -63,6 +64,20 @@ RUN chown -R custode:custode /opt/venv
 USER custode
 
 CMD ["python", "-m", "custode_bot.main"]
+
+
+# — worker: i job schedulati (§5, §8.4) ————————————————————
+# Nessuna porta esposta: il worker parla col database e con Telegram, e verso
+# Telegram è lui a chiamare. Gli basta l'extra `router` (Claude per il riepilogo
+# settimanale) più `worker` (httpx per mandare il messaggio): `python-telegram-bot`
+# resta fuori, perché qui si spedisce e basta — i tap sui bottoni li riceve il bot.
+FROM base AS worker
+
+RUN uv sync --frozen --no-dev --extra router --extra worker
+RUN chown -R custode:custode /opt/venv
+USER custode
+
+CMD ["python", "-m", "custode_worker.main"]
 
 
 # — whisper: trascrizione locale (§4, §13) ————————————————

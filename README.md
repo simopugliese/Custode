@@ -17,7 +17,7 @@ cartella puntano lì.
 /bot          bot Telegram: comandi, linguaggio libero, vocali, whitelist
 /router       scelta del modello DeepSeek / Claude (§6) e interprete
 /whisper      trascrizione vocale locale (container a sé, §4 e §13)
-/worker       job schedulati: scadenze, riepiloghi, backup   — da fare
+/worker       job schedulati: riepilogo settimanale del diario (§8.4)
 /core         codice condiviso: configurazione, SQLite, dominio
 /dashboard    frontend React + Vite (deploy su Cloudflare Pages)
 /tests        unit + integration test
@@ -38,7 +38,8 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Bot Telegram: comandi, whitelist, task e lista della spesa | fatto |
 | Router DeepSeek/Claude + Whisper: linguaggio libero e vocali | fatto |
 | Diario: racconto → riassunto Claude → approvazione (§8.4) | fatto |
-| Diario: canale passivo e job settimanale del profilo (§8.4) | prossimo |
+| Canale passivo, profilo versionato, job settimanale (§8.4) | fatto |
+| Spese (§8.5) | prossimo |
 | Spese, abitudini, calendario, corsi, meteo, digest | da fare |
 
 Home, Task, Lista della spesa e Diario mostrano dati veri, letti e scritti su
@@ -53,6 +54,12 @@ Quello che racconti della giornata («capitolo 3 finalmente chiaro», «che pall
 il frontend») Custode lo mette da parte per il diario; `/diario` chiude la
 giornata e ti propone il riassunto scritto da Claude, che entra nel diario solo
 se lo approvi — o riscritto con parole tue, se preferisci.
+
+In parallelo, ogni messaggio passa da un controllo leggero che cerca i segnali
+utili a descrivere come sei fatto. Una volta a settimana il worker ti manda il
+riepilogo dei giorni scritti e l'elenco di quei segnali: butti quelli sbagliati
+e Claude riscrive il tuo profilo — che si **riscrive**, non si accoda, e resta
+versionato con un bottone per tornare indietro. `/profilo` lo mostra.
 
 ## Sviluppo locale
 

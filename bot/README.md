@@ -37,6 +37,7 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/aggiungi <voce>` | Aggiunge alla lista della spesa |
 | `/svuota` | Toglie le voci già prese, previa conferma |
 | `/diario` | Chiude la giornata e propone il riassunto da approvare |
+| `/profilo` | Cosa Custode ha capito di te, e quanti segnali sono in attesa |
 | `/aiuto` | L'elenco qui sopra |
 
 Oltre ai comandi il bot capisce il **linguaggio libero**, scritto o dettato:
@@ -74,6 +75,26 @@ resta sul disco**: si riprova più tardi senza aver perso niente.
 Lo stato «sto aspettando la tua riscrittura» sta sul database, non nella memoria
 del processo: se il bot riparte a metà, la conversazione riprende da dov'era
 invece di scambiare la riscrittura per una frase qualsiasi.
+
+## Il profilo (§8.4)
+
+Oltre al diario, ogni messaggio passa da un controllo leggero: c'è qui dentro
+qualcosa che descrive **come sei fatto** e che tornerà utile fra mesi? Viaggia
+nella stessa risposta del modello che interpreta il messaggio, quindi non costa
+una chiamata in più.
+
+- Segnale **chiaro** → messo da parte in silenzio, nessuna interruzione.
+- Segnale **ambiguo** (uno sfogo o una preferenza vera?) → il bot te lo chiede,
+  attaccando la domanda alla risposta che stava già dando, con due bottoni. Una
+  domanda alla volta: se ce n'è già una in sospeso, il segnale nuovo aspetta la
+  revisione invece di aprirne una seconda.
+
+Una volta a settimana il worker (§5) manda il riepilogo dei giorni scritti e
+l'elenco dei segnali raccolti. Si lavora **per sottrazione**: butti quelli che
+non ti rappresentano, poi «Aggiorna il profilo» e Claude lo riscrive da capo
+fondendolo col vecchio. La nuova versione arriva con l'elenco di cosa è
+cambiato e un bottone «Torna alla precedente» — e tornando indietro i segnali
+non si perdono, rientrano nella rifusione successiva.
 
 Le scadenze del comando `/nuovo` si scelgono con dei bottoni (oggi / domani /
 fra una settimana / senza scadenza) invece di essere lette da una frase: quattro
