@@ -71,7 +71,8 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
 /repo
   /bot            # logica Telegram
   /api            # FastAPI backend
-  /router         # logica di scelta DeepSeek/Claude
+  /router         # logica di scelta DeepSeek/Claude + interprete del testo libero
+  /whisper        # trascrizione vocale locale (servizio a sé, §13)
   /worker         # job schedulati (riepilogo settimanale, backup, reminder)
   /core           # codice condiviso: configurazione, accesso SQLite, dominio
   /dashboard      # frontend (build separata, deploy su Pages)
@@ -79,7 +80,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
   /.github/workflows  # CI: lint + test ad ogni push
   pyproject.toml  # dipendenze Python di tutti i servizi
   uv.lock         # versioni bloccate (installazioni riproducibili)
-  Dockerfile      # multi-stage: un target per servizio (api, bot) + test
+  Dockerfile      # multi-stage: un target per servizio (api, bot, whisper) + test
   docker-compose.yml
   docker-compose.test.yml
   .env.example    # SOLO placeholder, mai valori reali
@@ -96,6 +97,9 @@ Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale.
 - `/core` non era nell'elenco iniziale. È stato aggiunto perché api, bot, router e worker hanno bisogno della stessa configurazione e dello stesso schema §7: l'alternativa era duplicarli in quattro punti destinati a divergere. Dentro ogni cartella vive un pacchetto Python con prefisso `custode_` (`core/custode_core`, `api/custode_api`, …) per avere import non ambigui.
 - Le dipendenze Python sono gestite con **uv** e un `uv.lock` unico per tutti i servizi: un lockfile vero serve alla riproducibilità richiesta in §1, e su Pi 5 arm64 le installazioni restano veloci.
 - L'API espone `GET /api/health`, che risponde 503 se SQLite non è raggiungibile: è il segnale su cui lo smoke test post-deploy di §10 fa scattare il rollback.
+- Un solo `Dockerfile` multi-stage con un target per servizio, invece di un Dockerfile per cartella: Python, uv e le dipendenze comuni restano pinnati in un posto solo. Ogni dipendenza di servizio è un extra di `pyproject.toml` (`bot`, `router`, `whisper`) e ogni target installa solo il suo, così l'immagine dell'API non si porta dietro python-telegram-bot.
+- Le migrazioni dello schema girano all'avvio di ogni servizio, dentro un'unica transazione aperta con `BEGIN IMMEDIATE`: API e bot partono in parallelo sullo stesso file SQLite, e chi arriva secondo trova il registro già aggiornato invece di riapplicare tutto.
+- Il modello non tocca mai il database: l'interprete di §6 gli chiede solo un'*intenzione strutturata*, che il codice traduce in chiamate ai servizi di dominio. Un modello che sbaglia può quindi far fare a Custode una cosa sbagliata fra quelle previste, mai una cosa non prevista.
 
 ## 6. Router DeepSeek / Claude
 
@@ -118,6 +122,8 @@ Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale.
 | Digest mattutino (meteo + calendario + task del giorno) | DeepSeek | composizione/template, nessun ragionamento complesso |
 | Report narrativo settimanale/mensile abitudini | **Claude** | sintesi che incrocia più segnali (abitudini, diario, spese) |
 | (futuro) Riassunto email | **Claude** | contenuto sensibile, serve qualità e un solo fornitore fidato |
+
+**Stato attuale.** La tabella è codificata per intero in `router/custode_router/compiti.py`, motivi compresi, e chi chiama nomina il *compito*, mai il modello. Oggi passano di qui solo il parsing della lista della spesa e il CRUD dei task, entrambi su DeepSeek; per gli altri compiti il provider è deciso e il client pronto, ma nessun modulo li chiama ancora. L'unica riga non implementata è **la lettura degli scontrini**, che richiede di mandare un'immagine al modello: arriverà col modulo spese (§8.5).
 
 ## 7. Schema dati (bozza)
 
@@ -152,7 +158,7 @@ lezioni_log(id, corso_id, data, seguita, appunti_presi)
 ### 8.1 Bot Telegram (testo + voce)
 Funziona identico via testo o audio. L'audio passa da Whisper locale → testo → stessa pipeline del testo. Nessuna differenza di funzionalità tra le due modalità, solo di input.
 
-**Stato attuale.** Il bot esiste e copre task e lista della spesa (§8.2, §8.3) con comandi espliciti e bottoni inline, in long polling e con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Il linguaggio naturale e i vocali arrivano col router (§6) e Whisper: si aggiungeranno sopra i comandi, non al loro posto. Le scadenze si scelgono con dei bottoni proprio perché senza il router una data scritta a parole non è interpretabile in modo affidabile.
+**Stato attuale.** Il bot copre task e lista della spesa (§8.2, §8.3) in tre modi che convivono: comandi espliciti con bottoni inline, testo libero interpretato dal router (§6), e vocali trascritti da Whisper locale che imboccano lo stesso percorso del testo. Gira in long polling, con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Ogni azione decisa da un modello lascia un bottone «Annulla»: l'interpretazione è automatica, quindi disfare deve costare un tap.
 
 **Colonne aggiunte alla bozza, costruendo i moduli** (le migrazioni reali sono in `core/custode_core/migrazioni/`):
 - `tasks.origine` — dashboard, Telegram, piano di ripasso o regola di contesto: serve a raggruppare i task per provenienza e a etichettare la riga ("da piano di ripasso", §8.11).

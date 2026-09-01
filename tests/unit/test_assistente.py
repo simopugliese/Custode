@@ -1,0 +1,280 @@
+"""Dal testo libero all'azione: la parte che decide cosa succede davvero.
+
+Il modello è sostituito da un router finto che restituisce l'intenzione voluta:
+qui si verifica ciò che sta *sotto* il modello — che un'intenzione diventi
+l'azione giusta sul database, e che un'intenzione storta non combini danni.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from datetime import date, datetime, timedelta
+from typing import Any
+
+import pytest
+
+from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import task as dom_task
+from custode_router import assistente
+from custode_router.assistente import Azione
+from custode_router.errori import ProviderNonConfigurato, ProviderNonRaggiungibile
+
+
+class RouterFinto:
+    """Al posto del modello: risponde ciò che gli si dice, e registra il prompt."""
+
+    def __init__(self, risposta: dict[str, Any] | None = None, errore: Exception | None = None):
+        self.risposta = risposta or {"azione": "nessuna"}
+        self.errore = errore
+        self.chiamate: list[dict[str, Any]] = []
+
+    def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
+        self.chiamate.append({"compito": compito, **kwargs})
+        if self.errore is not None:
+            raise self.errore
+        return self.risposta
+
+
+def _esegui(
+    conn: sqlite3.Connection, ora: datetime, testo: str, risposta: dict[str, Any]
+) -> assistente.Esito:
+    router = RouterFinto(risposta)
+    return assistente.interpreta_ed_esegui(conn, ora, testo, router)  # type: ignore[arg-type]
+
+
+# — il contesto passato al modello —
+
+
+def test_il_prompt_contiene_quello_che_esiste_gia(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Senza l'elenco, «ho fatto la bolletta» non potrebbe agganciare nulla."""
+    dom_task.crea(conn, titolo="Pagare la bolletta", ora=ora)
+    dom_lista.aggiungi(conn, nome="latte", ora=ora, reparto="Latticini")
+
+    router = RouterFinto()
+    assistente.interpreta(conn, ora, "ciao", router)  # type: ignore[arg-type]
+
+    (chiamata,) = router.chiamate
+    assert "Pagare la bolletta" in chiamata["utente"]
+    assert "latte" in chiamata["utente"]
+    assert "Latticini" in chiamata["utente"]
+    assert ora.date().isoformat() in chiamata["utente"]
+    assert "ciao" in chiamata["utente"]
+
+
+# — le azioni —
+
+
+def test_aggiungi_task(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "ricordami di chiamare l'officina domani",
+        {"azione": "aggiungi_task", "titolo": "Chiamare l'officina", "scadenza": "2026-09-01"},
+    )
+    creati = dom_task.elenco(conn)
+    assert [t.titolo for t in creati] == ["Chiamare l'officina"]
+    assert creati[0].scadenza == date(2026, 9, 1)
+    assert creati[0].origine == "telegram"
+    assert esito.azione is Azione.AGGIUNGI_TASK
+    assert "domani" in esito.testo
+
+
+def test_aggiungi_task_senza_titolo_non_crea_niente(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(conn, ora, "boh", {"azione": "aggiungi_task", "titolo": ""})
+    assert dom_task.elenco(conn) == []
+    assert not esito.ha_cambiato_qualcosa
+
+
+def test_una_scadenza_malformata_non_perde_il_task(conn: sqlite3.Connection, ora: datetime) -> None:
+    # Meglio un task senza scadenza che nessun task.
+    esito = _esegui(
+        conn,
+        ora,
+        "x",
+        {"azione": "aggiungi_task", "titolo": "Cosa", "scadenza": "prossima settimana"},
+    )
+    assert esito.azione is Azione.AGGIUNGI_TASK
+    assert dom_task.elenco(conn)[0].scadenza is None
+
+
+def test_completa_task(conn: sqlite3.Connection, ora: datetime) -> None:
+    task = dom_task.crea(conn, titolo="Pagare la bolletta", ora=ora)
+    esito = _esegui(
+        conn,
+        ora,
+        "fatto la bolletta",
+        {"azione": "completa_task", "riferimento": "Pagare la bolletta"},
+    )
+    assert dom_task.leggi(conn, task.id).fatto is True
+    assert esito.task_id == task.id
+
+
+def test_completa_task_con_riferimento_abbreviato(conn: sqlite3.Connection, ora: datetime) -> None:
+    task = dom_task.crea(conn, titolo="Pagare la bolletta della luce", ora=ora)
+    _esegui(conn, ora, "x", {"azione": "completa_task", "riferimento": "bolletta"})
+    assert dom_task.leggi(conn, task.id).fatto is True
+
+
+def test_un_riferimento_ambiguo_non_chiude_niente(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Fra due task che combaciano si preferisce non fare nulla che indovinare."""
+    primo = dom_task.crea(conn, titolo="Pagare la bolletta della luce", ora=ora)
+    secondo = dom_task.crea(conn, titolo="Pagare la bolletta del gas", ora=ora)
+
+    esito = _esegui(conn, ora, "x", {"azione": "completa_task", "riferimento": "bolletta"})
+
+    assert dom_task.leggi(conn, primo.id).fatto is False
+    assert dom_task.leggi(conn, secondo.id).fatto is False
+    assert not esito.ha_cambiato_qualcosa
+    assert "Non ho trovato" in esito.testo
+
+
+def test_un_riferimento_inventato_non_chiude_niente(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    dom_task.crea(conn, titolo="Pagare la bolletta", ora=ora)
+    esito = _esegui(
+        conn, ora, "x", {"azione": "completa_task", "riferimento": "portare fuori il cane"}
+    )
+    assert dom_task.elenco(conn, fatto=True) == []
+    assert not esito.ha_cambiato_qualcosa
+
+
+def test_rinvia_task(conn: sqlite3.Connection, ora: datetime) -> None:
+    task = dom_task.crea(conn, titolo="Dentista", ora=ora, scadenza=ora.date())
+    esito = _esegui(
+        conn,
+        ora,
+        "rimanda il dentista di tre giorni",
+        {"azione": "rinvia_task", "riferimento": "Dentista", "giorni": 3},
+    )
+    aggiornato = dom_task.leggi(conn, task.id)
+    assert aggiornato.scadenza == ora.date() + timedelta(days=3)
+    assert aggiornato.rinvii == 1
+    assert esito.giorni == 3
+
+
+def test_aggiungi_voce_spesa(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "sto finendo il latte",
+        {
+            "azione": "aggiungi_voce_spesa",
+            "titolo": "latte",
+            "quantita": "1 L",
+            "reparto": "Latticini",
+        },
+    )
+    (voce,) = dom_lista.elenco(conn)
+    assert (voce.nome, voce.quantita, voce.reparto) == ("latte", "1 L", "Latticini")
+    assert esito.voce_id == voce.id
+
+
+def test_aggiungere_due_volte_lo_dice(conn: sqlite3.Connection, ora: datetime) -> None:
+    payload = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+    _esegui(conn, ora, "x", payload)
+    esito = _esegui(conn, ora, "x", payload)
+    assert "era già in lista" in esito.testo
+    assert len(dom_lista.elenco(conn)) == 1
+
+
+def test_segna_voce_presa(conn: sqlite3.Connection, ora: datetime) -> None:
+    voce = dom_lista.aggiungi(conn, nome="mele", ora=ora)
+    _esegui(conn, ora, "ho preso le mele", {"azione": "segna_voce_presa", "riferimento": "mele"})
+    assert dom_lista.leggi(conn, voce.id).preso is True
+
+
+def test_azione_nessuna_non_tocca_niente(conn: sqlite3.Connection, ora: datetime) -> None:
+    dom_task.crea(conn, titolo="Qualcosa", ora=ora)
+    esito = _esegui(conn, ora, "ciao come va", {"azione": "nessuna"})
+    assert not esito.ha_cambiato_qualcosa
+    assert dom_task.elenco(conn, fatto=True) == []
+
+
+@pytest.mark.parametrize("payload", [{}, {"azione": "cancella_tutto"}, {"azione": None}])
+def test_un_azione_inventata_dal_modello_non_fa_niente(
+    conn: sqlite3.Connection, ora: datetime, payload: dict[str, Any]
+) -> None:
+    """Il modello non tocca il database: al massimo chiede una cosa non prevista."""
+    dom_task.crea(conn, titolo="Qualcosa", ora=ora)
+    esito = _esegui(conn, ora, "x", payload)
+    assert not esito.ha_cambiato_qualcosa
+    assert len(dom_task.elenco(conn)) == 1
+
+
+def test_messaggio_vuoto(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(conn, ora, "   ", {"azione": "aggiungi_task", "titolo": "x"})
+    assert not esito.ha_cambiato_qualcosa
+    assert dom_task.elenco(conn) == []
+
+
+# — errori del router, tradotti in frasi comprensibili —
+
+
+def test_senza_chiave_lo_dice(conn: sqlite3.Connection, ora: datetime) -> None:
+    router = RouterFinto(errore=ProviderNonConfigurato("manca la chiave"))
+    esito = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
+    assert "non è ancora configurato" in esito.testo
+    assert not esito.ha_cambiato_qualcosa
+
+
+def test_provider_giu_invita_a_riprovare(conn: sqlite3.Connection, ora: datetime) -> None:
+    router = RouterFinto(errore=ProviderNonRaggiungibile("timeout"))
+    esito = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
+    assert "Riprova" in esito.testo
+
+
+# — annullamento —
+
+
+def test_annulla_una_creazione(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(conn, ora, "x", {"azione": "aggiungi_task", "titolo": "Sbagliato"})
+    assert esito.task_id is not None
+
+    testo = assistente.annulla(conn, ora, Azione.AGGIUNGI_TASK, identificatore=esito.task_id)
+    assert dom_task.elenco(conn) == []
+    assert "Sbagliato" in testo
+
+
+def test_annulla_una_chiusura(conn: sqlite3.Connection, ora: datetime) -> None:
+    task = dom_task.crea(conn, titolo="Bolletta", ora=ora)
+    _esegui(conn, ora, "x", {"azione": "completa_task", "riferimento": "Bolletta"})
+
+    assistente.annulla(conn, ora, Azione.COMPLETA_TASK, identificatore=task.id)
+    riaperto = dom_task.leggi(conn, task.id)
+    assert riaperto.fatto is False
+    assert riaperto.completato_il is None
+
+
+def test_annulla_un_rinvio_scala_anche_il_contatore(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    task = dom_task.crea(conn, titolo="Dentista", ora=ora, scadenza=ora.date())
+    _esegui(conn, ora, "x", {"azione": "rinvia_task", "riferimento": "Dentista", "giorni": 2})
+
+    assistente.annulla(conn, ora, Azione.RINVIA_TASK, identificatore=task.id, giorni=2)
+    tornato = dom_task.leggi(conn, task.id)
+    assert tornato.scadenza == ora.date()
+    # Un rinvio annullato non deve restare scritto nella storia del task.
+    assert tornato.rinvii == 0
+
+
+def test_annulla_un_aggiunta_alla_lista(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(conn, ora, "x", {"azione": "aggiungi_voce_spesa", "titolo": "capperi"})
+    assert esito.voce_id is not None
+    assistente.annulla(conn, ora, Azione.AGGIUNGI_SPESA, identificatore=esito.voce_id)
+    assert dom_lista.elenco(conn) == []
+
+
+def test_annulla_una_spunta(conn: sqlite3.Connection, ora: datetime) -> None:
+    voce = dom_lista.aggiungi(conn, nome="mele", ora=ora)
+    dom_lista.imposta_preso(conn, voce.id, True, ora)
+    assistente.annulla(conn, ora, Azione.SEGNA_PRESO, identificatore=voce.id)
+    assert dom_lista.leggi(conn, voce.id).preso is False
+
+
+def test_annullare_qualcosa_che_non_c_e_piu(conn: sqlite3.Connection, ora: datetime) -> None:
+    testo = assistente.annulla(conn, ora, Azione.AGGIUNGI_TASK, identificatore=999)
+    assert "non esiste più" in testo

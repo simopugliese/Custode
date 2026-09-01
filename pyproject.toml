@@ -20,6 +20,13 @@ dependencies = [
 bot = [
     "python-telegram-bot==22.8",
 ]
+router = [
+    "anthropic==1.2.0",
+    "httpx==0.28.1",
+]
+whisper = [
+    "python-multipart==0.0.32",
+]
 
 [dependency-groups]
 # Strumenti di sviluppo/CI: lint, type check, test. Non finiscono nell'immagine
@@ -45,6 +52,8 @@ packages = [
     "core/custode_core",
     "api/custode_api",
     "bot/custode_bot",
+    "router/custode_router",
+    "whisper/custode_whisper",
 ]
 
 [tool.uv]
@@ -67,7 +76,7 @@ markers = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "bot", "tests"]
+files = ["core", "api", "bot", "router", "whisper", "tests"]
 
 [tool.ruff.lint.isort]
 # Senza questo isort tratterebbe i pacchetti del repo come librerie di terze
@@ -77,6 +86,7 @@ known-first-party = [
     "custode_api",
     "custode_bot",
     "custode_router",
+    "custode_whisper",
     "custode_worker",
 ]
 

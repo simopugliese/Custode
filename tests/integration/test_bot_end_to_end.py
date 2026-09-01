@@ -14,15 +14,17 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from telegram import Bot, CallbackQuery, Chat, Message, MessageEntity, Update, User
+from telegram import Bot, CallbackQuery, Chat, Message, MessageEntity, Update, User, Voice
 from telegram.ext import Application
 
 from custode_bot.applicazione import crea_applicazione
 from custode_bot.config import ImpostazioniBot
+from custode_bot.trascrizione import ClientWhisper, TrascrizioneNonRiuscita
 from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
+from custode_router.errori import ProviderNonConfigurato
 
 pytestmark = pytest.mark.integration
 
@@ -69,11 +71,54 @@ def finto() -> BotFinto:
     return BotFinto()
 
 
+class RouterFinto:
+    """Al posto del modello: risponde l'intenzione che gli si dice."""
+
+    def __init__(self) -> None:
+        self.risposta: dict[str, Any] = {"azione": "nessuna"}
+        self.errore: Exception | None = None
+        self.messaggi_visti: list[str] = []
+
+    def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
+        self.messaggi_visti.append(kwargs.get("utente", ""))
+        if self.errore is not None:
+            raise self.errore
+        return self.risposta
+
+
+class WhisperFinto(ClientWhisper):
+    """Al posto del servizio di trascrizione."""
+
+    def __init__(self) -> None:
+        super().__init__("http://whisper-finto")
+        self.testo = "sto finendo il latte"
+        self.errore: Exception | None = None
+        self.audio_ricevuto: list[bytes] = []
+
+    def trascrivi(self, audio: bytes, nome_file: str = "vocale.ogg") -> str:
+        self.audio_ricevuto.append(audio)
+        if self.errore is not None:
+            raise self.errore
+        return self.testo
+
+
 @pytest.fixture
-def app(db_path: Path) -> Application:
+def modello() -> RouterFinto:
+    return RouterFinto()
+
+
+@pytest.fixture
+def whisper() -> WhisperFinto:
+    return WhisperFinto()
+
+
+@pytest.fixture
+def app(db_path: Path, modello: RouterFinto, whisper: WhisperFinto) -> Application:
     applicazione = crea_applicazione(
         Settings(ambiente="test", db_path=db_path),
         ImpostazioniBot(bot_token="123456:FINTO", allowed_user_id=IO),
+        router=modello,  # type: ignore[arg-type]
+        whisper=whisper,
     )
     # `Application.initialize()` chiamerebbe Telegram (getMe) e avvierebbe
     # l'updater: qui serve solo lo smistamento degli aggiornamenti, quindi si
@@ -119,6 +164,40 @@ def _tap(app: Application, finto: BotFinto, dato: str, da: int = IO) -> None:
     if query.message is not None:
         query.message.set_bot(cast(Bot, finto))
     asyncio.run(app.process_update(Update(update_id=2, callback_query=query)))
+
+
+class _FileFinto:
+    def __init__(self, contenuto: bytes):
+        self._contenuto = contenuto
+
+    async def download_as_bytearray(self) -> bytearray:
+        return bytearray(self._contenuto)
+
+
+class _VoceFinta:
+    def __init__(self, contenuto: bytes, durata: int):
+        self.duration = durata
+        self._contenuto = contenuto
+
+    async def get_file(self) -> _FileFinto:
+        return _FileFinto(self._contenuto)
+
+
+def _manda_vocale(
+    app: Application, finto: BotFinto, audio: bytes, da: int = IO, durata: int = 5
+) -> None:
+    messaggio = Message(
+        message_id=1,
+        date=datetime.now(tz=UTC),
+        chat=Chat(id=da, type=Chat.PRIVATE),
+        from_user=User(id=da, first_name="Tizio", is_bot=False),
+        voice=Voice(file_id="f", file_unique_id="u", duration=durata),
+    )
+    messaggio.set_bot(cast(Bot, finto))
+    # Il download passa per l'oggetto Voice: qui lo si sostituisce con uno che
+    # restituisce i byte senza rete.
+    object.__setattr__(messaggio, "voice", _VoceFinta(audio, durata))
+    asyncio.run(app.process_update(Update(update_id=3, message=messaggio)))
 
 
 def test_aiuto(app: Application, finto: BotFinto) -> None:
@@ -188,9 +267,82 @@ def test_svuota_chiede_conferma_prima_di_cancellare(
         assert dom_lista.elenco(conn) == []
 
 
-def test_al_testo_libero_spiega_che_servono_i_comandi(app: Application, finto: BotFinto) -> None:
-    _manda(app, finto, "aggiungi il latte per favore")
-    assert "solo i comandi" in finto.ultimo
+def test_il_testo_libero_passa_dal_modello_ed_esegue(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    modello.risposta = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+
+    _manda(app, finto, "sto finendo il latte")
+
+    assert "Aggiunto alla lista: latte" in finto.ultimo
+    with connessione(db_path) as conn:
+        assert [v.nome for v in dom_lista.elenco(conn)] == ["latte"]
+    # Il modello ha visto il messaggio e il contesto di ciò che esiste già.
+    assert "sto finendo il latte" in modello.messaggi_visti[0]
+
+
+def test_il_testo_libero_lascia_un_bottone_per_annullare(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    """L'interpretazione è automatica: disfare deve costare un tap."""
+    modello.risposta = {"azione": "aggiungi_task", "titolo": "Cosa sbagliata"}
+    _manda(app, finto, "ricordami una cosa sbagliata")
+
+    with connessione(db_path) as conn:
+        task_id = dom_task.elenco(conn)[0].id
+
+    _tap(app, finto, f"x:annulla:aggiungi_task-{task_id}-1:t")
+
+    with connessione(db_path) as conn:
+        assert dom_task.elenco(conn) == []
+    assert "Annullato" in finto.ultimo
+
+
+def test_un_vocale_passa_da_whisper_e_poi_dallo_stesso_percorso(
+    app: Application,
+    finto: BotFinto,
+    modello: RouterFinto,
+    whisper: WhisperFinto,
+    db_path: Path,
+) -> None:
+    """§8.1: via voce non cambia niente, cambia solo l'ingresso."""
+    whisper.testo = "sto finendo il latte"
+    modello.risposta = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+
+    _manda_vocale(app, finto, b"OggS-finto")
+
+    assert whisper.audio_ricevuto == [b"OggS-finto"]
+    # Si rimanda anche la trascrizione, per capire di chi è la colpa se sbaglia.
+    assert "sto finendo il latte" in finto.ultimo
+    assert "Aggiunto alla lista: latte" in finto.ultimo
+    with connessione(db_path) as conn:
+        assert [v.nome for v in dom_lista.elenco(conn)] == ["latte"]
+
+
+def test_un_vocale_che_non_si_capisce(
+    app: Application, finto: BotFinto, whisper: WhisperFinto, db_path: Path
+) -> None:
+    whisper.errore = TrascrizioneNonRiuscita("audio incomprensibile")
+    _manda_vocale(app, finto, b"rumore")
+    assert "Non sono riuscito a trascrivere" in finto.ultimo
+    with connessione(db_path) as conn:
+        assert dom_lista.elenco(conn) == []
+
+
+def test_un_vocale_troppo_lungo_non_viene_nemmeno_scaricato(
+    app: Application, finto: BotFinto, whisper: WhisperFinto
+) -> None:
+    _manda_vocale(app, finto, b"lunghissimo", durata=9999)
+    assert "troppo lungo" in finto.ultimo
+    assert whisper.audio_ricevuto == []
+
+
+def test_senza_chiave_del_modello_lo_dice(
+    app: Application, finto: BotFinto, modello: RouterFinto
+) -> None:
+    modello.errore = ProviderNonConfigurato("manca la chiave")
+    _manda(app, finto, "aggiungi il latte")
+    assert "non è ancora configurato" in finto.ultimo
 
 
 def test_a_un_estraneo_il_bot_non_risponde(

@@ -16,6 +16,7 @@ import sqlite3
 from collections.abc import Callable, Coroutine, Iterator
 from contextlib import contextmanager
 from datetime import datetime
+from html import escape
 from typing import Any
 
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -34,10 +35,12 @@ from telegram.ext import (
 from custode_bot import risposte
 from custode_bot.config import ImpostazioniBot
 from custode_bot.risposte import Risposta
+from custode_bot.trascrizione import ClientWhisper, TrascrizioneNonRiuscita
 from custode_core.config import Settings
 from custode_core.db import connect
 from custode_core.formato import adesso
 from custode_core.migrazioni import migra
+from custode_router import Router
 
 log = logging.getLogger("custode.bot")
 
@@ -63,8 +66,20 @@ def _tastiera(risposta: Risposta) -> InlineKeyboardMarkup | None:
     )
 
 
-def crea_applicazione(impostazioni: Settings, bot: ImpostazioniBot) -> Application:
-    """Costruisce l'applicazione Telegram con la whitelist già applicata."""
+def crea_applicazione(
+    impostazioni: Settings,
+    bot: ImpostazioniBot,
+    *,
+    router: Router | None = None,
+    whisper: ClientWhisper | None = None,
+) -> Application:
+    """Costruisce l'applicazione Telegram con la whitelist già applicata.
+
+    `router` e `whisper` sono iniettabili per i test: in esercizio si
+    costruiscono da soli dalle impostazioni.
+    """
+    instradatore = router or Router()
+    trascrittore = whisper or ClientWhisper(bot.whisper_url)
 
     @contextmanager
     def connessione() -> Iterator[sqlite3.Connection]:
@@ -140,14 +155,48 @@ def crea_applicazione(impostazioni: Settings, bot: ImpostazioniBot) -> Applicati
                 raise
             log.debug("messaggio identico, nessuna modifica necessaria")
 
-    async def non_capito(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+    async def testo_libero(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        messaggio = update.effective_message
+        if messaggio is None or not messaggio.text:
+            return
+        with connessione() as conn:
+            risposta = risposte.messaggio_libero(conn, ora(), messaggio.text, instradatore)
+        await _rispondi(update, risposta)
+
+    async def vocale(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        """Un vocale è un messaggio come gli altri: cambia solo l'ingresso (§8.1)."""
+        messaggio = update.effective_message
+        voce = messaggio.voice or messaggio.audio if messaggio else None
+        if messaggio is None or voce is None:
+            return
+
+        durata = getattr(voce, "duration", 0) or 0
+        if durata > bot.max_secondi_vocale:
+            await _rispondi(
+                update, Risposta(testo="Quel vocale è troppo lungo: mandamene uno più corto.")
+            )
+            return
+
+        try:
+            file = await voce.get_file()
+            audio = bytes(await file.download_as_bytearray())
+            testo = trascrittore.trascrivi(audio)
+        except TrascrizioneNonRiuscita as errore:
+            log.warning("trascrizione fallita: %s", errore)
+            await _rispondi(
+                update,
+                Risposta(testo="Non sono riuscito a trascrivere il vocale. Riprova o scrivilo."),
+            )
+            return
+
+        with connessione() as conn:
+            risposta = risposte.messaggio_libero(conn, ora(), testo, instradatore)
+        # Si rimanda anche la trascrizione: se il modello ha capito male, si
+        # vede subito se la colpa è di whisper o dell'interpretazione.
         await _rispondi(
             update,
             Risposta(
-                testo=(
-                    "Per ora capisco solo i comandi — /aiuto per la lista.\n"
-                    "<i>Il linguaggio libero e i vocali arrivano col router e Whisper.</i>"
-                )
+                testo=f"<i>«{escape(testo)}»</i>\n\n{risposta.testo}", bottoni=risposta.bottoni
             ),
         )
 
@@ -210,7 +259,10 @@ def crea_applicazione(impostazioni: Settings, bot: ImpostazioniBot) -> Applicati
 
     applicazione.add_error_handler(su_errore)
     applicazione.add_handler(CallbackQueryHandler(su_bottone))
-    applicazione.add_handler(MessageHandler(solo_io & ~filters.COMMAND, non_capito))
+    applicazione.add_handler(
+        MessageHandler(solo_io & filters.TEXT & ~filters.COMMAND, testo_libero)
+    )
+    applicazione.add_handler(MessageHandler(solo_io & (filters.VOICE | filters.AUDIO), vocale))
 
     # Gruppo a parte: gli altri gruppi vengono comunque valutati, così ogni
     # messaggio non autorizzato finisce nei log anche se nessun handler lo serve.

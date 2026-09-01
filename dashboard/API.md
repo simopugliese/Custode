@@ -41,9 +41,9 @@ file ne descrive solo la forma a endpoint per endpoint.
 
 ## Stato di implementazione
 
-Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**.
-Tutti gli altri endpoint qui sotto rispondono `501` finché non arriva il loro
-modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
+Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa** e la
+barra **«A Custode»**. Tutti gli altri endpoint qui sotto rispondono `501`
+finché non arriva il loro modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
 
 C'è inoltre `GET /api/health`, non consumato dalla dashboard: serve allo smoke
 test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
@@ -136,5 +136,13 @@ usato dal bot Telegram (§8.1 del documento di progettazione).
 `POST /api/assistente/messaggio` body `{ testo: string }` → `{ rispostaLabel?: string }`
 
 Dopo l'invio la dashboard invalida le query della pagina corrente, così un
-comando come «segna 8€ colazione al bar» si riflette appena il backend lo
-elabora.
+comando come «sto finendo il latte» si riflette appena il backend lo elabora.
+
+Il testo passa dal router (§6), che ne ricava un'intenzione strutturata; il
+backend la esegue subito e restituisce in `rispostaLabel` la frase da mostrare
+(«Aggiunto alla lista: latte»). Oggi copre task e lista della spesa: per un
+messaggio che non chiede nulla di previsto la risposta lo dice, senza errore.
+
+**Risponde sempre 200**, anche quando il modello non è configurato o non
+risponde: il motivo arriva in `rispostaLabel` in italiano, perché è una cosa
+che l'utente può semplicemente riprovare, non un errore HTTP da mostrare.

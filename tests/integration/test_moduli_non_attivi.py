@@ -25,12 +25,6 @@ def test_pagine_non_attive(client: TestClient, percorso: str, modulo: str) -> No
     assert modulo in risposta.json()["detail"]
 
 
-def test_assistente_non_attivo(client: TestClient) -> None:
-    risposta = client.post("/api/assistente/messaggio", json={"testo": "aggiungi il latte"})
-    assert risposta.status_code == 501
-    assert "router" in risposta.json()["detail"]
-
-
 def test_le_mutazioni_dei_moduli_assenti(client: TestClient) -> None:
     assert client.post("/api/diario/1/approva").status_code == 501
     assert client.patch("/api/abitudini/1/log", json={}).status_code == 501
@@ -41,3 +35,4 @@ def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
     # `/api/spese` è 501, ma non deve aver oscurato le pagine vere.
     for percorso in ("/api/home", "/api/task", "/api/lista-spesa", "/api/health"):
         assert client.get(percorso).status_code == 200
+    assert client.post("/api/assistente/messaggio", json={"testo": "ciao"}).status_code == 200

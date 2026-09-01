@@ -21,6 +21,8 @@ from custode_bot.azioni import Vista
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import task as dom_task
 from custode_core.formato import etichetta_scadenza, plurale
+from custode_router import Router
+from custode_router import assistente as dom_assistente
 
 # I bottoni di Telegram vanno a capo male: meglio un titolo tagliato che una
 # riga di bottoni illeggibile.
@@ -71,8 +73,9 @@ def aiuto() -> Risposta:
             "/aggiungi &lt;voce&gt; — aggiungi alla lista\n"
             "/svuota — togli dalla lista le voci già prese\n"
             "/aiuto — questo messaggio\n\n"
-            "<i>Il linguaggio naturale e i vocali arrivano col router "
-            "DeepSeek/Claude e Whisper: per ora servono i comandi.</i>"
+            "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
+            "chiamare l'officina», «sto finendo il latte», «fatto la bolletta». "
+            "Eseguo subito e ti lascio un bottone per annullare.</i>"
         )
     )
 
@@ -201,6 +204,31 @@ def chiedi_svuota(conn: sqlite3.Connection) -> Risposta:
     )
 
 
+def messaggio_libero(
+    conn: sqlite3.Connection, ora: datetime, testo: str, router: Router
+) -> Risposta:
+    """Testo (o vocale trascritto) in linguaggio libero → azione (§8.1, §6).
+
+    L'azione viene eseguita subito e il bot dice cosa ha fatto, con un bottone
+    per tornare indietro: l'interpretazione è automatica, quindi disfare deve
+    costare un tap e non una caccia al task creato per sbaglio.
+    """
+    esito = dom_assistente.interpreta_ed_esegui(conn, ora, testo, router)
+
+    bottoni: list[list[Bottone]] = []
+    identificatore = esito.task_id if esito.task_id is not None else esito.voce_id
+    if esito.ha_cambiato_qualcosa and identificatore is not None:
+        bottoni = [
+            [
+                Bottone(
+                    "Annulla",
+                    azioni.annulla(esito.azione.value, identificatore, esito.giorni),
+                )
+            ]
+        ]
+    return Risposta(testo=escape(esito.testo), bottoni=bottoni)
+
+
 def _dopo_azione(conn: sqlite3.Connection, ora: datetime, vista: Vista) -> Risposta:
     """Ridisegna l'elenco da cui è partito il tap, aggiornato."""
     if vista == "oggi":
@@ -229,6 +257,8 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
             return _imposta_scadenza(conn, ora, int(azione.argomento), azione.nome[3:])
         elif azione.dominio == "s" and azione.nome == "preso":
             dom_lista.imposta_preso(conn, int(azione.argomento), True, ora)
+        elif azione.dominio == "x" and azione.nome == "annulla":
+            return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":
             if azione.argomento == "si":
                 dom_lista.svuota_presi(conn)
@@ -241,6 +271,19 @@ def esegui_azione(conn: sqlite3.Connection, ora: datetime, dato: str) -> Rispost
         return Risposta(testo="Questo bottone non è più valido.")
 
     return _dopo_azione(conn, ora, azione.vista)
+
+
+def _annulla(conn: sqlite3.Connection, ora: datetime, argomento: str) -> Risposta:
+    try:
+        nome, identificatore, giorni = azioni.leggi_annulla(argomento)
+        azione_assistente = dom_assistente.Azione(nome)
+    except (azioni.AzioneNonValida, ValueError):
+        return Risposta(testo="Questo bottone non è più valido.")
+
+    testo = dom_assistente.annulla(
+        conn, ora, azione_assistente, identificatore=identificatore, giorni=giorni
+    )
+    return Risposta(testo=escape(testo))
 
 
 def _imposta_scadenza(

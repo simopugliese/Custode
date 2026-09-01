@@ -34,6 +34,15 @@ class ImpostazioniBot(BaseSettings):
     comandi_pubblici: bool = Field(default=True)
     """Se registrare la lista comandi nel menu di Telegram."""
 
+    whisper_url: str = "http://whisper:8100"
+    """Servizio di trascrizione sulla rete interna di Docker (§4, §13).
+
+    Vuoto = niente vocali: il bot lo dice invece di restare in silenzio.
+    """
+
+    max_secondi_vocale: int = 300
+    """Un vocale più lungo di così è quasi sempre un invio per sbaglio."""
+
     def configurato(self) -> bool:
         return bool(self.bot_token) and self.allowed_user_id > 0
 

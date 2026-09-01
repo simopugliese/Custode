@@ -1,0 +1,92 @@
+"""Client Claude, tramite l'SDK ufficiale `anthropic`.
+
+Claude serve ai compiti di §6 che richiedono qualità, visione o ragionamento:
+riassunto del diario, rifusione del profilo, lettura degli scontrini, piani di
+ripasso. Nessuno di quei moduli esiste ancora, quindi oggi qui non passa
+traffico — il client c'è, ed è collaudato, per non doverlo progettare di corsa
+insieme al primo modulo che lo userà.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from custode_router.config import ImpostazioniRouter
+from custode_router.errori import (
+    ProviderNonConfigurato,
+    ProviderNonRaggiungibile,
+    RispostaNonValida,
+)
+
+
+class ClientClaude:
+    """Wrapper attorno all'SDK `anthropic`.
+
+    `client` è il punto di innesto per i test, tipizzato `Any`: la firma di
+    `messages.create` nell'SDK è molto più ricca di ciò che serve qui, e un
+    Protocol strutturale non riuscirebbe a combaciare con i suoi overload.
+    """
+
+    def __init__(self, impostazioni: ImpostazioniRouter, client: Any | None = None):
+        self._impostazioni = impostazioni
+        self._client = client
+
+    def configurato(self) -> bool:
+        return bool(self._impostazioni.anthropic_api_key) or self._client is not None
+
+    def _cliente(self) -> Any:
+        if self._client is not None:
+            return self._client
+        if not self._impostazioni.anthropic_api_key:
+            raise ProviderNonConfigurato("manca ROUTER_ANTHROPIC_API_KEY: Claude non è configurato")
+        import anthropic
+
+        return anthropic.Anthropic(
+            api_key=self._impostazioni.anthropic_api_key,
+            timeout=self._impostazioni.timeout_secondi,
+        )
+
+    def chiedi_json(self, *, sistema: str, utente: str, schema: dict[str, Any]) -> dict[str, Any]:
+        cliente = self._cliente()
+        try:
+            risposta = cliente.messages.create(
+                model=self._impostazioni.claude_modello,
+                max_tokens=self._impostazioni.max_token_risposta,
+                system=sistema,
+                messages=[{"role": "user", "content": utente}],
+                # Structured outputs: il formato lo garantisce l'API, non una
+                # richiesta nel prompt che il modello può disattendere.
+                output_config={
+                    "format": {"type": "json_schema", "schema": schema},
+                    "effort": self._impostazioni.claude_effort,
+                },
+            )
+        except Exception as errore:  # l'SDK alza una gerarchia sua
+            if type(errore).__name__ in ("AuthenticationError", "PermissionDeniedError"):
+                raise ProviderNonConfigurato(f"Claude ha rifiutato la chiave: {errore}") from errore
+            raise ProviderNonRaggiungibile(f"Claude non risponde: {errore}") from errore
+
+        # Una decisione di sicurezza del modello non è un guasto di rete: va
+        # distinta, altrimenti chi chiama riproverebbe all'infinito.
+        if getattr(risposta, "stop_reason", None) == "refusal":
+            raise RispostaNonValida("Claude ha rifiutato di rispondere a questa richiesta")
+
+        return _primo_json(risposta)
+
+
+def _primo_json(risposta: Any) -> dict[str, Any]:
+    testi = [
+        blocco.text
+        for blocco in getattr(risposta, "content", [])
+        if getattr(blocco, "type", None) == "text"
+    ]
+    if not testi:
+        raise RispostaNonValida("Claude non ha prodotto testo")
+    try:
+        valore = json.loads(testi[0])
+    except json.JSONDecodeError as errore:
+        raise RispostaNonValida(f"Claude non ha risposto in JSON: {testi[0]!r}") from errore
+    if not isinstance(valore, dict):
+        raise RispostaNonValida(f"atteso un oggetto JSON, ricevuto {type(valore).__name__}")
+    return valore

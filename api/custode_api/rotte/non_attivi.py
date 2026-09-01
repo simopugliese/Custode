@@ -31,11 +31,6 @@ MODULI: dict[str, tuple[list[str], str, str]] = {
     "/api/regole/{regola_id}/approva": (["POST"], "regole di contesto", "§8.10"),
     "/api/regole/{regola_id}/scarta": (["POST"], "regole di contesto", "§8.10"),
     "/api/impostazioni": (["GET", "PATCH"], "impostazioni", "§8"),
-    "/api/assistente/messaggio": (
-        ["POST"],
-        "assistente in linguaggio naturale",
-        "§6, serve il router DeepSeek/Claude",
-    ),
 }
 
 

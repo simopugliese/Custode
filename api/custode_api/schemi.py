@@ -195,3 +195,11 @@ class NuovaVoceSpesa(BaseModel):
 
 class ModificaVoceSpesa(BaseModel):
     preso: bool
+
+
+class MessaggioAssistente(BaseModel):
+    testo: str
+
+
+class RispostaAssistente(BaseModel):
+    rispostaLabel: str | None = None

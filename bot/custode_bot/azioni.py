@@ -69,3 +69,24 @@ def voce_presa(voce_id: int, vista: Vista) -> str:
 
 def svuota(conferma: bool) -> str:
     return Azione("x", "svuota", "si" if conferma else "no", "lista").dato()
+
+
+def annulla(azione_assistente: str, identificatore: int, giorni: int = 1) -> str:
+    """Disfà un'azione decisa dal modello (§8.1).
+
+    L'argomento impacchetta i tre dati che servono a tornare indietro; il
+    separatore è `-` perché `:` è già quello dei campi.
+    """
+    return Azione("x", "annulla", f"{azione_assistente}-{identificatore}-{giorni}", "task").dato()
+
+
+def leggi_annulla(argomento: str) -> tuple[str, int, int]:
+    """Scompone l'argomento di `annulla`. Solleva `AzioneNonValida` se è rotto."""
+    pezzi = argomento.rsplit("-", 2)
+    if len(pezzi) != 3:
+        raise AzioneNonValida(argomento)
+    nome, identificatore, giorni = pezzi
+    try:
+        return nome, int(identificatore), int(giorni)
+    except ValueError as errore:
+        raise AzioneNonValida(argomento) from errore
