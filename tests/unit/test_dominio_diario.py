@@ -340,3 +340,24 @@ def test_anche_una_voce_in_riscrittura_e_in_attesa(conn: sqlite3.Connection, ora
     dom.chiedi_modifica(conn, voce.id)
 
     assert [v.id for v in dom.in_attesa(conn)] == [voce.id]
+
+
+def test_una_sola_riscrittura_per_volta(conn: sqlite3.Connection, ora: datetime) -> None:
+    """I bottoni restano attivi nella cronologia della chat: premere «Modifica»
+    su due giornate diverse non deve lasciarne una bloccata per sempre."""
+    ieri, _ = dom.aggiungi_materiale(
+        conn, giorno=ora.date() - timedelta(days=1), testo="ieri", ora=ora
+    )
+    dom.proponi(conn, ieri.id, riassunto="bozza di ieri", tag=[])
+    oggi = _giorno(conn, ora, "oggi")
+    dom.proponi(conn, oggi.id, riassunto="bozza di oggi", tag=[])
+
+    dom.chiedi_modifica(conn, ieri.id)
+    dom.chiedi_modifica(conn, oggi.id)
+
+    attesa = dom.in_modifica(conn)
+    assert attesa is not None and attesa.id == oggi.id
+    # E quella di ieri è tornata alla sua bozza, non è rimasta appesa.
+    tornata = dom.leggi(conn, ieri.id)
+    assert tornata.stato is dom.Stato.DA_APPROVARE
+    assert tornata.riassunto_proposto == "bozza di ieri"

@@ -326,10 +326,22 @@ def proponi(conn: sqlite3.Connection, voce_id: int, *, riassunto: str, tag: list
 
 
 def chiedi_modifica(conn: sqlite3.Connection, voce_id: int) -> Voce:
-    """Mette la voce in attesa del testo riscritto da te."""
+    """Mette la voce in attesa del testo riscritto da te.
+
+    Una riscrittura per volta: il prossimo messaggio può diventare una sola
+    voce, quindi chiedere di riscriverne un'altra riporta la precedente alla
+    sua bozza. Senza questo, premendo «Modifica» su due giornate diverse (i
+    bottoni restano attivi nella cronologia della chat) la meno recente
+    resterebbe in attesa per sempre, senza più un modo per sbloccarla.
+    """
     voce = leggi(conn, voce_id)
     if voce.stato is not Stato.DA_APPROVARE:
         raise ValueError("si può riscrivere solo una bozza in attesa di approvazione")
+    conn.execute(
+        "UPDATE diary_entries SET stato_approvazione = 'da_approvare'"
+        " WHERE stato_approvazione = 'in_modifica' AND id != ?",
+        (voce_id,),
+    )
     conn.execute(
         "UPDATE diary_entries SET stato_approvazione = 'in_modifica' WHERE id = ?", (voce_id,)
     )
