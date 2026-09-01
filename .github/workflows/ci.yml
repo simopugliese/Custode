@@ -41,6 +41,51 @@ jobs:
       - name: Test
         run: uv run pytest
 
+  immagini:
+    # I test girano dai sorgenti e non hanno mai visto un'immagine costruita:
+    # è il motivo per cui tre difetti del Dockerfile (README fuori dal contesto
+    # di build, curl mancante, librerie condivise non copiate) sono arrivati
+    # fino al Pi. Qui ogni target viene costruito e poi *avviato*, perché
+    # costruire dimostra solo che i layer si applicano — non che il servizio
+    # abbia davvero le dipendenze che importa.
+    name: Immagini Docker (build + import)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: api
+            modulo: custode_api.main
+          - target: bot
+            modulo: custode_bot.main
+          - target: worker
+            modulo: custode_worker.main
+          - target: whisper
+            modulo: custode_whisper.main
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Costruisci ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: ${{ matrix.target }}
+          load: true
+          tags: custode-${{ matrix.target }}:ci
+          # Il target whisper compila whisper.cpp e scarica il modello: senza
+          # cache ogni giro ripagherebbe quei minuti da capo.
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+
+      - name: L'immagine importa il suo modulo
+        # Il controllo che conta: ogni target installa solo i propri extra, e
+        # un import che nell'ambiente di sviluppo (dove ci sono tutti) funziona
+        # può mancare qui. Vale in particolare per `worker`, che usa
+        # `custode_bot.risposte` senza installare python-telegram-bot.
+        run: docker run --rm custode-${{ matrix.target }}:ci python -c "import ${{ matrix.modulo }}"
+
   dashboard:
     name: Dashboard (lint, build)
     runs-on: ubuntu-latest

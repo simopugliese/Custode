@@ -39,6 +39,7 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Router DeepSeek/Claude + Whisper: linguaggio libero e vocali | fatto |
 | Diario: racconto → riassunto Claude → approvazione (§8.4) | fatto |
 | Canale passivo, profilo versionato, job settimanale (§8.4) | fatto |
+| CI: build e avvio delle immagini Docker (§10) | fatto |
 | Spese (§8.5) | prossimo |
 | Spese, abitudini, calendario, corsi, meteo, digest | da fare |
 

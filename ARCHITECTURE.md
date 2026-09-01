@@ -282,7 +282,7 @@ Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/l
 
 - **Unit test**: parser (spese, abitudini, lista spesa), logica del router DeepSeek/Claude, funzioni DB.
 - **Integration test**: endpoint API contro un DB di test in container dedicato (`docker-compose.test.yml`).
-- **GitHub Actions**: ad ogni push → lint + test; il deploy sul Pi parte solo se la pipeline è verde.
+- **GitHub Actions**: ad ogni push → lint + test + **build delle immagini**; il deploy sul Pi parte solo se la pipeline è verde. Il job delle immagini costruisce i quattro target del Dockerfile e poi ne *avvia* ciascuno per importare il proprio modulo: costruire dimostra solo che i layer si applicano, non che il servizio abbia le dipendenze che importa. È il buco da cui erano passati tre difetti del Dockerfile arrivati fino al Pi (README fuori dal contesto di build, curl mancante, librerie condivise non copiate), e serve in particolare al target `worker`, che usa `custode_bot.risposte` senza installare `python-telegram-bot`.
 - **Smoke test post-deploy**: endpoint di health-check chiamato subito dopo ogni deploy, rollback automatico se fallisce.
 - **Staging locale**: un profilo Docker Compose separato per provare le modifiche prima di "andare in produzione" sul tunnel pubblico.
 
