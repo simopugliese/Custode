@@ -12,6 +12,8 @@ regole di contesto approvate (§8.10), backup cifrato del DB (§9).
 - `settimanale.py` — il job di §8.4 punto 7: legge le voci di diario approvate
   della settimana, ne fa scrivere il riepilogo a Claude, e prepara il messaggio
   con la revisione dei candidati per il profilo.
+- `backup.py` — il backup giornaliero del database e il suo ripristino (§9).
+- `ripristino.py` — il comando del runbook: `python -m custode_worker.ripristino`.
 - `telegram.py` — mandare un messaggio, una chiamata HTTP e basta.
 - `main.py` — il ciclo: sveglia, «cosa è dovuto?», dormi.
 
@@ -45,14 +47,45 @@ e non sa cosa sia Telegram. È un'invariante da non rompere: se un giorno
 `callback_data` continuerebbero comunque a passare da `custode_bot.azioni`, che
 esiste apposta perché non vengano scritti a mano in due punti diversi.
 
+## Il backup (§9)
+
+Ogni notte: copia coerente con l'API `.backup()` di SQLite — che **non ferma
+nessun servizio**, mentre un `cp` in modalità WAL potrebbe cogliere il database
+a metà transazione — poi gzip, poi cifratura se c'è una chiave, poi pulizia con
+retention 7 giornalieri + 4 settimanali.
+
+`da_tenere()` è una funzione pura e ha i suoi test: è l'unica parte del sistema
+che, sbagliata, **cancella** invece di non fare. Un backup con data futura non
+si tocca mai — è un orologio storto, non un file da buttare.
+
+Senza `WORKER_BACKUP_CHIAVE` il backup si fa lo stesso, in chiaro: il rischio
+più probabile in casa è la scheda che si rompe, e da quello protegge anche una
+copia non cifrata. Perché non diventi una falsa sicurezza, l'estensione cambia
+(`.db.gz` invece di `.db.gz.enc`) e il worker lo ripete ad ogni avvio.
+
+Un backup riuscito non manda notifiche — se ne arrivasse una ogni giorno
+smetterebbe di voler dire qualcosa; uno fallito va nei log e non si segna come
+fatto, quindi al giro dopo si riprova.
+
+Il ripristino è un comando, non un one-liner da incollare:
+
+```bash
+python -m custode_worker.ripristino --elenco
+python -m custode_worker.ripristino /backup/custode-2026-09-06.db.gz.enc /data/ripristinato.db
+```
+
+Non tocca mai il database in esercizio e verifica l'integrità di ciò che
+scrive. Il runbook completo è in [DEPLOY.md §7](../DEPLOY.md).
+
 ## Stato
 
-Fatto: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
-dei candidati per il profilo e la rifusione che ne segue.
+Fatti: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
+dei candidati per il profilo e la rifusione che ne segue, e il **backup
+giornaliero** del database (§9).
 
 Da fare, ognuno insieme al modulo che serve: controllo delle scadenze dei task
 (§8.2), digest mattutino (§8.13), valutazione delle regole di contesto approvate
-(§8.10), backup cifrato del DB (§9) — con il runbook di restore che §11 chiede.
+(§8.10).
 
 ## Provarlo
 

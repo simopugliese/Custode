@@ -17,7 +17,7 @@ cartella puntano lì.
 /bot          bot Telegram: comandi, linguaggio libero, vocali, whitelist
 /router       scelta del modello DeepSeek / Claude (§6) e interprete
 /whisper      trascrizione vocale locale (container a sé, §4 e §13)
-/worker       job schedulati: riepilogo settimanale del diario (§8.4)
+/worker       job schedulati: riepilogo settimanale (§8.4), backup del DB (§9)
 /core         codice condiviso: configurazione, SQLite, dominio
 /dashboard    frontend React + Vite (deploy su Cloudflare Pages)
 /tests        unit + integration test
@@ -40,6 +40,7 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Diario: racconto → riassunto Claude → approvazione (§8.4) | fatto |
 | Canale passivo, profilo versionato, job settimanale (§8.4) | fatto |
 | CI: build e avvio delle immagini Docker (§10) | fatto |
+| Backup cifrato del DB + runbook di restore (§9, §11) | fatto |
 | Spese (§8.5) | prossimo |
 | Spese, abitudini, calendario, corsi, meteo, digest | da fare |
 

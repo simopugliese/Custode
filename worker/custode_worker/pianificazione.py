@@ -13,6 +13,7 @@ from datetime import date, datetime, time, timedelta
 from custode_core.formato import inizio_settimana
 
 RIEPILOGO_SETTIMANALE = "riepilogo_settimanale"
+BACKUP = "backup"
 
 
 def momento_previsto(lunedi: date, giorno: str, ore: int, minuti: int) -> datetime:
@@ -40,6 +41,19 @@ def settimana_dovuta(adesso: datetime, *, giorno: str, ore: int, minuti: int) ->
         if adesso >= momento_previsto(candidato, giorno, ore, minuti):
             return candidato
     return None
+
+
+def giorno_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date:
+    """Il giorno per cui un job *giornaliero* è dovuto adesso.
+
+    Stessa forma del settimanale: prima dell'ora di oggi si guarda a ieri,
+    perché se il Pi era spento a quell'ora il backup di ieri non è stato fatto e
+    va recuperato appena torna su. Ritorna sempre una data — sarà il registro a
+    dire se quel giorno è già stato coperto.
+    """
+    if adesso >= datetime.combine(adesso.date(), time(hour=ore, minute=minuti)):
+        return adesso.date()
+    return adesso.date() - timedelta(days=1)
 
 
 # — registro delle esecuzioni —

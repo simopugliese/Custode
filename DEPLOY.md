@@ -208,22 +208,127 @@ docker compose up --build -d
 L'automazione di questo passaggio (deploy solo a pipeline verde + rollback
 automatico) arriva con la fase CI/CD, §10.
 
-## 7. Backup e restore del database **[da fare]**
+## 7. Backup e restore del database
 
-Il database è un unico file dentro il volume Docker `custode-data`. Il runbook
-completo — cron giornaliero verso il secondo disco, cifratura, retention 7
-giornalieri + 4 settimanali (§9) — si scrive insieme al job di backup in
-`worker/`, per non documentare una procedura che ancora non esiste.
+Il job gira ogni notte dentro il worker (§9): copia coerente del database,
+compressione, cifratura se gli hai dato una chiave, e pulizia dei vecchi con
+retention **7 giornalieri + 4 settimanali**.
 
-Nel frattempo, copia manuale coerente (`.backup` non richiede di fermare il
-servizio e rispetta il WAL):
+La copia usa l'API `.backup()` di SQLite e **non ferma nessun servizio**: in
+modalità WAL le scritture stanno in un file a parte, e un `cp` a mano potrebbe
+cogliere il database a metà di una transazione.
+
+### Configurare
+
+| Variabile | Cosa fa |
+|---|---|
+| `CUSTODE_BACKUP_HOST` | **Dove finiscono i backup sul Pi.** Default `./backup`, che sta sulla stessa scheda del database: va bene per provare, non protegge dal guasto che conta. Puntalo al secondo disco, es. `/mnt/backup` |
+| `WORKER_ORA_BACKUP` | Ora locale, default `03:30` |
+| `WORKER_BACKUP_CHIAVE` | Chiave Fernet. **Vuota = backup in chiaro** |
+
+Generare la chiave:
 
 ```bash
-docker compose exec api python -c \
-  "import sqlite3; s=sqlite3.connect('/data/custode.db'); d=sqlite3.connect('/data/backup.db'); s.backup(d); d.close(); s.close()"
-docker compose cp api:/data/backup.db ./custode-backup-$(date +%F).db
-docker compose exec api rm /data/backup.db
+docker compose run --rm worker python -c \
+  "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-Per ripristinare: fermare l'API (`docker compose stop api`), rimettere il file
-al posto di `custode.db` nel volume, riavviare e controllare `/api/health`.
+Mettila in `.env` come `WORKER_BACKUP_CHIAVE=...` **e conservane una copia
+fuori dal Pi** — in un gestore di password, non accanto ai backup. Un backup
+che non sai aprire non è un backup, e se perdi la chiave non c'è niente da
+fare: i file cifrati diventano rumore.
+
+Senza chiave il backup si fa lo stesso, non cifrato: il rischio più probabile
+in casa è la scheda che si rompe, e da quello protegge anche una copia in
+chiaro. Lo riconosci dall'estensione (`.db.gz` invece di `.db.gz.enc`) e il
+worker te lo ripete ad ogni avvio:
+
+```
+WARNING  WORKER_BACKUP_CHIAVE non impostata: i backup del database NON sono cifrati
+```
+
+### Controllare che ci siano
+
+```bash
+docker compose exec worker python -m custode_worker.ripristino --elenco
+```
+
+```
+Backup in /backup, dal più recente:
+
+  2026-09-06     124.3 kB  cifrato     custode-2026-09-06.db.gz.enc
+  2026-09-05     123.8 kB  cifrato     custode-2026-09-05.db.gz.enc
+  ...
+Spazio libero: 28114 MB
+```
+
+Un backup riuscito **non manda notifiche**: se ne arrivasse una ogni giorno,
+smetterebbe di voler dire qualcosa. Uno fallito finisce nei log come `WARNING`
+e non viene segnato come fatto, quindi al giro dopo si riprova.
+
+### Ripristinare
+
+Il restore **non tocca il database in esercizio**: scrive dove gli dici, e sei
+tu a metterlo al suo posto a servizi fermi. Ci pensa il comando a decifrare,
+decomprimere e verificare l'integrità di quello che esce.
+
+**1.** Scegli il backup e scrivilo da qualche parte:
+
+```bash
+docker compose exec worker python -m custode_worker.ripristino \
+  /backup/custode-2026-09-06.db.gz.enc /data/ripristinato.db
+```
+
+Se dice `integrità ok`, il file è un database valido. Se dice altro, **fermati
+qui**: prova un backup più vecchio invece di andare avanti.
+
+**2.** Ferma i servizi che scrivono e metti il file al suo posto:
+
+```bash
+docker compose stop api bot worker
+docker compose run --rm --entrypoint sh worker -c \
+  "rm -f /data/custode.db /data/custode.db-wal /data/custode.db-shm \
+   && mv /data/ripristinato.db /data/custode.db"
+```
+
+I file `-wal` e `-shm` vanno tolti insieme al database: sono le scritture non
+ancora consolidate di quello *vecchio*, e lasciarli accanto a uno nuovo lo
+corromperebbe.
+
+**3.** Riparti e verifica:
+
+```bash
+docker compose up -d
+curl -s localhost:8000/api/health
+```
+
+Deve rispondere `"stato":"ok"` con `"migrazioni":"ok"`. Le migrazioni girano da
+sole: se il backup era di una versione più vecchia dello schema, viene portato
+in pari all'avvio.
+
+### Provalo prima di averne bisogno
+
+Un restore non provato non è un piano. Una volta, subito:
+
+```bash
+docker compose exec worker python -m custode_worker.ripristino \
+  /backup/<l-ultimo>.db.gz.enc /data/prova.db
+docker compose exec worker python -c \
+  "import sqlite3; c = sqlite3.connect('/data/prova.db'); \
+   print(c.execute('SELECT count(*) FROM diary_entries').fetchone())"
+docker compose exec worker rm /data/prova.db
+```
+
+Se quel conteggio è quello che ti aspetti, il backup funziona davvero.
+
+### Portarne una copia fuori casa
+
+§3 suggerisce anche una copia su uno storage esterno a tua scelta. I file sono
+già cifrati (se hai messo la chiave), quindi possono stare ovunque:
+
+```bash
+rsync -av /mnt/backup/ altrove:/custode-backup/
+```
+
+Non c'è un job che lo fa: è una scelta tua su *dove*, e inchiodarla nel codice
+significherebbe decidere al posto tuo.

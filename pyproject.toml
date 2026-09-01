@@ -32,6 +32,9 @@ whisper = [
 # resta fuori dalla sua immagine.
 worker = [
     "httpx==0.28.1",
+    # Backup cifrato del DB (§9). Ha ruote precompilate per aarch64, quindi
+    # sul Pi non compila niente.
+    "cryptography==46.0.3",
 ]
 
 [dependency-groups]

@@ -75,6 +75,14 @@ services:
     # Nessuna porta e nessun `depends_on`: il worker legge lo stesso file SQLite
     # e chiama Telegram da sé. Se l'API è giù il riepilogo settimanale parte lo
     # stesso, ed è giusto così — sono due cose indipendenti.
+    volumes:
+      - custode-data:/data
+      # Il backup del DB (§9) esce dal volume Docker e finisce su un percorso
+      # dell'host: §13 dice «sul secondo disco già presente sul Pi». Il default
+      # `./backup` sta sulla stessa scheda del database — va bene per provare,
+      # ma non protegge dal guasto che conta. Punta CUSTODE_BACKUP_HOST al
+      # secondo disco (es. /mnt/backup) prima di fidartene.
+      - ${CUSTODE_BACKUP_HOST:-./backup}:/backup
 
   whisper:
     build:
