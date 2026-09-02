@@ -1,10 +1,9 @@
 """Client Claude, tramite l'SDK ufficiale `anthropic`.
 
-Claude serve ai compiti di §6 che richiedono qualità, visione o ragionamento:
-riassunto del diario, rifusione del profilo, lettura degli scontrini, piani di
-ripasso. Nessuno di quei moduli esiste ancora, quindi oggi qui non passa
-traffico — il client c'è, ed è collaudato, per non doverlo progettare di corsa
-insieme al primo modulo che lo userà.
+Claude serve ai compiti di §6 che richiedono qualità, visione o ragionamento.
+Oggi ci passano il riassunto del diario, il riepilogo settimanale, la rifusione
+del profilo (§8.4) e la lettura degli scontrini (§8.5) — l'unica riga della
+tabella che ha bisogno di far *vedere* qualcosa al modello.
 """
 
 from __future__ import annotations
@@ -47,7 +46,38 @@ class ClientClaude:
             timeout=self._impostazioni.timeout_secondi,
         )
 
-    def chiedi_json(self, *, sistema: str, utente: str, schema: dict[str, Any]) -> dict[str, Any]:
+    def chiedi_json(
+        self,
+        *,
+        sistema: str,
+        utente: str,
+        schema: dict[str, Any],
+        immagine: bytes | None = None,
+        media_type: str = "image/jpeg",
+    ) -> dict[str, Any]:
+        """Una domanda a Claude con risposta in JSON conforme allo schema.
+
+        `immagine` la allega al messaggio: è la strada della lettura degli
+        scontrini (§6, §8.5), l'unico compito della tabella che ha bisogno di
+        far vedere qualcosa al modello. L'immagine va **prima** del testo, come
+        vuole l'API quando la domanda riguarda ciò che si vede.
+        """
+        contenuto: Any = utente
+        if immagine is not None:
+            import base64
+
+            contenuto = [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.standard_b64encode(immagine).decode(),
+                    },
+                },
+                {"type": "text", "text": utente},
+            ]
+
         cliente = self._cliente()
         try:
             risposta = cliente.messages.create(
@@ -57,7 +87,7 @@ class ClientClaude:
                 # dentro (vedi `config.py`).
                 max_tokens=self._impostazioni.max_token_risposta_claude,
                 system=sistema,
-                messages=[{"role": "user", "content": utente}],
+                messages=[{"role": "user", "content": contenuto}],
                 # Structured outputs: il formato lo garantisce l'API, non una
                 # richiesta nel prompt che il modello può disattendere.
                 output_config={

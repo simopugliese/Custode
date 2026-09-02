@@ -42,7 +42,7 @@ file ne descrive solo la forma a endpoint per endpoint.
 ## Stato di implementazione
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
-**Diario** e la barra **«A Custode»**. Tutti gli altri endpoint qui sotto
+**Diario**, **Spese** e la barra **«A Custode»**. Tutti gli altri endpoint qui sotto
 rispondono `501` finché non arriva il loro modulo — vedi la roadmap in
 `../ARCHITECTURE.md` §12.
 
@@ -54,6 +54,13 @@ test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
 `GET /api/home` → `HomeData`
 Riepilogo "di oggi": task, calendario, abitudini, spese della settimana,
 lista della spesa, conteggio automazioni proposte.
+
+`stats.spesaSettimana` è il totale confermato da lunedì a oggi, e c'è sempre
+(anche a zero: il modulo esiste, quindi lo zero è un dato). Il blocco
+`speseSettimana` invece compare **solo** se è impostato
+`CUSTODE_BUDGET_SETTIMANALE`: la sua barra si riempie rispetto al budget, e
+senza un tetto non ci sarebbe niente rispetto a cui riempirla. `scontriniInAttesa`
+conta le foto lette che aspettano una conferma, che non sono ancora in `speso`.
 
 ## Diario
 
@@ -136,11 +143,47 @@ in fondo; con `ordina=aggiunta` c'è un solo gruppo, "Da prendere", in ordine di
 inserimento. Aggiungere una voce già presente e non ancora presa non ne crea
 una seconda: risponde con quella esistente.
 
+`ultimeSpese` e `ultimaSpesaGiorni` arrivano dal modulo spese (§8.5) e contano
+solo le spese che hanno un **luogo**: la colonna mostra proprio il posto, e
+«8 € di colazione» detto senza dire dove non è un'uscita da ricordare qui.
+`stimaCarrello`, `suggeriti` e `repartiFrequenti` restano assenti o vuoti:
+stimare il costo di questo carrello vorrebbe i prezzi delle singole voci (di
+uno scontrino si conserva solo il totale), e le frequenze di riacquisto
+vorrebbero lo storico della *lista*, che oggi `svuota-presi` cancella.
+
 ## Spese
 
 `GET /api/spese?periodo=settimana|mese|anno` → `SpeseData`
 `POST /api/spese/:id/conferma` body `{ categoria?: string }` → `Movimento`
 `POST /api/spese` body `{ importo: number, descrizione: string, categoria?: string }` → `Movimento`
+
+Tutti gli `importo` sono in **euro**, come numeri: nel database stanno in
+centesimi interi (§8.5) e la conversione avviene qui, al confine.
+
+`stats` e `andamentoGiorni` seguono il `periodo` scelto, non il mese: i nomi
+dei campi dicono «mese» per ragioni storiche, ma un selettore che non cambia
+le statistiche non sarebbe un selettore. In particolare:
+
+- `totaleMese` e `mediaGiorno` sono sul periodo, e la media è sui giorni
+  **trascorsi** (il 3 del mese si divide per 3, non per 31).
+- `variazioneMesePrecedente` è in punti percentuali e confronta tratti della
+  **stessa lunghezza**: i primi 12 giorni di questo mese contro i primi 12
+  dello scorso. Senza niente prima vale `0`, non un numero enorme calcolato
+  su zero.
+- `andamentoGiorni` ha una colonna per giorno su `settimana` e `mese`, una per
+  **mese** su `anno`; i valori sono percentuali `0-100` sulla colonna più
+  alta, e l'ultima colonna è sempre oggi.
+- `confronto` elenca solo i periodi già chiusi in cui hai davvero speso
+  qualcosa: su un database nuovo è una lista vuota, non una riga a zero.
+
+`scontrinoInAttesa` è la foto letta che aspetta un sì. Le spese in quello
+stato **non entrano** in `movimenti` né nei totali: `POST /:id/conferma` è ciò
+che le fa entrare, e può correggerne la categoria. Confermare una spesa già
+nei conti risponde `409`.
+
+`POST /api/spese` senza `categoria` ne fa proporre una a Claude confrontandola
+con quelle già in uso (§6); se il modello non risponde la spesa resta senza,
+e la si sistema dopo. Importo non positivo o descrizione vuota → `422`.
 
 ## Abitudini
 
@@ -177,9 +220,10 @@ backend la esegue subito e restituisce in `rispostaLabel` la frase da mostrare
 controllo passivo di §8.4 sui segnali per il profilo: quello succede in
 silenzio, non cambia `rispostaLabel`, e la revisione avviene su Telegram (il
 profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
-Oggi copre task, lista della spesa e diario —
+Oggi copre task, lista della spesa, diario e spese —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
-il materiale del diario di oggi (§8.4). Per un messaggio che non chiede nulla
+il materiale del diario di oggi (§8.4), e uno con dentro una cifra già pagata
+(«ho pagato 8€ la colazione») diventa una spesa (§8.5). Per un messaggio che non chiede nulla
 di previsto la risposta lo dice, senza errore.
 
 **Risponde sempre 200**, anche quando il modello non è configurato o non

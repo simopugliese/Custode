@@ -17,7 +17,7 @@ cartella puntano lì.
 /bot          bot Telegram: comandi, linguaggio libero, vocali, whitelist
 /router       scelta del modello DeepSeek / Claude (§6) e interprete
 /whisper      trascrizione vocale locale (container a sé, §4 e §13)
-/worker       job schedulati: riepilogo settimanale del diario (§8.4)
+/worker       job schedulati: riepilogo settimanale (§8.4), backup del DB (§9)
 /core         codice condiviso: configurazione, SQLite, dominio
 /dashboard    frontend React + Vite (deploy su Cloudflare Pages)
 /tests        unit + integration test
@@ -39,11 +39,13 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Router DeepSeek/Claude + Whisper: linguaggio libero e vocali | fatto |
 | Diario: racconto → riassunto Claude → approvazione (§8.4) | fatto |
 | Canale passivo, profilo versionato, job settimanale (§8.4) | fatto |
-| Spese (§8.5) | prossimo |
-| Spese, abitudini, calendario, corsi, meteo, digest | da fare |
+| CI: build e avvio delle immagini Docker (§10) | fatto |
+| Backup cifrato del DB + runbook di restore (§9, §11) | fatto |
+| Spese: a parole e da foto dello scontrino (§8.5) | fatto |
+| Abitudini, calendario, corsi, meteo, digest | da fare |
 
-Home, Task, Lista della spesa e Diario mostrano dati veri, letti e scritti su
-SQLite, e la barra «A Custode» funziona in linguaggio libero. Le altre pagine
+Home, Task, Lista della spesa, Diario e Spese mostrano dati veri, letti e
+scritti su SQLite, e la barra «A Custode» funziona in linguaggio libero. Le altre pagine
 ricevono un `501` che dice quale modulo manca, e mostrano quel messaggio: è il
 comportamento previsto, non un bug.
 
@@ -54,6 +56,13 @@ Quello che racconti della giornata («capitolo 3 finalmente chiaro», «che pall
 il frontend») Custode lo mette da parte per il diario; `/diario` chiude la
 giornata e ti propone il riassunto scritto da Claude, che entra nel diario solo
 se lo approvi — o riscritto con parole tue, se preferisci.
+
+Le spese si dicono a parole («ho pagato 8€ la colazione da Bar Rossi») e
+finiscono subito nei conti, con «Annulla» a portata di tap. Uno **scontrino**
+si fotografa: lo legge Claude, e la sintesi entra nei conti solo dopo un tuo
+sì — lì il modello legge dei numeri da un'immagine, e vale la conferma. Le
+categorie nascono da zero e le propone Claude confrontandole con quelle che già
+usi, così somigliano a come spendi tu.
 
 In parallelo, ogni messaggio passa da un controllo leggero che cerca i segnali
 utili a descrivere come sei fatto. Una volta a settimana il worker ti manda il

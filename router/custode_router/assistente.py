@@ -9,11 +9,13 @@ che questo modulo traduce in chiamate ai servizi di dominio. Un modello che
 sbaglia può quindi far fare a Custode una cosa sbagliata fra quelle previste,
 mai una cosa non prevista.
 
-Oggi i moduli disponibili sono task, lista della spesa e diario (§8.4), e §6
-instrada l'interpretazione su DeepSeek — anche quella di una nota di diario: qui
-si decide solo *dove va* il messaggio, mentre il riassunto della giornata, che è
-il pezzo che richiede qualità, va a Claude in `custode_router.diario`. Spese e
-abitudini si aggiungono qui man mano.
+Oggi i moduli disponibili sono task, lista della spesa, diario (§8.4) e spese
+(§8.5). §6 instrada l'interpretazione su DeepSeek — anche quella di una nota di
+diario o di una spesa: qui si decide solo *dove va* il messaggio e, per le
+spese, quale categoria **già esistente** lo contiene. I pezzi che richiedono
+giudizio vanno a Claude altrove: il riassunto della giornata in
+`custode_router.diario`, la creazione di una categoria nuova in
+`custode_router.spese`. Le abitudini si aggiungono qui man mano.
 """
 
 from __future__ import annotations
@@ -27,8 +29,10 @@ from typing import Any
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
-from custode_core.formato import etichetta_scadenza
+from custode_core.formato import etichetta_scadenza, euro
+from custode_router import spese as router_spese
 from custode_router.compiti import Compito
 from custode_router.errori import ErroreRouter
 from custode_router.router import Router
@@ -41,6 +45,7 @@ class Azione(StrEnum):
     AGGIUNGI_SPESA = "aggiungi_voce_spesa"
     SEGNA_PRESO = "segna_voce_presa"
     ANNOTA_DIARIO = "annota_diario"
+    REGISTRA_SPESA = "registra_spesa"
     NESSUNA = "nessuna"
 
 
@@ -78,6 +83,25 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
             ),
         },
         "giorni": {"type": "integer", "description": "Giorni di rinvio, se l'azione è rinvia."},
+        "importo": {
+            "type": "number",
+            "description": (
+                "Per registra_spesa: quanto è stato speso, in euro, come numero."
+                " Solo la cifra, senza simbolo di valuta."
+            ),
+        },
+        "luogo": {
+            "type": "string",
+            "description": "Per registra_spesa: dove, se il messaggio lo dice.",
+        },
+        "categoria": {
+            "type": "string",
+            "description": (
+                "Per registra_spesa: la categoria fra quelle GIÀ IN USO che"
+                " contiene questa spesa, copiata esattamente dall'elenco."
+                " Stringa vuota se nessuna di quelle calza — non inventarne una."
+            ),
+        },
         # Il canale passivo di §8.4 viaggia nella stessa risposta dell'azione:
         # sono due compiti distinti nella tabella §6, ma entrambi instradati a
         # DeepSeek, e farne due chiamate raddoppierebbe latenza e costo su ogni
@@ -123,6 +147,11 @@ Regole:
 - «ho preso X», «comprato X» → segna_voce_presa, con `riferimento` copiato dal
   nome della voce esistente.
 - «rimanda X», «sposta X di N giorni» → rinvia_task.
+- Il messaggio dice di aver **speso dei soldi** — «ho pagato 8€ la colazione da
+  Bar Rossi», «12 euro di benzina», «pranzo 15» → registra_spesa, con `titolo`
+  = una descrizione breve («colazione», «benzina»), `importo` = la cifra in
+  euro, `luogo` se c'è. Attenzione: «devo pagare la bolletta» è un task, non
+  una spesa — la spesa è quella già fatta.
 - Il messaggio racconta com'è andata, come sta o cosa pensa — «giornata pesante»,
   «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
   palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
@@ -160,6 +189,9 @@ class Intenzione:
     quantita: str = ""
     reparto: str = ""
     giorni: int = 1
+    importo: float = 0.0
+    luogo: str = ""
+    categoria: str = ""
     segnale: str = "nessuno"
     segnale_estratto: str = ""
     segnale_domanda: str = ""
@@ -175,6 +207,8 @@ class Esito:
     voce_id: int | None = None
     frammento_id: int | None = None
     """Il frammento di diario appena scritto, da togliere se si annulla."""
+    spesa_id: int | None = None
+    """La spesa appena registrata, da cancellare se si annulla."""
     giorni: int = 1
     """Giorni di rinvio applicati, per poterli togliere se si annulla."""
     candidato_id: int | None = None
@@ -189,7 +223,7 @@ class Esito:
     @property
     def identificatore(self) -> int | None:
         """Cosa deve indicare il bottone «Annulla», qualunque azione sia stata."""
-        for valore in (self.task_id, self.voce_id, self.frammento_id):
+        for valore in (self.task_id, self.voce_id, self.frammento_id, self.spesa_id):
             if valore is not None:
                 return valore
         return None
@@ -211,6 +245,11 @@ def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
     righe.append(
         "Reparti già in uso: "
         + ("; ".join(sorted({v.reparto for v in voci})) if voci else "nessuno")
+    )
+    categorie = [c.nome for c in dom_spese.categorie(conn, solo_attive=True)]
+    righe.append(
+        "Categorie di spesa già in uso: "
+        + ("; ".join(categorie) if categorie else "nessuna, non hai ancora registrato spese")
     )
     return "\n".join(righe)
 
@@ -246,10 +285,24 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         quantita=str(dati.get("quantita") or "").strip(),
         reparto=str(dati.get("reparto") or "").strip(),
         giorni=giorni if isinstance(giorni, int) and giorni >= 1 else 1,
+        importo=_leggi_importo(dati.get("importo")),
+        luogo=str(dati.get("luogo") or "").strip(),
+        categoria=str(dati.get("categoria") or "").strip(),
         segnale=_leggi_segnale(dati.get("segnale")),
         segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
         segnale_domanda=str(dati.get("segnale_domanda") or "").strip(),
     )
+
+
+def _leggi_importo(grezzo: object) -> float:
+    """Un importo che non è un numero positivo vale zero, e non crea la spesa.
+
+    `bool` è sottoclasse di `int` in Python: senza escluderlo, un `true` finito
+    lì per sbaglio diventerebbe una spesa da un centesimo.
+    """
+    if isinstance(grezzo, bool) or not isinstance(grezzo, int | float):
+        return 0.0
+    return float(grezzo) if grezzo > 0 else 0.0
 
 
 SEGNALI = ("nessuno", "chiaro", "ambiguo")
@@ -379,6 +432,9 @@ def esegui(
         dom_lista.imposta_preso(conn, trovata.id, True, ora)
         return Esito(testo=f"Preso: {trovata.nome}", azione=intenzione.azione, voce_id=trovata.id)
 
+    if intenzione.azione is Azione.REGISTRA_SPESA:
+        return _registra_spesa(conn, ora, intenzione)
+
     if intenzione.azione is Azione.ANNOTA_DIARIO:
         # Il testo si annota grezzo: il riassunto è un passaggio a parte, a fine
         # giornata, e passa da Claude (§6, §8.4). Qui non si perde nulla di ciò
@@ -396,6 +452,63 @@ def esegui(
         )
 
     return Esito(testo="Non ho capito cosa vuoi che faccia.")
+
+
+def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> Esito:
+    """Una spesa detta a parole diventa subito un movimento (§8.5).
+
+    Niente conferma: §8.5 la chiede per lo *scontrino*, dove il modello estrae
+    dieci numeri da una foto. Per una frase con dentro una cifra il bottone
+    «Annulla» è la rete giusta, e chiedere un sì venti volte al giorno è il modo
+    più sicuro di smettere di registrare le spese piccole.
+    """
+    centesimi = dom_spese.in_centesimi(intenzione.importo)
+    if centesimi <= 0:
+        return Esito(testo="Non ho capito quanto hai speso.")
+    descrizione = intenzione.titolo or "spesa"
+
+    spesa = dom_spese.registra(
+        conn,
+        centesimi=centesimi,
+        descrizione=descrizione,
+        ora=ora,
+        categoria=intenzione.categoria or None,
+        luogo=intenzione.luogo or None,
+    )
+    coda = f" — {spesa.categoria}" if spesa.categoria else ""
+    return Esito(
+        testo=f"Segnata: {spesa.descrizione}, {euro(spesa.centesimi)}{coda}",
+        azione=intenzione.azione,
+        spesa_id=spesa.id,
+    )
+
+
+def categorizza_se_serve(
+    conn: sqlite3.Connection, ora: datetime, spesa_id: int, router: Router
+) -> str | None:
+    """Dà una categoria a una spesa che non ne ha, chiedendola a Claude (§6).
+
+    Sta a parte da `esegui` perché è una **seconda** chiamata a un modello, e
+    solo Claude: succede quando nessuna delle categorie esistenti calzava, che
+    all'inizio è quasi sempre e dopo qualche settimana quasi mai. Se fallisce,
+    la spesa resta senza categoria invece di perdersi — la si può sistemare
+    dopo dalla dashboard.
+    """
+    spesa = dom_spese.leggi(conn, spesa_id)
+    if spesa.categoria:
+        return spesa.categoria
+    try:
+        nome = router_spese.categoria_per(
+            router,
+            descrizione=spesa.descrizione,
+            luogo=spesa.luogo,
+            esistenti=[c.nome for c in dom_spese.categorie(conn, solo_attive=True)],
+        )
+    except ErroreRouter:
+        return None
+    categoria = dom_spese.assicura_categoria(conn, nome, ora)
+    conn.execute("UPDATE expenses SET categoria_id = ? WHERE id = ?", (categoria.id, spesa_id))
+    return categoria.nome
 
 
 def interpreta_ed_esegui(
@@ -497,6 +610,10 @@ def annulla(
         if azione is Azione.SEGNA_PRESO:
             voce = dom_lista.imposta_preso(conn, identificatore, False, ora)
             return f"Rimesso sulla lista: {voce.nome}"
+        if azione is Azione.REGISTRA_SPESA:
+            spesa = dom_spese.leggi(conn, identificatore)
+            dom_spese.elimina(conn, identificatore)
+            return f"Annullata: {spesa.descrizione}, {euro(spesa.centesimi)}"
         if azione is Azione.ANNOTA_DIARIO:
             # `identificatore` è il frammento, non la voce del giorno: si toglie
             # esattamente la frase aggiunta, lasciando intatto il resto della
@@ -507,6 +624,7 @@ def annulla(
         dom_task.TaskInesistente,
         dom_lista.VoceInesistente,
         dom_diario.FrammentoInesistente,
+        dom_spese.SpesaInesistente,
     ):
         return "Quella voce non esiste più: niente da annullare."
     return "Non c'è niente da annullare."

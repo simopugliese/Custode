@@ -22,6 +22,7 @@ from custode_core.dominio import profilo as dom_profilo
 from custode_worker import main as worker_main
 from custode_worker.config import ImpostazioniWorker
 from custode_worker.pianificazione import (
+    BACKUP,
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     segna_eseguito,
@@ -78,11 +79,21 @@ def _giro(
     adesso: datetime,
     telegram: TelegramFinto,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    backup_cartella: Path | None = None,
 ) -> None:
     monkeypatch.setattr(worker_main, "adesso", lambda _fuso: adesso)
     worker_main.giro(
         impostazioni,
-        _WorkerDiTest(giorno_riepilogo="domenica", ora_riepilogo="21:00"),
+        _WorkerDiTest(
+            giorno_riepilogo="domenica",
+            ora_riepilogo="21:00",
+            ora_backup="03:30",
+            # Senza percorso esplicito il backup finirebbe in /backup, che qui
+            # non esiste: fallisce e viene solo registrato nei log, che è il
+            # comportamento voluto per i test che non lo riguardano.
+            backup_cartella=backup_cartella or Path("/backup-inesistente"),
+        ),
         router=RouterFinto(),  # type: ignore[arg-type]
         telegram=telegram,  # type: ignore[arg-type]
     )
@@ -175,3 +186,81 @@ def test_una_settimana_muta_si_segna_lo_stesso(
     assert telegram.mandati == []
     with connessione(impostazioni.db_path) as conn2:
         assert gia_eseguito(conn2, RIEPILOGO_SETTIMANALE, LUNEDI)
+
+
+# — backup giornaliero (§9) —
+
+
+def test_il_backup_gira_ogni_giorno_e_si_segna(
+    impostazioni: Settings, conn: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cartella = tmp_path / "backup"
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, DOMENICA_SERA, telegram, monkeypatch, backup_cartella=cartella)
+
+    assert [p.name for p in cartella.iterdir()] == ["custode-2026-09-06.db.gz"]
+    assert gia_eseguito(conn, BACKUP, DOMENICA_SERA.date())
+    # Un backup riuscito non manda notifiche: se lo facesse ogni giorno, la
+    # notifica smetterebbe di voler dire qualcosa.
+    assert telegram.mandati == []
+
+
+def test_il_backup_non_si_ripete_nello_stesso_giorno(
+    impostazioni: Settings, conn: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cartella = tmp_path / "backup"
+    _giro(impostazioni, DOMENICA_SERA, TelegramFinto(), monkeypatch, backup_cartella=cartella)
+    primo = (cartella / "custode-2026-09-06.db.gz").read_bytes()
+
+    _giro(
+        impostazioni,
+        DOMENICA_SERA + timedelta(minutes=5),
+        TelegramFinto(),
+        monkeypatch,
+        backup_cartella=cartella,
+    )
+
+    assert (cartella / "custode-2026-09-06.db.gz").read_bytes() == primo
+    assert len(list(cartella.iterdir())) == 1
+
+
+def test_un_backup_fallito_non_si_segna_e_non_ferma_il_resto(
+    impostazioni: Settings, conn: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backup e riepilogo sono due job indipendenti: uno rotto non ferma l'altro.
+
+    La cartella si fa fallire mettendo un *file* dove dovrebbe esserci una
+    directory, invece che togliendo i permessi: i test girano spesso come root,
+    e root i bit di permesso li ignora — la prova non proverebbe niente.
+    """
+    dom_profilo.aggiungi_candidato(
+        conn, messaggio_origine="x", estratto="Preferisce il backend", ora=DOMENICA_SERA
+    )
+    ostacolo = tmp_path / "non-una-cartella"
+    ostacolo.write_text("sono un file")
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, DOMENICA_SERA, telegram, monkeypatch, backup_cartella=ostacolo)
+
+    assert not gia_eseguito(conn, BACKUP, DOMENICA_SERA.date())
+    # Il riepilogo settimanale è andato avanti: sono due job indipendenti.
+    assert len(telegram.mandati) == 1
+
+
+def test_il_backup_recupera_il_giorno_prima(
+    impostazioni: Settings, conn: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Alle 02:00, prima dell'ora di backup: quello di ieri non è stato fatto."""
+    cartella = tmp_path / "backup"
+
+    _giro(
+        impostazioni,
+        datetime(2026, 9, 6, 2, 0),
+        TelegramFinto(),
+        monkeypatch,
+        backup_cartella=cartella,
+    )
+
+    # Il file porta la data di *adesso*, ma copre il giorno rimasto scoperto.
+    assert gia_eseguito(conn, BACKUP, date(2026, 9, 5))

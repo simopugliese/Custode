@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from html import escape
 
 from custode_bot import azioni
@@ -21,12 +21,20 @@ from custode_bot.azioni import Vista
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
-from custode_core.formato import etichetta_giorno_voce, etichetta_scadenza, plurale
+from custode_core.formato import (
+    etichetta_giorno,
+    etichetta_giorno_voce,
+    etichetta_scadenza,
+    euro,
+    plurale,
+)
 from custode_router import Router
 from custode_router import assistente as dom_assistente
 from custode_router import diario as router_diario
 from custode_router import profilo as router_profilo
+from custode_router import spese as router_spese
 from custode_router.errori import ErroreRouter
 
 # I bottoni di Telegram vanno a capo male: meglio un titolo tagliato che una
@@ -78,11 +86,15 @@ def aiuto() -> Risposta:
             "/aggiungi &lt;voce&gt; — aggiungi alla lista\n"
             "/svuota — togli dalla lista le voci già prese\n"
             "/diario — chiudi la giornata e leggi il riassunto da approvare\n"
+            "/spese — quanto hai speso questo mese\n"
             "/profilo — cosa ho capito di te\n"
             "/aiuto — questo messaggio\n\n"
             "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
             "chiamare l'officina», «sto finendo il latte», «fatto la bolletta». "
             "Eseguo subito e ti lascio un bottone per annullare.</i>\n\n"
+            "<i>Le spese puoi dirmele («ho pagato 8€ la colazione da Bar Rossi») "
+            "o fotografarmi lo scontrino: quello lo leggo e ti chiedo conferma "
+            "prima di metterlo nei conti.</i>\n\n"
             "<i>Quello che mi racconti — com'è andata, cosa pensi, come stai — "
             "lo metto da parte per il diario di oggi. A fine giornata /diario "
             "te ne propone il riassunto: entra nel diario solo se lo approvi.</i>"
@@ -395,6 +407,143 @@ def _azione_diario(conn: sqlite3.Connection, ora: datetime, nome: str, voce_id: 
     return Risposta(testo="Questo bottone non è più valido.")
 
 
+# — spese (§8.5) ——————————————————————————————————————
+
+
+def _riga_spesa(spesa: dom_spese.Spesa, oggi: date) -> str:
+    riga = f"• {escape(spesa.descrizione)} — <b>{euro(spesa.centesimi)}</b>"
+    # Di uno scontrino la descrizione *è* il luogo: ripeterlo direbbe due volte
+    # la stessa cosa in una riga che deve stare su uno schermo di telefono.
+    luogo = spesa.luogo if spesa.luogo != spesa.descrizione else None
+    dettagli = [d for d in (spesa.categoria, luogo) if d]
+    if dettagli:
+        riga += f" <i>{escape(' · '.join(dettagli))}</i>"
+    return riga + f" <i>{escape(etichetta_giorno(spesa.giorno, oggi))}</i>"
+
+
+def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
+    """`/spese`: il mese corrente, col totale e le categorie che pesano di più."""
+    oggi = ora.date()
+    primo = oggi.replace(day=1)
+    del_mese = dom_spese.elenco(conn, da=primo, a=oggi)
+    attesa = dom_spese.in_attesa(conn)
+
+    if not del_mese and not attesa:
+        return Risposta(
+            testo=(
+                "Non hai ancora registrato spese questo mese.\n\n"
+                "<i>Dimmi «ho pagato 8€ la colazione» o mandami la foto di uno "
+                "scontrino.</i>"
+            )
+        )
+
+    pezzi: list[str] = []
+    if del_mese:
+        totale = dom_spese.totale(del_mese)
+        pezzi.append(
+            f"<b>Questo mese</b> — {euro(totale)} in " f"{plurale(len(del_mese), 'spesa', 'spese')}"
+        )
+        categorie = dom_spese.per_categoria(del_mese)[:5]
+        if categorie:
+            pezzi.append("\n".join(f"• {escape(nome)} — {euro(cent)}" for nome, cent in categorie))
+        pezzi.append("<b>Ultime</b>\n" + "\n".join(_riga_spesa(s, oggi) for s in del_mese[:5]))
+
+    bottoni: list[list[Bottone]] = []
+    if attesa:
+        pezzi.append(
+            f"<i>{plurale(len(attesa), 'scontrino letto', 'scontrini letti')} "
+            "in attesa di conferma.</i>"
+        )
+        bottoni = _bottoni_scontrino(attesa[0])
+
+    return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
+
+
+def _bottoni_scontrino(spesa: dom_spese.Spesa) -> list[list[Bottone]]:
+    return [
+        [
+            Bottone("✓ Conferma", azioni.spesa("conferma", spesa.id)),
+            Bottone("Scarta", azioni.spesa("scarta", spesa.id)),
+        ]
+    ]
+
+
+def _testo_scontrino(spesa: dom_spese.Spesa, oggi: date) -> str:
+    righe = [
+        "<b>Scontrino letto</b>",
+        "",
+        f"Totale: <b>{euro(spesa.centesimi)}</b>",
+    ]
+    if spesa.luogo:
+        righe.append(f"Luogo: {escape(spesa.luogo)}")
+    righe.append(f"Data: {escape(etichetta_giorno(spesa.giorno, oggi))}")
+    if spesa.categoria:
+        righe.append(f"Categoria: {escape(spesa.categoria)}")
+    if spesa.scontrino_raw:
+        voci = spesa.scontrino_raw.splitlines()
+        mostrate = "\n".join(f"  {escape(v)}" for v in voci[:8])
+        righe += ["", "<i>Voci lette:</i>", f"<i>{mostrate}</i>"]
+        if len(voci) > 8:
+            righe.append(f"<i>  … e altre {len(voci) - 8}</i>")
+    righe += ["", "<i>Entra nei conti solo se confermi.</i>"]
+    return "\n".join(righe)
+
+
+def scontrino(
+    conn: sqlite3.Connection,
+    ora: datetime,
+    immagine: bytes,
+    router: Router,
+    *,
+    media_type: str = "image/jpeg",
+) -> Risposta:
+    """Una foto di scontrino → una spesa da confermare (§8.5).
+
+    È l'unica cosa che chiede una conferma esplicita prima di entrare nei
+    conti: il modello legge dieci numeri da un'immagine, e sbagliarne uno è
+    facile in un modo in cui non lo è leggere una frase.
+    """
+    try:
+        letto = router_spese.leggi_scontrino(router, immagine=immagine, media_type=media_type)
+    except ErroreRouter as errore:
+        return Risposta(testo=escape(router_spese.messaggio_errore(errore)))
+
+    spesa = dom_spese.registra(
+        conn,
+        centesimi=letto.centesimi,
+        descrizione=letto.luogo or "scontrino",
+        ora=ora,
+        giorno=letto.giorno,
+        luogo=letto.luogo or None,
+        fonte=dom_spese.Fonte.SCONTRINO,
+        stato=dom_spese.Stato.DA_CONFERMARE,
+        scontrino_raw=letto.dettaglio or None,
+    )
+    # La categoria si chiede *dopo* aver salvato: se Claude non risponde, lo
+    # scontrino letto resta lì da confermare invece di andare perso.
+    dom_assistente.categorizza_se_serve(conn, ora, spesa.id, router)
+    return Risposta(
+        testo=_testo_scontrino(dom_spese.leggi(conn, spesa.id), ora.date()),
+        bottoni=_bottoni_scontrino(spesa),
+    )
+
+
+def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: int) -> Risposta:
+    if nome == "conferma":
+        spesa = dom_spese.conferma(conn, spesa_id, ora)
+        coda = f" — {spesa.categoria}" if spesa.categoria else ""
+        return Risposta(
+            testo=(
+                f"Nei conti: <b>{escape(spesa.descrizione)}</b>, "
+                f"{euro(spesa.centesimi)}{escape(coda)}"
+            )
+        )
+    if nome == "scarta":
+        dom_spese.elimina(conn, spesa_id)
+        return Risposta(testo="Scontrino buttato: non è entrato nei conti.")
+    return Risposta(testo="Questo bottone non è più valido.")
+
+
 # — profilo (§8.4) ————————————————————————————————————
 
 
@@ -583,6 +732,8 @@ def esegui_azione(
             return _azione_diario(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "p":
             return _azione_profilo(conn, ora, azione.nome, azione.argomento, router)
+        elif azione.dominio == "e":
+            return _azione_spesa(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "x" and azione.nome == "annulla":
             return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":
@@ -595,6 +746,7 @@ def esegui_azione(
         dom_lista.VoceInesistente,
         dom_diario.VoceInesistente,
         dom_profilo.CandidatoInesistente,
+        dom_spese.SpesaInesistente,
     ):
         # Capita col messaggio vecchio in cronologia, dopo aver cancellato la riga.
         return Risposta(testo="Quella voce non esiste più.")

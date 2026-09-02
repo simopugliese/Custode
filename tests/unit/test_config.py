@@ -51,3 +51,14 @@ def test_get_settings_e_memoizzata() -> None:
     get_settings.cache_clear()
     assert get_settings() is get_settings()
     get_settings.cache_clear()
+
+
+def test_un_budget_vuoto_vale_non_impostato(
+    fai_settings: Callable[..., Settings], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`.env.example` lascia la riga vuota: copiarlo non deve bloccare l'avvio."""
+    monkeypatch.setenv("CUSTODE_BUDGET_SETTIMANALE", "")
+    assert fai_settings().budget_settimanale is None
+
+    monkeypatch.setenv("CUSTODE_BUDGET_SETTIMANALE", "120")
+    assert fai_settings().budget_settimanale == 120.0

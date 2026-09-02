@@ -226,6 +226,55 @@ class DiarioData(BaseModel):
     coperturaNota: str
 
 
+# — spese (§8.5) —
+
+
+class Movimento(BaseModel):
+    id: str
+    dataLabel: str
+    descrizione: str
+    categoria: str
+    importo: float
+    daScontrino: bool | None = None
+
+
+class ScontrinoInAttesa(BaseModel):
+    id: str
+    luogo: str
+    importo: float
+    categoriaProposta: str
+    dataLabel: str
+
+
+class StatsSpese(BaseModel):
+    """I nomi dicono «mese» perché così sta nel contratto, ma i valori seguono
+    il periodo scelto: la pagina ha un selettore settimana/mese/anno, e stats
+    che restassero ferme sul mese cambierebbero il significato del selettore.
+    """
+
+    totaleMese: float
+    mediaGiorno: float
+    categoriaMaggiore: str
+    variazioneMesePrecedente: float
+
+
+class ConfrontoSpese(BaseModel):
+    label: str
+    importo: float
+
+
+class SpeseData(BaseModel):
+    periodoLabel: str
+    titolo: str
+    scontrinoInAttesa: ScontrinoInAttesa | None = None
+    stats: StatsSpese
+    andamentoGiorni: list[int]
+    movimenti: list[Movimento]
+    categorie: list[CategoriaSpesa]
+    categoriaNota: str | None = None
+    confronto: list[ConfrontoSpese]
+
+
 # — corpi delle richieste —
 
 
@@ -248,6 +297,18 @@ class NuovaVoceSpesa(BaseModel):
 
 class ModificaVoceSpesa(BaseModel):
     preso: bool
+
+
+class NuovaSpesa(BaseModel):
+    """`POST /api/spese`. L'importo è in **euro**: i centesimi restano dentro."""
+
+    importo: float
+    descrizione: str
+    categoria: str | None = None
+
+
+class ConfermaScontrino(BaseModel):
+    categoria: str | None = None
 
 
 class MessaggioAssistente(BaseModel):

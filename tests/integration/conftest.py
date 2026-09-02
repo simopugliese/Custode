@@ -36,11 +36,21 @@ def modello() -> RouterFinto:
 
 
 @pytest.fixture
+def budget() -> float | None:
+    """Nessun budget: è come nasce un'installazione (§8.5).
+
+    Un test che vuole il blocco spese della Home ridefinisce questa fixture.
+    """
+    return None
+
+
+@pytest.fixture
 def client(
     fai_settings: Callable[..., Settings],
     db_path: Path,
     ora: datetime,
     modello: RouterFinto,
+    budget: float | None,
 ) -> Iterator[TestClient]:
     """API completa su un DB temporaneo, con "adesso" fissato.
 
@@ -48,7 +58,7 @@ def client(
     esercita anche quel passaggio invece di preparare lo schema per conto suo.
     """
     app = crea_app(
-        fai_settings(ambiente="test", db_path=db_path),
+        fai_settings(ambiente="test", db_path=db_path, budget_settimanale=budget),
         router=modello,  # type: ignore[arg-type]
     )
     # L'ora è iniettata: senza, le etichette ("oggi", "giovedì") e la sezione

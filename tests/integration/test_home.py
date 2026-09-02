@@ -12,16 +12,24 @@ def test_home_vuota(client: TestClient) -> None:
     corpo = client.get("/api/home").json()
     assert corpo["dataLabel"] == "lunedì 31 agosto, 08:41"
     assert corpo["titolo"] == "Niente in sospeso."
-    assert corpo["stats"] == {"taskAperti": 0, "listaSpesaDaPrendere": 0}
+    assert corpo["stats"] == {
+        "taskAperti": 0,
+        "listaSpesaDaPrendere": 0,
+        "spesaSettimana": 0.0,
+    }
 
 
 def test_i_moduli_non_attivi_sono_assenti_non_a_zero(client: TestClient) -> None:
     # È la differenza fra "non lo so ancora" e "non hai speso niente".
     corpo = client.get("/api/home").json()
-    for campo in ("calendarioOggi", "abitudini", "speseSettimana", "proposteAutomazioni"):
+    for campo in ("calendarioOggi", "abitudini", "proposteAutomazioni"):
         assert campo not in corpo
-    assert "spesaSettimana" not in corpo["stats"]
     assert "streakPiuLunga" not in corpo["stats"]
+    # Il modulo spese c'è, quindi il totale è un dato — anche quando è zero.
+    assert corpo["stats"]["spesaSettimana"] == 0.0
+    # Il blocco col budget invece no: senza `CUSTODE_BUDGET_SETTIMANALE` non
+    # c'è un tetto rispetto a cui riempire la barra.
+    assert "speseSettimana" not in corpo
 
 
 def test_riepilogo_con_dati_veri(client: TestClient) -> None:
@@ -32,7 +40,11 @@ def test_riepilogo_con_dati_veri(client: TestClient) -> None:
 
     corpo = client.get("/api/home").json()
     assert corpo["titolo"] == "1 task in ritardo, 1 per oggi, 1 voce sulla lista."
-    assert corpo["stats"] == {"taskAperti": 3, "listaSpesaDaPrendere": 1}
+    assert corpo["stats"] == {
+        "taskAperti": 3,
+        "listaSpesaDaPrendere": 1,
+        "spesaSettimana": 0.0,
+    }
     # Gli scaduti vengono prima: sono la cosa da vedere per prima.
     assert [t["titolo"] for t in corpo["taskOggi"]] == ["bolletta", "officina"]
     assert [v["nome"] for v in corpo["listaSpesa"]] == ["latte"]
