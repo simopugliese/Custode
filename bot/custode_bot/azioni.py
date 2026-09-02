@@ -5,7 +5,8 @@ Averle in un modulo a parte, con parsing e formattazione simmetrici, evita che
 la stringa venga costruita a mano in un punto e letta a mano in un altro.
 
 Forma: `dominio:azione:argomento:vista`
-  dominio  t = task, s = spesa, d = diario, p = profilo, x = azioni di servizio
+  dominio  t = task, s = lista spesa, d = diario, p = profilo,
+           e = spese (§8.5), x = azioni di servizio
   vista    da quale elenco è partito il tap, per ridisegnare quello giusto
 """
 
@@ -26,7 +27,7 @@ class AzioneNonValida(ValueError):
 
 @dataclass(frozen=True)
 class Azione:
-    dominio: Literal["t", "s", "d", "p", "x"]
+    dominio: Literal["t", "s", "d", "p", "e", "x"]
     nome: str
     argomento: str = ""
     vista: Vista = "task"
@@ -40,7 +41,7 @@ def leggi(dato: str) -> Azione:
     if len(pezzi) != 4:
         raise AzioneNonValida(dato)
     dominio, nome, argomento, sigla_vista = pezzi
-    if dominio not in ("t", "s", "d", "p", "x") or sigla_vista not in VISTE_PER_SIGLA:
+    if dominio not in ("t", "s", "d", "p", "e", "x") or sigla_vista not in VISTE_PER_SIGLA:
         raise AzioneNonValida(dato)
     return Azione(
         dominio=dominio,  # type: ignore[arg-type]
@@ -75,6 +76,11 @@ def diario(nome: str, voce_id: int) -> str:
 def profilo(nome: str, argomento: int | str = "") -> str:
     """Chiarimento di un segnale, revisione settimanale, ritorno indietro (§8.4)."""
     return Azione("p", nome, str(argomento), "task").dato()
+
+
+def spesa(nome: str, spesa_id: int) -> str:
+    """Conferma o scarto di uno scontrino letto (§8.5)."""
+    return Azione("e", nome, str(spesa_id), "task").dato()
 
 
 def svuota(conferma: bool) -> str:

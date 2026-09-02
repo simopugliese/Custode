@@ -16,6 +16,7 @@ import pytest
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_router import assistente
 from custode_router.assistente import Azione
@@ -180,6 +181,109 @@ def test_aggiungere_due_volte_lo_dice(conn: sqlite3.Connection, ora: datetime) -
     esito = _esegui(conn, ora, "x", payload)
     assert "era già in lista" in esito.testo
     assert len(dom_lista.elenco(conn)) == 1
+
+
+# — spese (§8.5): la frase con dentro una cifra —
+
+
+def test_registra_spesa(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "ho pagato 8€ la colazione da Bar Rossi",
+        {
+            "azione": "registra_spesa",
+            "titolo": "colazione",
+            "importo": 8,
+            "luogo": "Bar Rossi",
+            "categoria": "Bar",
+        },
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert (spesa.centesimi, spesa.descrizione, spesa.luogo) == (800, "colazione", "Bar Rossi")
+    # Da testo entra subito nei conti: la conferma §8.5 la chiede lo scontrino.
+    assert spesa.stato is dom_spese.Stato.CONFERMATA
+    assert esito.spesa_id == spesa.id
+    assert "8,00 €" in esito.testo
+
+
+def test_una_spesa_registrata_si_annulla_col_bottone(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(conn, ora, "x", {"azione": "registra_spesa", "titolo": "birra", "importo": 4.5})
+    assert esito.identificatore == esito.spesa_id
+    assert esito.spesa_id is not None
+
+    testo = assistente.annulla(conn, ora, Azione.REGISTRA_SPESA, identificatore=esito.spesa_id)
+    assert dom_spese.elenco(conn) == []
+    assert "4,50 €" in testo
+
+
+@pytest.mark.parametrize("importo", [0, -3, None, "otto", True])
+def test_senza_un_importo_valido_non_nasce_nessuna_spesa(
+    conn: sqlite3.Connection, ora: datetime, importo: Any
+) -> None:
+    # `True` compreso: è un `int` in Python, e senza escluderlo diventerebbe
+    # una spesa da un centesimo.
+    esito = _esegui(
+        conn, ora, "x", {"azione": "registra_spesa", "titolo": "qualcosa", "importo": importo}
+    )
+    assert dom_spese.elenco(conn) == []
+    assert "quanto hai speso" in esito.testo
+
+
+def test_gli_spiccioli_non_si_perdono_nel_passaggio_a_centesimi(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    _esegui(conn, ora, "x", {"azione": "registra_spesa", "titolo": "caffè", "importo": 8.15})
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.centesimi == 815
+
+
+def test_una_spesa_senza_categoria_la_chiede_a_claude_a_parte(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    # Seconda chiamata, e solo a Claude: succede quando nessuna categoria
+    # esistente calzava (§6).
+    esito = _esegui(
+        conn, ora, "x", {"azione": "registra_spesa", "titolo": "spesa al super", "importo": 40}
+    )
+    assert esito.spesa_id is not None
+    router = RouterFinto({"categoria": "Alimentari", "esistente": False})
+
+    nome = assistente.categorizza_se_serve(conn, ora, esito.spesa_id, router)  # type: ignore[arg-type]
+
+    assert nome == "Alimentari"
+    assert dom_spese.leggi(conn, esito.spesa_id).categoria == "Alimentari"
+    assert router.chiamate[0]["compito"].value == "categorie_spesa"
+
+
+def test_una_spesa_gia_categorizzata_non_ricosta_una_chiamata(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(
+        conn,
+        ora,
+        "x",
+        {"azione": "registra_spesa", "titolo": "spesa", "importo": 40, "categoria": "Alimentari"},
+    )
+    assert esito.spesa_id is not None
+    router = RouterFinto()
+
+    assert assistente.categorizza_se_serve(conn, ora, esito.spesa_id, router) == "Alimentari"  # type: ignore[arg-type]
+    assert router.chiamate == []
+
+
+def test_se_claude_non_risponde_la_spesa_resta_senza_categoria(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito = _esegui(conn, ora, "x", {"azione": "registra_spesa", "titolo": "spesa", "importo": 40})
+    assert esito.spesa_id is not None
+    router = RouterFinto(errore=ProviderNonRaggiungibile("giù"))
+
+    assert assistente.categorizza_se_serve(conn, ora, esito.spesa_id, router) is None  # type: ignore[arg-type]
+    # La spesa resta nei conti: si sistema dopo dalla dashboard.
+    assert dom_spese.leggi(conn, esito.spesa_id).categoria is None
 
 
 def test_segna_voce_presa(conn: sqlite3.Connection, ora: datetime) -> None:

@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     timezone: str = "Europe/Rome"
     """Fuso orario usato per digest, check-in e job schedulati (§8.13)."""
 
+    budget_settimanale: float | None = None
+    """Quanto conti di spendere in una settimana, in euro (§8.5).
+
+    Non ha un default: un budget inventato dal codice sarebbe un giudizio su
+    come spendi. Finché non lo imposti, la Home **omette** il blocco delle
+    spese settimanali invece di disegnare una barra su un tetto immaginario;
+    il totale speso resta comunque visibile fra le statistiche.
+    """
+
     # `NoDecode` disattiva il parsing JSON automatico di pydantic-settings sui
     # campi complessi: così la variabile d'ambiente può essere un semplice
     # elenco separato da virgole, che è come si scrive a mano in un .env.
@@ -51,6 +60,19 @@ class Settings(BaseSettings):
 
     Accetta sia una lista JSON sia un elenco separato da virgole.
     """
+
+    @field_validator("budget_settimanale", mode="before")
+    @classmethod
+    def _budget_vuoto_e_nessun_budget(cls, value: object) -> object:
+        """`CUSTODE_BUDGET_SETTIMANALE=` vale «non impostato», non un errore.
+
+        In `.env.example` la riga c'è ma è vuota, ed è il modo normale di
+        lasciare spento un campo facoltativo: senza questo, copiare il file di
+        esempio in `.env` impedirebbe l'avvio di tutti i servizi.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("cors_origins", mode="before")
     @classmethod

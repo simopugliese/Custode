@@ -42,7 +42,7 @@ export default function Spese() {
 
             <StatsBar
               items={[
-                { label: 'Totale mese', value: <Money value={data.stats.totaleMese} /> },
+                { label: 'Totale periodo', value: <Money value={data.stats.totaleMese} /> },
                 { label: 'Media al giorno', value: <Money value={data.stats.mediaGiorno} /> },
                 { label: 'Categoria maggiore', value: <span style={{ fontSize: 34, paddingTop: 8, display: 'block' }}>{data.stats.categoriaMaggiore}</span> },
                 { label: 'Su periodo prec.', value: <Percent value={data.stats.variazioneMesePrecedente} /> },

@@ -44,6 +44,12 @@ from custode_router import Router
 
 log = logging.getLogger("custode.bot")
 
+# Tetto dell'API di Claude per una singola immagine: sopra, la richiesta viene
+# rifiutata dall'altra parte. Telegram comprime già le foto ben sotto questa
+# soglia, quindi è una rete di sicurezza, non un limite di gusto — per questo
+# è una costante e non una variabile d'ambiente.
+MAX_BYTE_FOTO = 4 * 1024 * 1024
+
 COMANDI = [
     BotCommand("oggi", "Cosa c'è oggi"),
     BotCommand("task", "I task aperti"),
@@ -52,6 +58,7 @@ COMANDI = [
     BotCommand("aggiungi", "Aggiungi alla lista della spesa"),
     BotCommand("svuota", "Togli dalla lista le voci già prese"),
     BotCommand("diario", "Chiudi la giornata e leggi il riassunto"),
+    BotCommand("spese", "Quanto hai speso questo mese"),
     BotCommand("profilo", "Cosa ho capito di te"),
     BotCommand("aiuto", "Cosa so fare"),
 ]
@@ -137,6 +144,30 @@ def crea_applicazione(
     async def cmd_profilo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         with connessione() as conn:
             risposta = risposte.profilo(conn)
+        await _rispondi(update, risposta)
+
+    async def foto(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
+        """Una foto è uno scontrino (§8.5): l'unico compito che passa da vision."""
+        messaggio = update.effective_message
+        if messaggio is None or not messaggio.photo:
+            return
+        # Telegram manda la stessa foto in più misure, dalla miniatura in su:
+        # l'ultima è la più grande, ed è quella su cui si legge un totale.
+        misura = messaggio.photo[-1]
+        if (misura.file_size or 0) > MAX_BYTE_FOTO:
+            await _rispondi(
+                update, Risposta(testo="Quella foto è troppo grande: mandamene una più leggera.")
+            )
+            return
+
+        # Leggere uno scontrino passa da Claude e non è istantaneo.
+        await messaggio.reply_chat_action(ChatAction.TYPING)
+        file = await misura.get_file()
+        immagine = bytes(await file.download_as_bytearray())
+
+        with connessione() as conn:
+            # Le foto di Telegram sono sempre JPEG, qualunque fosse l'originale.
+            risposta = risposte.scontrino(conn, ora(), immagine, instradatore)
         await _rispondi(update, risposta)
 
     async def su_bottone(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
@@ -275,6 +306,13 @@ def crea_applicazione(
     applicazione.add_handler(CommandHandler("svuota", cmd_svuota, filters=solo_io))
     applicazione.add_handler(CommandHandler("diario", cmd_diario, filters=solo_io))
     applicazione.add_handler(CommandHandler("profilo", cmd_profilo, filters=solo_io))
+    applicazione.add_handler(
+        CommandHandler(
+            "spese",
+            comando(lambda conn, ora_, _: risposte.elenco_spese(conn, ora_)),
+            filters=solo_io,
+        )
+    )
 
     async def su_errore(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.exception("errore non gestito", exc_info=context.error)
@@ -289,6 +327,7 @@ def crea_applicazione(
         MessageHandler(solo_io & filters.TEXT & ~filters.COMMAND, testo_libero)
     )
     applicazione.add_handler(MessageHandler(solo_io & (filters.VOICE | filters.AUDIO), vocale))
+    applicazione.add_handler(MessageHandler(solo_io & filters.PHOTO, foto))
 
     # Gruppo a parte: gli altri gruppi vengono comunque valutati, così ogni
     # messaggio non autorizzato finisce nei log anche se nessun handler lo serve.

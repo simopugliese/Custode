@@ -125,7 +125,7 @@ Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale.
 | Report narrativo settimanale/mensile abitudini | **Claude** | sintesi che incrocia più segnali (abitudini, diario, spese) |
 | (futuro) Riassunto email | **Claude** | contenuto sensibile, serve qualità e un solo fornitore fidato |
 
-**Stato attuale.** La tabella è codificata per intero in `router/custode_router/compiti.py`, motivi compresi, e chi chiama nomina il *compito*, mai il modello. Oggi passano di qui il parsing della lista della spesa, il CRUD dei task e il riconoscimento del materiale da diario e dei segnali per il profilo (tutti DeepSeek, e tutti nella stessa chiamata), più tre compiti su **Claude**: il riassunto del diario, il riepilogo settimanale e la rifusione del profilo (§8.4). Per gli altri il provider è deciso e il client pronto, ma nessun modulo li chiama ancora. L'unica riga non implementata è **la lettura degli scontrini**, che richiede di mandare un'immagine al modello: arriverà col modulo spese (§8.5).
+**Stato attuale.** La tabella è codificata per intero in `router/custode_router/compiti.py`, motivi compresi, e chi chiama nomina il *compito*, mai il modello. Oggi passano di qui il parsing della lista della spesa, il CRUD dei task, il riconoscimento del materiale da diario e dei segnali per il profilo e l'estrazione di una spesa dal testo (tutti DeepSeek, e tutti nella stessa chiamata), più cinque compiti su **Claude**: il riassunto del diario, il riepilogo settimanale, la rifusione del profilo (§8.4), la scelta della categoria di una spesa e **la lettura degli scontrini** (§8.5) — l'unica riga *vision* della tabella, che manda l'immagine al modello con `chiedi_json_con_immagine`. Per gli altri il provider è deciso e il client pronto, ma nessun modulo li chiama ancora.
 
 **Un tetto di token per Claude, separato da quello di DeepSeek.** Costruendo il diario è emerso che `max_token_risposta`, tarato su risposte JSON brevi, non può valere per entrambi: su `claude-opus-5` il ragionamento adattivo è attivo di default e i suoi token rientrano in `max_tokens`, quindi un tetto basso verrebbe consumato dal ragionamento e la risposta arriverebbe troncata invece che in JSON. Da qui `max_token_risposta_claude`, molto più alto, e un errore esplicito quando `stop_reason` è `max_tokens` — così il sintomo dice cosa alzare invece di somigliare a un prompt sbagliato. Il problema esisteva già ma non si era mai visto: a Claude non arrivava traffico.
 
@@ -162,7 +162,7 @@ lezioni_log(id, corso_id, data, seguita, appunti_presi)
 ### 8.1 Bot Telegram (testo + voce)
 Funziona identico via testo o audio. L'audio passa da Whisper locale → testo → stessa pipeline del testo. Nessuna differenza di funzionalità tra le due modalità, solo di input.
 
-**Stato attuale.** Il bot copre task, lista della spesa e diario (§8.2, §8.3, §8.4) in tre modi che convivono: comandi espliciti con bottoni inline, testo libero interpretato dal router (§6), e vocali trascritti da Whisper locale che imboccano lo stesso percorso del testo. Gira in long polling, con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Ogni azione decisa da un modello lascia un bottone «Annulla»: l'interpretazione è automatica, quindi disfare deve costare un tap.
+**Stato attuale.** Il bot copre task, lista della spesa, diario e spese (§8.2, §8.3, §8.4, §8.5) in quattro modi che convivono: comandi espliciti con bottoni inline, testo libero interpretato dal router (§6), vocali trascritti da Whisper locale che imboccano lo stesso percorso del testo, e **foto**, che sono scontrini da leggere. Gira in long polling, con la whitelist di §9 applicata a comandi, testo libero e tap sui bottoni. Ogni azione decisa da un modello lascia un bottone «Annulla»: l'interpretazione è automatica, quindi disfare deve costare un tap.
 
 **Colonne aggiunte alla bozza, costruendo i moduli** (le migrazioni reali sono in `core/custode_core/migrazioni/`):
 - `tasks.origine` — dashboard, Telegram, piano di ripasso o regola di contesto: serve a raggruppare i task per provenienza e a etichettare la riga ("da piano di ripasso", §8.11).
@@ -229,6 +229,12 @@ Due canali:
 - **Foto scontrino**: Claude (vision) legge lo scontrino, estrae voci e totale, propone una sintesi. **Prima di salvare sul Pi, il bot ti manda la sintesi per conferma/modifica** (esattamente come chiesto) — solo dopo la tua approvazione i dati entrano nel DB.
 
 Le categorie sono **proposte e adattate dinamicamente da Claude nel tempo**: quando propone una categoria nuova, la confronta con quelle esistenti per evitare doppioni semantici (es. "Cibo" vs "Alimentari"), e resta comunque modificabile/unibile da dashboard.
+
+**Stato attuale.** Entrambi i canali sono attivi. Una frase con dentro una cifra («ho pagato 8€ la colazione da Bar Rossi») entra **subito** nei conti con un bottone «Annulla», come task, lista e diario: chiedere un sì venti volte al giorno è il modo più sicuro di smettere di registrare le spese piccole. Una **foto** di scontrino passa da Claude vision, che ne estrae totale, luogo, data e voci, e diventa una spesa `da_confermare`: fuori dai totali finché non tocchi «Conferma», perché lì il modello legge dieci numeri da un'immagine. Della foto non si conserva nulla — restano il totale e le voci lette in `scontrino_raw_estratto` (§7). La categoria è una **seconda** chiamata, e solo a Claude, fatta dopo aver salvato la spesa: se non risponde, la spesa resta senza categoria invece di perdersi, e si sistema dalla dashboard.
+
+Gli importi stanno nel database in **centesimi**, come interi: sommare float per centinaia di spese produce totali che non tornano per qualche centesimo, e su dei soldi un totale che non torna è un bug che si nota. La conversione a euro avviene una volta sola, al confine con l'API e col bot.
+
+`GET /api/spese` e le sue due mutazioni non rispondono più `501`; sulla Home compaiono `spesaSettimana` e — solo se hai impostato `CUSTODE_BUDGET_SETTIMANALE` — il blocco «Spese · settimana». Senza budget quel blocco resta **assente**: una barra ha bisogno di un tetto, e inventarne uno sarebbe un giudizio su come spendi.
 
 ### 8.6 Tracciatore abitudini
 - Definisci abitudini dinamiche con una frequenza target (es. "palestra, almeno 3 volte/settimana").
@@ -299,7 +305,7 @@ Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/l
 1. **Scheletro**: bot Telegram (testo+voce) + Whisper locale + router DeepSeek/Claude + DB SQLite + Docker Compose + Cloudflare Tunnel/Access + CI base.
 2. **Task/promemoria + lista della spesa** (moduli semplici, valore d'uso immediato).
 3. **Diario** (flusso trascrizione → riassunto → approvazione → salvataggio, + job settimanale). *Fatta, canale passivo e job settimanale compresi.*
-4. **Tracciamento spese** (testo + foto scontrino con conferma prima del salvataggio).
+4. **Tracciamento spese** (testo + foto scontrino con conferma prima del salvataggio). *Fatta.*
 5. **Tracciatore abitudini** (dinamico, log da linguaggio libero, statistiche di aderenza + report settimanale/mensile).
 6. **Calendario + motore di contesto** (sync in sola lettura, tagging eventi, regole dettate da te, poi le auto-proposte basate su pattern).
 7. **Corsi universitari** (sync appunti da GitHub, check-in serale, piano di ripasso da syllabus.md).

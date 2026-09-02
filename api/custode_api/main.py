@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from custode_api.rotte import assistente, diario, home, lista_spesa, non_attivi, task
+from custode_api.rotte import assistente, diario, home, lista_spesa, non_attivi, spese, task
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.migrazioni import migra
@@ -112,6 +112,7 @@ def crea_app(settings: Settings | None = None, router: Router | None = None) -> 
     app.include_router(home.router)
     app.include_router(task.router)
     app.include_router(lista_spesa.router)
+    app.include_router(spese.router)
     # Per ultimo: i moduli non ancora attivi non devono coprire una rotta vera.
     app.include_router(non_attivi.router)
 

@@ -19,6 +19,9 @@ richiedono qualità, visione o ragionamento a Claude.
 - `profilo.py` — la **rifusione**: Claude riscrive il profilo da capo fondendo
   il vecchio con i segnali nuovi (§8.4). Non è un accodamento, ed è il motivo
   per cui §6 la manda a Claude e non a DeepSeek.
+- `spese.py` — la categoria di una spesa e la **lettura degli scontrini**
+  (§8.5): l'unica riga *vision* di §6, e l'unica che manda un'immagine al
+  modello. Da qui escono numeri e nomi, non righe di database.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
 condiviso non deve sapere che esistono dei modelli.
@@ -41,9 +44,17 @@ Instradati e in uso, su DeepSeek: parsing della lista, CRUD dei task,
 riconoscimento del materiale da diario e rilevazione dei segnali per il profilo
 — tutti e quattro **nella stessa chiamata**, perché sono compiti diversi di §6
 ma con lo stesso provider, e farne quattro giri costerebbe quattro volte tanto
-su ogni messaggio. Su Claude: riassunto del diario, riepilogo settimanale e
-rifusione del profilo. Gli altri compiti della tabella hanno il provider già
-deciso e il client pronto, ma nessun modulo li chiama ancora.
+su ogni messaggio — più l'estrazione di una spesa detta a parole. Su Claude:
+riassunto del diario, riepilogo settimanale, rifusione del profilo, scelta della
+categoria di una spesa e lettura degli scontrini. Gli altri compiti della
+tabella hanno il provider già deciso e il client pronto, ma nessun modulo li
+chiama ancora.
+
+Perché la categoria di una spesa va a Claude e non a DeepSeek: **assegnare** una
+spesa a una categoria che già esiste viaggia nella stessa chiamata che
+interpreta il messaggio, e non costa niente in più; **crearne una nuova** è la
+riga di §6 che chiede di «evitare categorie duplicate o incoerenti», e un
+doppione creato oggi resta lì per sempre.
 
 Nota sul tetto dei token: DeepSeek e Claude ne hanno due distinti
 (`max_token_risposta` e `max_token_risposta_claude`). Su `claude-opus-5` il
@@ -51,9 +62,10 @@ ragionamento adattivo è attivo di default e i suoi token rientrano in
 `max_tokens`: col tetto basso che basta a DeepSeek, la risposta arriverebbe
 troncata invece che in JSON.
 
-L'unica riga di §6 non implementata è **la lettura degli scontrini**, che ha
-bisogno di mandare un'immagine al modello: chiederla ora solleva
-`CompitoNonSupportato`, e arriverà col modulo spese (§8.5).
+La lettura degli scontrini passa da `chiedi_json_con_immagine`, non da
+`chiedi_json`: sono due strade separate apposta, e chiedere un compito con
+immagini per la strada sbagliata (o viceversa) solleva `CompitoNonSupportato`
+invece di mandare al modello una domanda senza la cosa da guardare.
 
 §6 dice anche cosa **non** passa di qui: valutare una regola di contesto già
 approvata è logica pura, costo zero, e va tenuta così.

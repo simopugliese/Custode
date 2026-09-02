@@ -37,6 +37,7 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/aggiungi <voce>` | Aggiunge alla lista della spesa |
 | `/svuota` | Toglie le voci già prese, previa conferma |
 | `/diario` | Chiude la giornata e propone il riassunto da approvare |
+| `/spese` | Quanto hai speso questo mese, per categoria |
 | `/profilo` | Cosa Custode ha capito di te, e quanti segnali sono in attesa |
 | `/aiuto` | L'elenco qui sopra |
 
@@ -50,6 +51,8 @@ I **vocali** seguono esattamente lo stesso percorso: whisper.cpp locale li
 trascrive e da lì in poi non c'è differenza col testo (§8.1). Il bot rimanda
 anche la trascrizione, così se qualcosa esce storto si vede subito se la colpa
 è di Whisper o dell'interpretazione.
+
+Una **foto** è uno scontrino: vedi §8.5 qui sotto.
 
 ## Il diario (§8.4)
 
@@ -75,6 +78,29 @@ resta sul disco**: si riprova più tardi senza aver perso niente.
 Lo stato «sto aspettando la tua riscrittura» sta sul database, non nella memoria
 del processo: se il bot riparte a metà, la conversazione riprende da dov'era
 invece di scambiare la riscrittura per una frase qualsiasi.
+
+## Le spese (§8.5)
+
+Due strade, che finiscono nello stesso posto.
+
+- **A parole** — «ho pagato 8€ la colazione da Bar Rossi» entra **subito** nei
+  conti, con un bottone «Annulla» come tutto il resto. Chiedere conferma venti
+  volte al giorno è il modo più sicuro di smettere di registrare le spese
+  piccole.
+- **Una foto dello scontrino** — la legge Claude (§6), che ne estrae totale,
+  luogo, data e voci. La sintesi arriva con **Conferma** e **Scarta**, e
+  **finché non confermi resta fuori dai totali**: lì il modello legge dieci
+  numeri da un'immagine, e sbagliarne uno è facile in un modo in cui non lo è
+  leggere una frase. La foto non viene conservata: restano il totale e le voci
+  lette.
+
+La categoria la propone Claude confrontandola con quelle che già usi, così non
+nascono «Cibo» accanto ad «Alimentari». È una chiamata a parte, fatta **dopo**
+aver salvato la spesa: se il modello non risponde, la spesa resta lì senza
+categoria invece di andare persa, e si sistema dalla dashboard.
+
+Uno scontrino letto e mai confermato non si perde nella cronologia della chat:
+`/spese` lo ripropone coi suoi due bottoni.
 
 ## Il profilo (§8.4)
 

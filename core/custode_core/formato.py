@@ -140,6 +140,15 @@ def etichetta_mese(giorno: date, oggi: date) -> str:
     return mese if giorno.year == oggi.year else f"{mese} {giorno.year}"
 
 
+def euro(centesimi: int) -> str:
+    """ "8,00 €" — il formato italiano, virgola decimale e simbolo in fondo.
+
+    Prende centesimi perché è così che gli importi vivono nel dominio (§8.5):
+    la conversione a euro avviene qui, all'ultimo momento, una volta sola.
+    """
+    return f"{centesimi / 100:.2f}".replace(".", ",") + " €"
+
+
 def plurale(quantita: int, singolare: str, plurale_: str) -> str:
     """ "1 task" / "3 task" — evita di scrivere ogni volta lo stesso ternario."""
     return f"{quantita} {singolare if quantita == 1 else plurale_}"

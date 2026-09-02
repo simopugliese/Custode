@@ -14,7 +14,17 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from telegram import Bot, CallbackQuery, Chat, Message, MessageEntity, Update, User, Voice
+from telegram import (
+    Bot,
+    CallbackQuery,
+    Chat,
+    Message,
+    MessageEntity,
+    PhotoSize,
+    Update,
+    User,
+    Voice,
+)
 from telegram.ext import Application
 
 from custode_bot import azioni
@@ -25,6 +35,7 @@ from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_core.formato import adesso
 from custode_router.compiti import Compito
@@ -90,6 +101,14 @@ class RouterFinto:
         self.errore: Exception | None = None
         self.messaggi_visti: list[str] = []
         self.compiti_visti: list[Any] = []
+        self.immagini_viste: list[bytes] = []
+        self.risposta_immagine: dict[str, Any] = {
+            "leggibile": True,
+            "totale": 23.4,
+            "luogo": "Conad",
+            "data": "",
+            "voci": ["Latte — 1,29"],
+        }
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         self.messaggi_visti.append(kwargs.get("utente", ""))
@@ -97,6 +116,13 @@ class RouterFinto:
         if self.errore is not None:
             raise self.errore
         return self.per_compito.get(compito, self.risposta)
+
+    def chiedi_json_con_immagine(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
+        self.compiti_visti.append(compito)
+        self.immagini_viste.append(kwargs["immagine"])
+        if self.errore is not None:
+            raise self.errore
+        return self.risposta_immagine
 
 
 class WhisperFinto(ClientWhisper):
@@ -213,6 +239,39 @@ def _manda_vocale(
     # restituisce i byte senza rete.
     object.__setattr__(messaggio, "voice", _VoceFinta(audio, durata))
     asyncio.run(app.process_update(Update(update_id=3, message=messaggio)))
+
+
+class _FotoFinta:
+    """Una `PhotoSize` che restituisce i byte senza passare da Telegram."""
+
+    def __init__(self, contenuto: bytes, file_size: int | None = None):
+        self._contenuto = contenuto
+        self.file_size = file_size if file_size is not None else len(contenuto)
+
+    async def get_file(self) -> _FileFinto:
+        return _FileFinto(self._contenuto)
+
+
+def _manda_foto(
+    app: Application,
+    finto: BotFinto,
+    immagine: bytes,
+    da: int = IO,
+    file_size: int | None = None,
+) -> None:
+    messaggio = Message(
+        message_id=1,
+        date=datetime.now(tz=UTC),
+        chat=Chat(id=da, type=Chat.PRIVATE),
+        from_user=User(id=da, first_name="Tizio", is_bot=False),
+        photo=(PhotoSize(file_id="f", file_unique_id="u", width=90, height=120),),
+    )
+    messaggio.set_bot(cast(Bot, finto))
+    messaggio.chat.set_bot(cast(Bot, finto))
+    # Telegram manda la stessa foto in più misure: qui basta la più grande,
+    # che è quella che il bot sceglie.
+    object.__setattr__(messaggio, "photo", (_FotoFinta(immagine, file_size),))
+    asyncio.run(app.process_update(Update(update_id=4, message=messaggio)))
 
 
 def test_aiuto(app: Application, finto: BotFinto) -> None:
@@ -515,3 +574,78 @@ def test_senza_chiave_di_claude_il_materiale_non_si_perde(
     with connessione(db_path) as conn:
         voce = dom_diario.leggi_giorno(conn, _oggi())
     assert voce is not None and voce.grezzo == "giornata piena"
+
+
+# — spese (§8.5) —
+
+
+def test_una_foto_diventa_uno_scontrino_da_confermare(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    """La foto arriva davvero al modello, e la spesa resta fuori dai conti."""
+    modello.per_compito[Compito.CATEGORIE_SPESA] = {
+        "categoria": "Alimentari",
+        "esistente": False,
+    }
+
+    _manda_foto(app, finto, b"\xff\xd8byte-della-foto")
+
+    assert modello.immagini_viste == [b"\xff\xd8byte-della-foto"]
+    assert Compito.LETTURA_SCONTRINO in modello.compiti_visti
+    assert "Scontrino letto" in finto.ultimo
+    assert "23,40 €" in finto.ultimo
+
+    with connessione(db_path) as conn:
+        (spesa,) = dom_spese.in_attesa(conn)
+        assert dom_spese.elenco(conn) == []
+    assert spesa.luogo == "Conad"
+    assert spesa.categoria == "Alimentari"
+
+
+def test_il_tap_su_conferma_fa_entrare_lo_scontrino_nei_conti(
+    app: Application, finto: BotFinto, db_path: Path
+) -> None:
+    _manda_foto(app, finto, b"foto")
+    with connessione(db_path) as conn:
+        (spesa,) = dom_spese.in_attesa(conn)
+
+    _tap(app, finto, azioni.spesa("conferma", spesa.id))
+
+    assert "Nei conti" in finto.ultimo
+    with connessione(db_path) as conn:
+        assert dom_spese.totale(dom_spese.elenco(conn)) == 2340
+
+
+def test_una_foto_troppo_grande_viene_rifiutata_prima_di_scaricarla(
+    app: Application, finto: BotFinto, modello: RouterFinto
+) -> None:
+    # Sopra il tetto la rifiuterebbe l'API di Claude: dirlo qui costa un
+    # messaggio invece di un download e una chiamata sprecata.
+    _manda_foto(app, finto, b"foto", file_size=20 * 1024 * 1024)
+    assert "troppo grande" in finto.ultimo
+    assert modello.immagini_viste == []
+
+
+def test_la_foto_di_un_estraneo_viene_ignorata(
+    app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
+) -> None:
+    _manda_foto(app, finto, b"foto", da=ESTRANEO)
+
+    # Nessuna risposta e nessuna chiamata al modello: a uno sconosciuto non si
+    # conferma nemmeno che il bot esista (§9).
+    assert finto.messaggi == []
+    assert modello.immagini_viste == []
+    with connessione(db_path) as conn:
+        assert dom_spese.in_attesa(conn) == []
+
+
+def test_spese_elenca_il_mese(app: Application, finto: BotFinto, db_path: Path) -> None:
+    with connessione(db_path) as conn:
+        dom_spese.registra(
+            conn, centesimi=815, descrizione="colazione", ora=_adesso(), categoria="Bar"
+        )
+        conn.commit()
+
+    _manda(app, finto, "/spese")
+    assert "8,15 €" in finto.ultimo
+    assert "Bar" in finto.ultimo

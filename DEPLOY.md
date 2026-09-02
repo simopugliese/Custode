@@ -49,18 +49,21 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `CUSTODE_DB_PATH` | `/data/custode.db` (percorso **dentro** il container) |
 | `CUSTODE_TIMEZONE` | `Europe/Rome` |
 | `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard su Pages, es. `https://custode.pages.dev` |
+| `CUSTODE_BUDGET_SETTIMANALE` | quanto conti di spendere in una settimana, in euro. **Lasciala vuota** se non ne vuoi uno: la Home non disegna il blocco «Spese · settimana», e il totale speso resta comunque visibile |
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
-| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: riassunto del diario, riepilogo settimanale, profilo (§8.4) |
+| `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: riassunto del diario, riepilogo settimanale, profilo (§8.4), categorie e lettura degli scontrini (§8.5) |
 
 Il token del tunnel resta commentato finché non arriva la sua fase.
 
 Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
 perdono il linguaggio libero (DeepSeek) e tutto ciò che passa da Claude —
-riassunto del diario, riepilogo settimanale, profilo — e il bot lo dice invece
-di fallire in silenzio. Quello che avevi già raccontato resta comunque salvato,
-e i segnali approvati aspettano la rifusione successiva.
+riassunto del diario, riepilogo settimanale, profilo, e la lettura degli
+scontrini — e il bot lo dice invece di fallire in silenzio. Quello che avevi già
+raccontato resta comunque salvato, e i segnali approvati aspettano la rifusione
+successiva. Le spese scritte a parole continuano a entrare nei conti anche
+senza Claude: restano solo senza categoria, e gliene si dà una dalla dashboard.
 
 Il bot non parte senza token **e** senza user ID: lo dice nei log e si ferma,
 invece di restare in ascolto con la whitelist vuota.
