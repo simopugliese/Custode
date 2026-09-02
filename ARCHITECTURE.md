@@ -234,6 +234,10 @@ Le categorie sono **proposte e adattate dinamicamente da Claude nel tempo**: qua
 
 Gli importi stanno nel database in **centesimi**, come interi: sommare float per centinaia di spese produce totali che non tornano per qualche centesimo, e su dei soldi un totale che non torna è un bug che si nota. La conversione a euro avviene una volta sola, al confine con l'API e col bot.
 
+**Chi decide la categoria.** §6 divide il lavoro, e il codice lo fa rispettare invece di sperarci: *assegnare* una spesa a una categoria che esiste già è classificazione semplice e la fa DeepSeek nella stessa chiamata che interpreta il messaggio, ma una categoria **nuova** la propone solo Claude. Una categoria proposta dall'interprete che non esiste viene scartata: la descrizione dello schema chiede già di non inventarne, ma è una richiesta, non un vincolo, e senza il controllo «150 euro da Bricoman» apre una categoria «Bricoman» che poi resta lì per sempre. Il nome del negozio non è una categoria — sta già nel suo campo.
+
+**La data di una spesa è quella in cui hai speso**, non quella in cui l'hai registrata: è quello che conta per i totali del mese. Ne discendono due regole. Una data **nel futuro** letta da uno scontrino è sempre un errore di lettura e viene scartata: ogni vista finisce a oggi, quindi una spesa datata in avanti sarebbe scritta sul disco e invisibile ovunque, per sempre. E una spesa registrata adesso ma datata **prima del periodo** che stai guardando non sparisce: `/spese` la elenca a parte dicendo che non è nel totale, e la conferma di uno scontrino dice sempre a che giorno è finito.
+
 `GET /api/spese` e le sue due mutazioni non rispondono più `501`; sulla Home compaiono `spesaSettimana` e — solo se hai impostato `CUSTODE_BUDGET_SETTIMANALE` — il blocco «Spese · settimana». Senza budget quel blocco resta **assente**: una barra ha bisogno di un tetto, e inventarne uno sarebbe un giudizio su come spendi.
 
 ### 8.6 Tracciatore abitudini

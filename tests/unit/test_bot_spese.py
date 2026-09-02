@@ -157,6 +157,56 @@ def test_confermare_fa_entrare_la_spesa_nei_conti(conn: sqlite3.Connection, ora:
     assert "Nei conti" in risposta.testo
 
 
+def test_la_conferma_dice_il_giorno_quando_non_e_oggi(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Altrimenti si cerca in «questo mese» una spesa che sta in quello prima.
+
+    Lo scontrino è del 30 agosto, oggi è il 31: i totali vanno per data della
+    spesa, quindi va detto dove è finita.
+    """
+    _scontrino(conn, ora)
+    (spesa,) = dom.in_attesa(conn)
+
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("conferma", spesa.id), RouterFinto())  # type: ignore[arg-type]
+
+    assert "Nei conti" in risposta.testo
+    assert "di ieri" in risposta.testo
+
+
+def test_la_preposizione_della_data_e_quella_giusta(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    # «di ieri», ma «del 12 ago»: con una preposizione sola uscirebbe «del ieri».
+    _scontrino(conn, ora, RouterFinto(scontrino=dict(SCONTRINO, data="2026-08-12")))
+    (spesa,) = dom.in_attesa(conn)
+
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("conferma", spesa.id), RouterFinto())  # type: ignore[arg-type]
+
+    assert "del 12 ago" in risposta.testo
+
+
+def test_la_conferma_di_uno_scontrino_di_oggi_non_ripete_la_data(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    _scontrino(conn, ora, RouterFinto(scontrino=dict(SCONTRINO, data="")))
+    (spesa,) = dom.in_attesa(conn)
+
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("conferma", spesa.id), RouterFinto())  # type: ignore[arg-type]
+
+    assert "Nei conti" in risposta.testo
+    assert ", del " not in risposta.testo
+
+
+def test_uno_scontrino_datato_in_avanti_finisce_a_oggi(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    # Senza il controllo, la spesa sarebbe scritta e invisibile in ogni vista.
+    _scontrino(conn, ora, RouterFinto(scontrino=dict(SCONTRINO, data="2026-12-25")))
+    (spesa,) = dom.in_attesa(conn)
+    assert spesa.giorno == ora.date()
+
+
 def test_scartare_butta_lo_scontrino_senza_lasciare_tracce(
     conn: sqlite3.Connection, ora: datetime
 ) -> None:
@@ -208,15 +258,52 @@ def test_spese_mostra_totale_categorie_e_ultime(conn: sqlite3.Connection, ora: d
     assert "colazione" in risposta.testo
 
 
-def test_spese_guarda_il_mese_corrente_non_tutto_l_archivio(
+def test_il_totale_e_del_mese_corrente_non_di_tutto_l_archivio(
     conn: sqlite3.Connection, ora: datetime
 ) -> None:
-    _registra(conn, ora, centesimi=5000, descrizione="vecchia", giorno=date(2026, 7, 15))
+    # Una spesa vecchia *già registrata da tempo* non deve tornare a galla né
+    # entrare nel totale: `creata_il` è fuori dal mese quanto la sua data.
+    dom.registra(
+        conn,
+        centesimi=5000,
+        descrizione="vecchia",
+        ora=datetime(2026, 7, 15, 12, 0),
+        giorno=date(2026, 7, 15),
+    )
     _registra(conn, ora, centesimi=800, descrizione="colazione")
 
     risposta = risposte.elenco_spese(conn, ora)
     assert "8,00 €" in risposta.testo
     assert "vecchia" not in risposta.testo
+
+
+def test_una_spesa_registrata_ora_ma_datata_prima_non_sparisce(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Il caso dello scontrino di fine mese scorso fotografato oggi.
+
+    I totali vanno per data della spesa, quindi non entra in «questo mese» —
+    ma resterebbe scritta e invisibile, e sembrerebbe che Custode l'abbia persa.
+    """
+    _registra(conn, ora, centesimi=800, descrizione="colazione")
+    _registra(conn, ora, centesimi=2340, descrizione="Conad", giorno=date(2026, 7, 28))
+
+    risposta = risposte.elenco_spese(conn, ora)
+    # Fuori dal totale…
+    assert "8,00 €" in risposta.testo
+    # …ma non fuori dallo schermo, e detto perché.
+    assert "Conad" in risposta.testo
+    assert "fuori da questo mese" in risposta.testo
+    assert "non sono in questo totale" in risposta.testo
+
+
+def test_solo_spese_fuori_periodo_non_e_una_pagina_vuota(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    _registra(conn, ora, centesimi=2340, descrizione="Conad", giorno=date(2026, 7, 28))
+    risposta = risposte.elenco_spese(conn, ora)
+    assert "Non hai ancora registrato spese" not in risposta.testo
+    assert "Conad" in risposta.testo
 
 
 def test_uno_scontrino_in_attesa_si_ripresenta_in_spese(

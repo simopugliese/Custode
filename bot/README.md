@@ -95,12 +95,16 @@ Due strade, che finiscono nello stesso posto.
   lette.
 
 La categoria la propone Claude confrontandola con quelle che già usi, così non
-nascono «Cibo» accanto ad «Alimentari». È una chiamata a parte, fatta **dopo**
+nascono «Cibo» accanto ad «Alimentari» — e il nome del negozio non diventa mai
+una categoria: da Bricoman compri vernice, che è «Casa». È una chiamata a parte, fatta **dopo**
 aver salvato la spesa: se il modello non risponde, la spesa resta lì senza
 categoria invece di andare persa, e si sistema dalla dashboard.
 
 Uno scontrino letto e mai confermato non si perde nella cronologia della chat:
-`/spese` lo ripropone coi suoi due bottoni.
+`/spese` lo ripropone coi suoi due bottoni. E una spesa che risulta di un altro
+giorno — uno scontrino di fine mese scorso fotografato oggi — non sparisce dai
+totali in silenzio: la conferma dice a che giorno è finita, e `/spese` elenca a
+parte quello che hai registrato ma che è datato fuori dal mese.
 
 ## Il profilo (§8.4)
 

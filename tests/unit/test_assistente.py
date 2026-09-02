@@ -20,6 +20,7 @@ from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_router import assistente
 from custode_router.assistente import Azione
+from custode_router.compiti import Compito
 from custode_router.errori import ProviderNonConfigurato, ProviderNonRaggiungibile
 
 
@@ -187,6 +188,7 @@ def test_aggiungere_due_volte_lo_dice(conn: sqlite3.Connection, ora: datetime) -
 
 
 def test_registra_spesa(conn: sqlite3.Connection, ora: datetime) -> None:
+    dom_spese.assicura_categoria(conn, "Bar", ora)
     esito = _esegui(
         conn,
         ora,
@@ -205,6 +207,133 @@ def test_registra_spesa(conn: sqlite3.Connection, ora: datetime) -> None:
     assert spesa.stato is dom_spese.Stato.CONFERMATA
     assert esito.spesa_id == spesa.id
     assert "8,00 €" in esito.testo
+
+
+# — la categoria: chi la decide, e quando (§6) —
+
+
+def _registra_e_categorizza(
+    conn: sqlite3.Connection, ora: datetime, intenzione: dict[str, Any], categoria_claude: str
+) -> tuple[assistente.Esito, RouterFinto]:
+    """Il giro vero: interpretazione (DeepSeek) + eventuale categoria (Claude)."""
+
+    class Due(RouterFinto):
+        def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
+            self.chiamate.append({"compito": compito, **kwargs})
+            if compito is Compito.CATEGORIE_SPESA:
+                return {"categoria": categoria_claude, "esistente": False}
+            return intenzione
+
+    router = Due()
+    esito = assistente.interpreta_ed_esegui(conn, ora, "x", router)  # type: ignore[arg-type]
+    return esito, router
+
+
+def _compiti(router: RouterFinto) -> list[Any]:
+    return [c["compito"] for c in router.chiamate]
+
+
+def test_il_nome_del_negozio_non_diventa_una_categoria(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Il caso vero: «150 euro da bricoman per la vernice» → «Bricoman».
+
+    Lo schema chiede già a DeepSeek di non inventare categorie, ma è una
+    descrizione, non un vincolo. §6 assegna la *creazione* a Claude proprio
+    perché un doppione creato oggi resta lì per sempre: qui si verifica che una
+    categoria proposta e inesistente venga scartata, e che a decidere sia Claude.
+    """
+    esito, router = _registra_e_categorizza(
+        conn,
+        ora,
+        {
+            "azione": "registra_spesa",
+            "titolo": "vernice per la stanza",
+            "importo": 150,
+            "luogo": "Bricoman",
+            "categoria": "Bricoman",
+        },
+        categoria_claude="Casa",
+    )
+
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.categoria == "Casa"
+    assert [c.nome for c in dom_spese.categorie(conn)] == ["Casa"]
+    # Il negozio non è perso: sta nel suo campo, dove serve.
+    assert spesa.luogo == "Bricoman"
+    assert "Casa" in esito.testo
+    assert Compito.CATEGORIE_SPESA in _compiti(router)
+
+
+def test_una_categoria_che_esiste_gia_non_ricosta_una_chiamata(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    # §6: *assegnare* a una categoria esistente è classificazione semplice e
+    # viaggia già nella chiamata che interpreta il messaggio.
+    dom_spese.assicura_categoria(conn, "Alimentari", ora)
+    esito, router = _registra_e_categorizza(
+        conn,
+        ora,
+        {
+            "azione": "registra_spesa",
+            "titolo": "spesa",
+            "importo": 40,
+            "categoria": "alimentari",  # minuscolo: è la stessa categoria
+        },
+        categoria_claude="NON DEVE SERVIRE",
+    )
+
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.categoria == "Alimentari"
+    assert "Alimentari" in esito.testo
+    assert Compito.CATEGORIE_SPESA not in _compiti(router)
+
+
+def test_senza_categoria_dall_interprete_decide_claude(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    esito, router = _registra_e_categorizza(
+        conn,
+        ora,
+        {"azione": "registra_spesa", "titolo": "benzina", "importo": 60, "categoria": ""},
+        categoria_claude="Trasporti",
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.categoria == "Trasporti"
+    assert Compito.CATEGORIE_SPESA in _compiti(router)
+
+
+def test_la_categoria_si_dice_una_volta_sola(conn: sqlite3.Connection, ora: datetime) -> None:
+    # `_registra_spesa` non la scrive più: la aggiunge un punto solo, dopo aver
+    # sentito Claude. Senza questo comparirebbe due volte nella stessa frase.
+    dom_spese.assicura_categoria(conn, "Bar", ora)
+    esito, _ = _registra_e_categorizza(
+        conn,
+        ora,
+        {"azione": "registra_spesa", "titolo": "colazione", "importo": 8, "categoria": "Bar"},
+        categoria_claude="Bar",
+    )
+    assert esito.testo.count("Bar") == 1
+
+
+def test_se_claude_non_risponde_la_spesa_da_testo_resta_comunque(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Un guasto del modello non deve costare la spesa appena detta."""
+
+    class SoloInterprete(RouterFinto):
+        def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
+            self.chiamate.append({"compito": compito, **kwargs})
+            if compito is Compito.CATEGORIE_SPESA:
+                raise ProviderNonRaggiungibile("Claude non risponde")
+            return {"azione": "registra_spesa", "titolo": "birra", "importo": 4.5}
+
+    esito = assistente.interpreta_ed_esegui(conn, ora, "x", SoloInterprete())  # type: ignore[arg-type]
+
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.centesimi == 450
+    assert spesa.categoria is None
+    assert "4,50 €" in esito.testo
 
 
 def test_una_spesa_registrata_si_annulla_col_bottone(
