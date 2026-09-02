@@ -72,6 +72,10 @@ Regole:
   conterrebbe in modo sensato.
 - Le categorie devono restare **poche e larghe**: descrivono a cosa serve la
   spesa, non cosa hai comprato. «Trasporti», non «Biglietto del treno».
+- **Il nome del negozio non è mai una categoria.** Da Bricoman si compra vernice
+  e da Esselunga si compra la cena: la categoria dice a cosa ti è servita la
+  spesa («Casa», «Alimentari»), non dove l'hai fatta — quello è già salvato a
+  parte. Una categoria per negozio ne farebbe nascere una nuova ogni volta.
 - Se non c'è ancora nessuna categoria, proponi la prima con lo stesso criterio:
   larga abbastanza da contenerne altre simili."""
 
@@ -172,9 +176,13 @@ Regole:
 
 
 def leggi_scontrino(
-    router: Router, *, immagine: bytes, media_type: str = "image/jpeg"
+    router: Router, *, immagine: bytes, oggi: date, media_type: str = "image/jpeg"
 ) -> Scontrino:
-    """Estrae totale, luogo e voci dalla foto di uno scontrino (§8.5)."""
+    """Estrae totale, luogo e voci dalla foto di uno scontrino (§8.5).
+
+    `oggi` serve a scartare una data impossibile: il modello non ha un
+    orologio, e senza un riferimento non può accorgersi di aver letto male.
+    """
     if not immagine:
         raise LetturaNonRiuscita("Non ho ricevuto nessuna immagine.")
 
@@ -186,10 +194,10 @@ def leggi_scontrino(
         immagine=immagine,
         media_type=media_type,
     )
-    return leggi_risposta(dati)
+    return leggi_risposta(dati, oggi=oggi)
 
 
-def leggi_risposta(dati: dict[str, Any]) -> Scontrino:
+def leggi_risposta(dati: dict[str, Any], *, oggi: date) -> Scontrino:
     """Valida la risposta del modello prima che diventi una spesa da confermare."""
     if not dati.get("leggibile"):
         raise LetturaNonRiuscita(
@@ -212,6 +220,11 @@ def leggi_risposta(dati: dict[str, Any]) -> Scontrino:
         except ValueError:
             # Una data storta non fa buttare via il resto: si userà oggi.
             giorno = None
+    # Una spesa già pagata non può essere di domani: una data nel futuro è una
+    # lettura sbagliata, e prenderla per buona farebbe sparire lo scontrino da
+    # ogni vista — tutte finiscono a oggi — senza dire niente a nessuno.
+    if giorno is not None and giorno > oggi:
+        giorno = None
 
     grezze = dati.get("voci") or []
     voci = (

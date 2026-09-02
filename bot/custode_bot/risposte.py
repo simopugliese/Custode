@@ -427,8 +427,11 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
     primo = oggi.replace(day=1)
     del_mese = dom_spese.elenco(conn, da=primo, a=oggi)
     attesa = dom_spese.in_attesa(conn)
+    # Registrate ora ma datate prima del mese: fuori dal totale, ma non dallo
+    # schermo — altrimenti uno scontrino appena confermato sembrerebbe perso.
+    fuori = dom_spese.registrate_fuori_periodo(conn, da=primo, a=oggi)
 
-    if not del_mese and not attesa:
+    if not del_mese and not attesa and not fuori:
         return Risposta(
             testo=(
                 "Non hai ancora registrato spese questo mese.\n\n"
@@ -447,6 +450,13 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         if categorie:
             pezzi.append("\n".join(f"• {escape(nome)} — {euro(cent)}" for nome, cent in categorie))
         pezzi.append("<b>Ultime</b>\n" + "\n".join(_riga_spesa(s, oggi) for s in del_mese[:5]))
+
+    if fuori:
+        pezzi.append(
+            f"<i>Hai registrato {plurale(len(fuori), 'spesa datata', 'spese datate')} "
+            f"fuori da questo mese ({euro(dom_spese.totale(fuori))}): "
+            "non sono in questo totale.</i>\n" + "\n".join(_riga_spesa(s, oggi) for s in fuori[:3])
+        )
 
     bottoni: list[list[Bottone]] = []
     if attesa:
@@ -504,7 +514,9 @@ def scontrino(
     facile in un modo in cui non lo è leggere una frase.
     """
     try:
-        letto = router_spese.leggi_scontrino(router, immagine=immagine, media_type=media_type)
+        letto = router_spese.leggi_scontrino(
+            router, immagine=immagine, oggi=ora.date(), media_type=media_type
+        )
     except ErroreRouter as errore:
         return Risposta(testo=escape(router_spese.messaggio_errore(errore)))
 
@@ -528,14 +540,30 @@ def scontrino(
     )
 
 
+def _quando(giorno: date, oggi: date) -> str:
+    """ ", di ieri" oppure ", del 26 ago" — il giorno di una spesa, se non è oggi.
+
+    La preposizione cambia con l'etichetta: si dice «di ieri» ma «del 26 ago».
+    Con una sola si leggerebbe «del ieri», e si nota.
+    """
+    if giorno == oggi:
+        return ""
+    etichetta = etichetta_giorno(giorno, oggi)
+    return f", {'del' if etichetta[0].isdigit() else 'di'} {etichetta}"
+
+
 def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: int) -> Risposta:
     if nome == "conferma":
         spesa = dom_spese.conferma(conn, spesa_id, ora)
         coda = f" — {spesa.categoria}" if spesa.categoria else ""
+        # I totali vanno per data della spesa, non per quando l'hai registrata:
+        # se lo scontrino è di un altro giorno bisogna dirlo, altrimenti lo si
+        # cerca invano in «questo mese».
+        quando = _quando(spesa.giorno, ora.date())
         return Risposta(
             testo=(
                 f"Nei conti: <b>{escape(spesa.descrizione)}</b>, "
-                f"{euro(spesa.centesimi)}{escape(coda)}"
+                f"{euro(spesa.centesimi)}{escape(coda)}{escape(quando)}"
             )
         )
     if nome == "scarta":

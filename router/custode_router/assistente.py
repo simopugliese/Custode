@@ -151,7 +151,9 @@ Regole:
   Bar Rossi», «12 euro di benzina», «pranzo 15» → registra_spesa, con `titolo`
   = una descrizione breve («colazione», «benzina»), `importo` = la cifra in
   euro, `luogo` se c'è. Attenzione: «devo pagare la bolletta» è un task, non
-  una spesa — la spesa è quella già fatta.
+  una spesa — la spesa è quella già fatta. La `categoria` mettila **solo** se
+  una di quelle già in uso calza: il nome del negozio non è una categoria, e
+  se nessuna calza lascia il campo vuoto — ci pensa un altro passaggio.
 - Il messaggio racconta com'è andata, come sta o cosa pensa — «giornata pesante»,
   «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
   palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
@@ -472,15 +474,36 @@ def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzi
         centesimi=centesimi,
         descrizione=descrizione,
         ora=ora,
-        categoria=intenzione.categoria or None,
+        categoria=_categoria_esistente(conn, intenzione.categoria),
         luogo=intenzione.luogo or None,
     )
-    coda = f" — {spesa.categoria}" if spesa.categoria else ""
+    # La categoria non si scrive qui: la aggiunge `_completa_categoria` dopo
+    # aver eventualmente chiesto a Claude, così a dirla è sempre un punto solo.
     return Esito(
-        testo=f"Segnata: {spesa.descrizione}, {euro(spesa.centesimi)}{coda}",
+        testo=f"Segnata: {spesa.descrizione}, {euro(spesa.centesimi)}",
         azione=intenzione.azione,
         spesa_id=spesa.id,
     )
+
+
+def _categoria_esistente(conn: sqlite3.Connection, proposta: str) -> str | None:
+    """La categoria proposta dall'interprete, ma solo se esiste già.
+
+    §6 divide il lavoro così: **assegnare** una spesa a una categoria che c'è
+    già è classificazione semplice e la fa DeepSeek nella stessa chiamata che
+    interpreta il messaggio; **crearne una nuova** richiede giudizio e va a
+    Claude, perché è lì che si decide se stai aprendo un doppione che poi
+    resterà per sempre.
+
+    Lo schema chiede già di copiare dall'elenco e di non inventare, ma una
+    descrizione di schema è una richiesta, non un vincolo: senza questo
+    controllo «150 euro da Bricoman» diventa una categoria «Bricoman», e il
+    prompt di Claude che l'avrebbe evitata non gira nemmeno.
+    """
+    if not proposta.strip():
+        return None
+    esistente = dom_spese.trova_categoria(conn, proposta)
+    return esistente.nome if esistente is not None else None
 
 
 def categorizza_se_serve(
@@ -528,7 +551,24 @@ def interpreta_ed_esegui(
         return Esito(testo=_messaggio_errore(errore))
 
     esito = esegui(conn, ora, intenzione, da_vocale=da_vocale)
+    esito = _completa_categoria(conn, ora, esito, router)
     return _registra_segnale(conn, ora, intenzione, testo, esito)
+
+
+def _completa_categoria(
+    conn: sqlite3.Connection, ora: datetime, esito: Esito, router: Router
+) -> Esito:
+    """Dà una categoria alla spesa appena registrata e la dice nella risposta.
+
+    Se l'interprete ne aveva già trovata una fra quelle esistenti, qui non si
+    chiama nessun modello: `categorizza_se_serve` la restituisce e basta.
+    """
+    if esito.azione is not Azione.REGISTRA_SPESA or esito.spesa_id is None:
+        return esito
+    categoria = categorizza_se_serve(conn, ora, esito.spesa_id, router)
+    if not categoria:
+        return esito
+    return replace(esito, testo=f"{esito.testo} — {categoria}")
 
 
 def _registra_segnale(

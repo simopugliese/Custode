@@ -56,6 +56,13 @@ interpreta il messaggio, e non costa niente in più; **crearne una nuova** è la
 riga di §6 che chiede di «evitare categorie duplicate o incoerenti», e un
 doppione creato oggi resta lì per sempre.
 
+Quella divisione è applicata dal codice, non affidata al prompt: una categoria
+che l'interprete propone ma che non esiste ancora viene **scartata**, e la
+decisione passa a Claude. Lo schema chiede già di copiare dall'elenco e di non
+inventare, ma la descrizione di uno schema è una richiesta — «150 euro da
+Bricoman» diventava una categoria «Bricoman», e il prompt di Claude che
+l'avrebbe evitata non girava nemmeno.
+
 Nota sul tetto dei token: DeepSeek e Claude ne hanno due distinti
 (`max_token_risposta` e `max_token_risposta_claude`). Su `claude-opus-5` il
 ragionamento adattivo è attivo di default e i suoi token rientrano in

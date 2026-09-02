@@ -232,6 +232,24 @@ def in_attesa(conn: sqlite3.Connection) -> list[Spesa]:
     return [_da_riga(r) for r in righe]
 
 
+def registrate_fuori_periodo(conn: sqlite3.Connection, *, da: date, a: date) -> list[Spesa]:
+    """Spese **registrate** dentro il periodo ma **datate** fuori.
+
+    Serve a non far sparire in silenzio uno scontrino di fine mese scorso
+    fotografato oggi: i totali vanno per data della spesa (è quando hai speso
+    che conta), ma tu l'hai appena registrato e ti aspetti di vederlo da
+    qualche parte. Senza questo resterebbe scritto e invisibile.
+    """
+    righe = conn.execute(
+        f"{_SELECT} WHERE e.stato = 'confermata'"
+        " AND date(e.creata_il) BETWEEN ? AND ?"
+        " AND (e.data < ? OR e.data > ?)"
+        " ORDER BY e.data DESC, e.id DESC",
+        (da.isoformat(), a.isoformat(), da.isoformat(), a.isoformat()),
+    )
+    return [_da_riga(r) for r in righe]
+
+
 def registra(
     conn: sqlite3.Connection,
     *,
