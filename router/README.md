@@ -44,7 +44,10 @@ Instradati e in uso, su DeepSeek: parsing della lista, CRUD dei task,
 riconoscimento del materiale da diario e rilevazione dei segnali per il profilo
 — tutti e quattro **nella stessa chiamata**, perché sono compiti diversi di §6
 ma con lo stesso provider, e farne quattro giri costerebbe quattro volte tanto
-su ogni messaggio — più l'estrazione di una spesa detta a parole. Su Claude:
+su ogni messaggio — più l'estrazione di una spesa detta a parole, **col giorno
+in cui è stata fatta**: lo schema ha un campo `data` che il modello riempie
+risolvendo «ieri» o «sabato scorso» sulla data di oggi che riceve nel contesto,
+e il codice scarta ciò che non è una data o che cade nel futuro (§8.5). Su Claude:
 riassunto del diario, riepilogo settimanale, rifusione del profilo, scelta della
 categoria di una spesa e lettura degli scontrini. Gli altri compiti della
 tabella hanno il provider già deciso e il client pronto, ma nessun modulo li

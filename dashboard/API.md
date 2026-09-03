@@ -223,7 +223,12 @@ profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
 Oggi copre task, lista della spesa, diario e spese —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
 il materiale del diario di oggi (§8.4), e uno con dentro una cifra già pagata
-(«ho pagato 8€ la colazione») diventa una spesa (§8.5). Per un messaggio che non chiede nulla
+(«ho pagato 8€ la colazione») diventa una spesa (§8.5). Se la frase dice
+**quando** hai speso («ieri ho pagato 17 euro la spesa»), la spesa si registra
+a quel giorno e non a oggi, e `rispostaLabel` lo dice in coda («, di ieri»,
+«, del 29 ago») — come già fa la conferma di uno scontrino. Una data nel futuro
+viene scartata e vale oggi: ogni vista finisce a oggi, quindi una spesa datata
+in avanti resterebbe scritta e invisibile (§8.5). Per un messaggio che non chiede nulla
 di previsto la risposta lo dice, senza errore.
 
 **Risponde sempre 200**, anche quando il modello non è configurato o non

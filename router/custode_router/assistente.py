@@ -31,7 +31,13 @@ from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
-from custode_core.formato import etichetta_scadenza, euro
+from custode_core.formato import (
+    etichetta_data_lunga,
+    etichetta_ora,
+    etichetta_quando,
+    etichetta_scadenza,
+    euro,
+)
 from custode_router import spese as router_spese
 from custode_router.compiti import Compito
 from custode_router.errori import ErroreRouter
@@ -94,6 +100,16 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
             "type": "string",
             "description": "Per registra_spesa: dove, se il messaggio lo dice.",
         },
+        "data": {
+            "type": "string",
+            "description": (
+                "Per registra_spesa: il giorno in cui è stata fatta la spesa, in"
+                " formato AAAA-MM-GG. Se il messaggio dice quando («ieri»,"
+                " «l'altro ieri», «sabato scorso», «il 3»), calcola quel giorno"
+                " a partire dalla data di oggi che trovi in cima al contesto."
+                " Stringa vuota se il messaggio non lo dice: vale oggi."
+            ),
+        },
         "categoria": {
             "type": "string",
             "description": (
@@ -154,6 +170,11 @@ Regole:
   una spesa — la spesa è quella già fatta. La `categoria` mettila **solo** se
   una di quelle già in uso calza: il nome del negozio non è una categoria, e
   se nessuna calza lascia il campo vuoto — ci pensa un altro passaggio.
+  Se il messaggio dice **quando** hai speso — «ieri ho pagato 17 euro la
+  spesa», «sabato scorso 40 euro di benzina», «il 3 ho pagato la palestra» —
+  metti in `data` quel giorno risolto in AAAA-MM-GG, contandolo dalla data di
+  oggi che trovi in cima al contesto. Una spesa è già stata fatta: `data` non
+  può essere nel futuro. Se il messaggio non dice quando, lascia `data` vuota.
 - Il messaggio racconta com'è andata, come sta o cosa pensa — «giornata pesante»,
   «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
   palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
@@ -193,6 +214,8 @@ class Intenzione:
     giorni: int = 1
     importo: float = 0.0
     luogo: str = ""
+    data: str = ""
+    """Il giorno della spesa, come l'ha risolto il modello. Vuoto = oggi."""
     categoria: str = ""
     segnale: str = "nessuno"
     segnale_estratto: str = ""
@@ -239,7 +262,13 @@ def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
     """
     task = dom_task.elenco(conn, fatto=False)
     voci = dom_lista.elenco(conn, preso=False)
-    righe = [f"Oggi è {ora.date().isoformat()} ({ora.strftime('%H:%M')})."]
+    # Il giorno della settimana è scritto, non lasciato da dedurre: «sabato
+    # scorso» si risolve solo sapendo che oggi è giovedì, e ricavarlo da una
+    # data in cifre è esattamente il genere di conto che un modello sbaglia.
+    righe = [
+        f"Oggi è {etichetta_data_lunga(ora)} {ora.year}"
+        f" — {ora.date().isoformat()}, ore {etichetta_ora(ora)}."
+    ]
     righe.append("Task aperti: " + ("; ".join(t.titolo for t in task) if task else "nessuno"))
     righe.append(
         "Voci sulla lista della spesa: " + ("; ".join(v.nome for v in voci) if voci else "nessuna")
@@ -289,6 +318,7 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         giorni=giorni if isinstance(giorni, int) and giorni >= 1 else 1,
         importo=_leggi_importo(dati.get("importo")),
         luogo=str(dati.get("luogo") or "").strip(),
+        data=str(dati.get("data") or "").strip(),
         categoria=str(dati.get("categoria") or "").strip(),
         segnale=_leggi_segnale(dati.get("segnale")),
         segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
@@ -330,6 +360,36 @@ def _leggi_scadenza(testo: str) -> date | datetime | None:
         # Una data malformata non deve far fallire tutta l'azione: il task si
         # crea comunque, senza scadenza, invece di perdersi.
         return None
+
+
+def _leggi_giorno_spesa(testo: str, oggi: date) -> date | None:
+    """Il giorno di una spesa detta a parole: lo risolve il modello, lo valida qui.
+
+    **Perché a risolvere «ieri» è il modello e non il codice.** Il contesto che
+    riceve dice già «Oggi è 2026-09-03», quindi ha tutto per rispondere una
+    data vera; farlo qui vorrebbe dire scrivere e mantenere un piccolo parser
+    dell'italiano — «ieri», «l'altro ieri», «sabato scorso», «il 3», «due
+    settimane fa» — che sarebbe sempre indietro rispetto a quello che uno può
+    dire a voce, e che sbaglierebbe in silenzio sulle forme che non conosce. È
+    anche la stessa strada che `scadenza` percorre già per i task: una forma
+    sola, non due meccanismi diversi per la stessa cosa.
+
+    Il codice però non si fida: una data illeggibile e una data **nel futuro**
+    valgono `None`, cioè oggi. Il futuro è la regola di §8.5 — ogni vista
+    finisce a oggi, quindi una spesa datata in avanti resterebbe scritta sul
+    disco e invisibile ovunque, per sempre. Sul passato invece non si mette un
+    tetto: una spesa di tre mesi fa è legittima, e se il modello sbaglia l'anno
+    la conferma lo dice («del 2 set 2025») e «Annulla» è a un tap.
+    """
+    if not testo:
+        return None
+    try:
+        # Solo la parte data: se il modello aggiunge un orario, la spesa resta
+        # comunque del giorno giusto invece di perdere la data per un formato.
+        giorno = date.fromisoformat(testo[:10])
+    except ValueError:
+        return None
+    return None if giorno > oggi else giorno
 
 
 def _trova_task(conn: sqlite3.Connection, riferimento: str) -> dom_task.Task | None:
@@ -474,15 +534,34 @@ def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzi
         centesimi=centesimi,
         descrizione=descrizione,
         ora=ora,
+        # «Ieri ho pagato 17 euro la spesa» va scritto a ieri: la data di una
+        # spesa è quella in cui hai speso, non quella in cui l'hai registrata
+        # (§8.5). Senza questo il giorno detto si perdeva in silenzio, mentre
+        # dalla foto di uno scontrino arrivava giusto.
+        giorno=_leggi_giorno_spesa(intenzione.data, ora.date()),
         categoria=_categoria_esistente(conn, intenzione.categoria),
         luogo=intenzione.luogo or None,
     )
     # La categoria non si scrive qui: la aggiunge `_completa_categoria` dopo
     # aver eventualmente chiesto a Claude, così a dirla è sempre un punto solo.
     return Esito(
-        testo=f"Segnata: {spesa.descrizione}, {euro(spesa.centesimi)}",
+        testo=_frase_spesa(spesa, ora.date()),
         azione=intenzione.azione,
         spesa_id=spesa.id,
+    )
+
+
+def _frase_spesa(spesa: dom_spese.Spesa, oggi: date) -> str:
+    """La conferma di una spesa registrata, in un posto solo.
+
+    Il giorno si dice **sempre** quando non è oggi, come già fa la conferma di
+    uno scontrino: una spesa datata altrove non compare fra le ultime di oggi,
+    e senza dirlo sembrerebbe non essere stata registrata affatto.
+    """
+    coda = f" — {spesa.categoria}" if spesa.categoria else ""
+    return (
+        f"Segnata: {spesa.descrizione}, {euro(spesa.centesimi)}"
+        f"{coda}{etichetta_quando(spesa.giorno, oggi)}"
     )
 
 
@@ -565,10 +644,12 @@ def _completa_categoria(
     """
     if esito.azione is not Azione.REGISTRA_SPESA or esito.spesa_id is None:
         return esito
-    categoria = categorizza_se_serve(conn, ora, esito.spesa_id, router)
-    if not categoria:
+    if not categorizza_se_serve(conn, ora, esito.spesa_id, router):
         return esito
-    return replace(esito, testo=f"{esito.testo} — {categoria}")
+    # La frase si **ricompone** invece di accodare la categoria in fondo: il
+    # giorno («, di ieri») chiude sempre la riga, e una categoria appiccicata
+    # dopo direbbe «17,00 €, di ieri — Alimentari».
+    return replace(esito, testo=_frase_spesa(dom_spese.leggi(conn, esito.spesa_id), ora.date()))
 
 
 def _registra_segnale(

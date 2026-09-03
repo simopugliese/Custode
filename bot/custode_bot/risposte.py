@@ -26,6 +26,7 @@ from custode_core.dominio import task as dom_task
 from custode_core.formato import (
     etichetta_giorno,
     etichetta_giorno_voce,
+    etichetta_quando,
     etichetta_scadenza,
     euro,
     plurale,
@@ -540,18 +541,6 @@ def scontrino(
     )
 
 
-def _quando(giorno: date, oggi: date) -> str:
-    """ ", di ieri" oppure ", del 26 ago" — il giorno di una spesa, se non è oggi.
-
-    La preposizione cambia con l'etichetta: si dice «di ieri» ma «del 26 ago».
-    Con una sola si leggerebbe «del ieri», e si nota.
-    """
-    if giorno == oggi:
-        return ""
-    etichetta = etichetta_giorno(giorno, oggi)
-    return f", {'del' if etichetta[0].isdigit() else 'di'} {etichetta}"
-
-
 def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: int) -> Risposta:
     if nome == "conferma":
         spesa = dom_spese.conferma(conn, spesa_id, ora)
@@ -559,7 +548,7 @@ def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: 
         # I totali vanno per data della spesa, non per quando l'hai registrata:
         # se lo scontrino è di un altro giorno bisogna dirlo, altrimenti lo si
         # cerca invano in «questo mese».
-        quando = _quando(spesa.giorno, ora.date())
+        quando = etichetta_quando(spesa.giorno, ora.date())
         return Risposta(
             testo=(
                 f"Nei conti: <b>{escape(spesa.descrizione)}</b>, "

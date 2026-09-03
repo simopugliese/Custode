@@ -209,6 +209,121 @@ def test_registra_spesa(conn: sqlite3.Connection, ora: datetime) -> None:
     assert "8,00 €" in esito.testo
 
 
+# — la data di una spesa detta a parole (§8.5) —
+
+
+def test_una_spesa_detta_per_ieri_finisce_a_ieri(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Il bug osservato sul Pi: «ieri ho pagato 17 euro» finiva a oggi, in silenzio."""
+    ieri = ora.date() - timedelta(days=1)
+    esito = _esegui(
+        conn,
+        ora,
+        "Ieri ho pagato 17 euro la spesa xyz",
+        {
+            "azione": "registra_spesa",
+            "titolo": "spesa xyz",
+            "importo": 17,
+            "data": ieri.isoformat(),
+        },
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == ieri
+    # E lo dice: una spesa datata altrove non compare fra quelle di oggi, e
+    # senza dirlo sembrerebbe non essere stata registrata affatto.
+    assert "di ieri" in esito.testo
+
+
+def test_senza_data_la_spesa_e_di_oggi(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Il caso normale non cambia, e la conferma non ripete «di oggi»."""
+    esito = _esegui(
+        conn,
+        ora,
+        "ho pagato 8€ la colazione",
+        {"azione": "registra_spesa", "titolo": "colazione", "importo": 8},
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == ora.date()
+    assert "oggi" not in esito.testo
+
+
+def test_una_spesa_datata_nel_futuro_torna_a_oggi(conn: sqlite3.Connection, ora: datetime) -> None:
+    """§8.5: ogni vista finisce a oggi, quindi una spesa in avanti sparirebbe per sempre."""
+    _esegui(
+        conn,
+        ora,
+        "x",
+        {
+            "azione": "registra_spesa",
+            "titolo": "benzina",
+            "importo": 40,
+            "data": (ora.date() + timedelta(days=3)).isoformat(),
+        },
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == ora.date()
+
+
+@pytest.mark.parametrize("grezza", ["", "ieri", "03/09/2026", "2026-13-45", "non lo so"])
+def test_una_data_illeggibile_non_perde_la_spesa(
+    conn: sqlite3.Connection, ora: datetime, grezza: str
+) -> None:
+    """Come per la scadenza di un task: si perde la data, mai il movimento."""
+    _esegui(
+        conn,
+        ora,
+        "x",
+        {"azione": "registra_spesa", "titolo": "birra", "importo": 4.5, "data": grezza},
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == ora.date()
+
+
+def test_una_data_con_l_orario_attaccato_vale_lo_stesso(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    ieri = ora.date() - timedelta(days=1)
+    _esegui(
+        conn,
+        ora,
+        "x",
+        {
+            "azione": "registra_spesa",
+            "titolo": "cena",
+            "importo": 25,
+            "data": f"{ieri.isoformat()}T21:30",
+        },
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == ieri
+
+
+def test_una_spesa_vecchia_dice_la_data_per_esteso(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Sul passato non c'è tetto: se il modello sbaglia l'anno, la conferma lo mostra."""
+    esito = _esegui(
+        conn,
+        ora,
+        "x",
+        {"azione": "registra_spesa", "titolo": "palestra", "importo": 40, "data": "2025-09-02"},
+    )
+    (spesa,) = dom_spese.elenco(conn)
+    assert spesa.giorno == date(2025, 9, 2)
+    assert "del 2 set 2025" in esito.testo
+
+
+def test_lo_schema_ha_un_posto_per_la_data(conn: sqlite3.Connection, ora: datetime) -> None:
+    """La causa del bug era qui: senza il campo, «ieri» non aveva dove finire."""
+    assert "data" in assistente.SCHEMA_INTENZIONE["properties"]
+
+
+def test_il_contesto_dice_anche_che_giorno_della_settimana_e(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """«sabato scorso» si risolve solo sapendo che oggi è lunedì."""
+    router = RouterFinto()
+    assistente.interpreta(conn, ora, "x", router)  # type: ignore[arg-type]
+    assert "lunedì" in router.chiamate[0]["utente"]
+
+
 # — la categoria: chi la decide, e quando (§6) —
 
 
