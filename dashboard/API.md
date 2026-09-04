@@ -183,7 +183,55 @@ nei conti risponde `409`.
 
 `POST /api/spese` senza `categoria` ne fa proporre una a Claude confrontandola
 con quelle già in uso (§6); se il modello non risponde la spesa resta senza,
-e la si sistema dopo. Importo non positivo o descrizione vuota → `422`.
+e la si sistema dopo. Importo non positivo o descrizione vuota → `422`. Il
+corpo accetta anche `luogo` e `data` (AAAA-MM-GG): una spesa scritta a mano è
+quasi sempre una che ti eri dimenticato di dire al bot, quindi senza `data`
+finirebbe a oggi, cioè nel giorno sbagliato proprio nel caso per cui la stai
+scrivendo da qui.
+
+### Correggere ed eliminare
+
+`PATCH /api/spese/:id` body `ModificaSpesa` → `Movimento`
+`DELETE /api/spese/:id` → `204`
+
+Servono perché una spesa sbagliata la si scopre **dopo**: un importo letto
+male, una data che non è quella, la categoria che il modello ha sbagliato.
+Prima di queste due rotte l'unica uscita era «Annulla» sul messaggio Telegram
+appena ricevuto, e passata quella finestra si sarebbe dovuto aprire `sqlite3`
+sul Pi.
+
+`PATCH` tocca **solo i campi passati**; `luogo` e `categoria` a stringa vuota
+**tolgono** il valore, che è l'unico modo di correggere un luogo che il modello
+si è inventato. Importo non positivo, descrizione vuota, data malformata o
+**nel futuro** → `422` (una spesa datata in avanti sparirebbe da ogni vista,
+che finisce a oggi, §8.5). Spesa inesistente → `404`.
+
+`Movimento` porta ora anche `data` (AAAA-MM-GG) e `luogo`: `dataLabel` è ciò
+che si legge, `data` è ciò che il form rimanda indietro per correggerla.
+
+Sulla pagina Spese restano inerti **«Esporta CSV»** e **«Carica altri
+movimenti»**: sono comodità, non rimediano a un errore, e la seconda ha
+bisogno di una paginazione che il contratto non prevede. «Registra spesa» e
+«Cambia categoria» invece ora funzionano.
+
+### Categorie
+
+`GET /api/spese/categorie` → `CategoriaSpesaGestione[]`
+`PATCH /api/spese/categorie/:id` body `{ nome?, attiva? }` → `CategoriaSpesaGestione`
+`POST /api/spese/categorie/:id/unisci` body `{ inId }` → `204`
+
+L'elenco comprende anche le categorie **spente**, perché è lì che si fa
+ordine, e il conteggio `spese` è su tutto lo storico e non sul periodo della
+pagina: quando decidi se unire due categorie conta quante spese ci sono
+attaccate in tutto, non quante ne hai fatte questo mese.
+
+`unisci` sposta le spese della categoria `:id` su `inId` e **spegne** la prima
+invece di cancellarla, così resta traccia di come si chiamava: è il rimedio ai
+doppioni semantici che il modello non ha evitato («Cibo» accanto ad
+«Alimentari») e al nome di un negozio finito fra le categorie. Unire una
+categoria a sé stessa → `422`; una categoria che non esiste → `404`.
+`attiva: false` la toglie dalle proposte dell'interprete (§6) senza toccare le
+spese già registrate.
 
 ## Abitudini
 
@@ -274,7 +322,8 @@ silenzio, non cambia `rispostaLabel`, e la revisione avviene su Telegram (il
 profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
 Oggi copre task, lista della spesa, diario e spese —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
-il materiale del diario di oggi (§8.4), e uno con dentro una cifra già pagata
+il materiale del diario del giorno che racconta — «ti racconto la giornata di
+ieri» finisce su ieri, non su oggi (§8.4) — e uno con dentro una cifra già pagata
 («ho pagato 8€ la colazione») diventa una spesa (§8.5). Se la frase dice
 **quando** hai speso («ieri ho pagato 17 euro la spesa»), la spesa si registra
 a quel giorno e non a oggi, e `rispostaLabel` lo dice in coda («, di ieri»,

@@ -63,7 +63,10 @@ finiscono subito nei conti, con «Annulla» a portata di tap. Uno **scontrino**
 si fotografa: lo legge Claude, e la sintesi entra nei conti solo dopo un tuo
 sì — lì il modello legge dei numeri da un'immagine, e vale la conferma. Le
 categorie nascono da zero e le propone Claude confrontandole con quelle che già
-usi, così somigliano a come spendi tu.
+usi, così somigliano a come spendi tu. Una spesa sbagliata si corregge:
+dalla pagina Spese si cambiano importo, data, descrizione, luogo e categoria, e
+da `/spese` sul telefono si toglie con un tap quella appena segnata male. Le
+categorie si rinominano e si uniscono da lì, che è il rimedio ai doppioni.
 
 Le **abitudini** si aggiungono dalla dashboard («palestra, almeno 3 volte a
 settimana») e si segnano parlando: «oggi palestra e lettura, ma niente

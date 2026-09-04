@@ -25,11 +25,13 @@ from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_core.formato import (
+    MESI_BREVI,
     etichetta_giorno,
     etichetta_giorno_voce,
     etichetta_quando,
     etichetta_scadenza,
     euro,
+    giorno_con_preposizione,
     inizio_settimana,
     plurale,
 )
@@ -264,6 +266,21 @@ def messaggio_libero(
             ]
         ]
 
+    # Una giornata raccontata in ritardo va anche chiusa, e `/diario` da solo
+    # guarda oggi: senza questo bottone il racconto di ieri resterebbe grezzo
+    # per sempre, e per accorgersene bisognerebbe sapere che esiste
+    # `/diario ieri`. Il tap è nel momento in cui la cosa è in mente.
+    raccontato = esito.giorno if esito.azione is dom_assistente.Azione.ANNOTA_DIARIO else None
+    if raccontato is not None and raccontato != ora.date():
+        bottoni = bottoni + [
+            [
+                Bottone(
+                    f"Chiudi la giornata {giorno_con_preposizione(raccontato, ora.date())}",
+                    azioni.diario_giorno(raccontato),
+                )
+            ]
+        ]
+
     testo_risposta = escape(esito.testo)
     # Il segnale ambiguo di §8.4: la domanda si attacca alla risposta normale
     # invece di essere un secondo messaggio. Una notifica sola, e resta chiaro
@@ -308,20 +325,84 @@ def _bozza(voce: dom_diario.Voce) -> Risposta:
     )
 
 
-def diario_oggi(conn: sqlite3.Connection, ora: datetime, router: Router) -> Risposta:
-    """`/diario`: chiude la giornata e propone il riassunto da approvare.
+# Le forme accettate da `/diario <giorno>`: poche e fisse, contate all'indietro
+# da oggi. Qui un piccolo parser in codice è la scelta giusta, al contrario di
+# quanto vale per il linguaggio libero (§8.5): l'argomento di un comando è un
+# insieme chiuso che decido io, non una frase che puoi dire come ti pare — e
+# far pagare una chiamata al modello per capire «ieri» sarebbe assurdo.
+GIORNI_INDIETRO = {
+    "oggi": 0,
+    "ieri": 1,
+    "altroieri": 2,
+    "l'altro ieri": 2,
+    "altro ieri": 2,
+}
+
+
+def leggi_giorno_comando(argomento: str, oggi: date) -> date | None:
+    """Il giorno indicato a `/diario`. `None` se non si capisce.
+
+    Accetta «ieri», «l'altro ieri», una data ISO (`2026-09-02`) e la forma
+    breve che il bot stesso stampa nelle sue etichette («2 set»). Un giorno nel
+    futuro non esiste come giornata da raccontare e vale `None`.
+    """
+    pulito = " ".join(argomento.strip().casefold().split())
+    if not pulito:
+        return oggi
+
+    if pulito in GIORNI_INDIETRO:
+        return oggi - timedelta(days=GIORNI_INDIETRO[pulito])
+
+    letta: date | None
+    try:
+        letta = date.fromisoformat(pulito)
+    except ValueError:
+        letta = _giorno_breve(pulito, oggi)
+    if letta is None or letta > oggi:
+        return None
+    return letta
+
+
+def _giorno_breve(testo: str, oggi: date) -> date | None:
+    """ "2 set" → la data più recente che si scrive così, mai nel futuro."""
+    pezzi = testo.split()
+    if len(pezzi) != 2 or not pezzi[0].isdigit():
+        return None
+    if pezzi[1][:3] not in MESI_BREVI:
+        return None
+    mese = MESI_BREVI.index(pezzi[1][:3]) + 1
+    for anno in (oggi.year, oggi.year - 1):
+        try:
+            candidata = date(anno, mese, int(pezzi[0]))
+        except ValueError:
+            return None
+        if candidata <= oggi:
+            return candidata
+    return None
+
+
+def diario_giorno(
+    conn: sqlite3.Connection, ora: datetime, router: Router, *, giorno: date | None = None
+) -> Risposta:
+    """`/diario`: chiude una giornata e propone il riassunto da approvare.
 
     La chiusura è esplicita e non automatica: il riassunto costa una chiamata a
     Claude (§6), e rigenerarlo ad ogni frase sarebbe spesa buttata — oltre che
     inutile, visto che la giornata non è finita.
+
+    `giorno` esiste perché una giornata si può raccontare in ritardo («ti
+    racconto la giornata di ieri»): il materiale finisce sul giorno giusto, e
+    senza un modo di chiudere *quel* giorno resterebbe grezzo per sempre.
     """
-    voce = dom_diario.leggi_giorno(conn, ora.date())
+    quel_giorno = giorno or ora.date()
+    voce = dom_diario.leggi_giorno(conn, quel_giorno)
     if voce is None or not voce.ha_materiale:
         if voce is not None and voce.riassunto_approvato:
             return Risposta(testo=_testo_approvato(voce))
+        quando = "Oggi" if quel_giorno == ora.date() else etichetta_giorno_voce(quel_giorno)
         return Risposta(
             testo=(
-                "Oggi non mi hai ancora raccontato niente.\n\n"
+                f"{escape(quando)} non mi hai raccontato niente.\n\n"
                 "<i>Scrivimi o dettami com'è andata: metto tutto da parte e poi "
                 "/diario te ne propone il riassunto.</i>"
             )
@@ -392,6 +473,20 @@ def _riscrivi_diario(
     return Risposta(testo=_testo_approvato(approvata))
 
 
+def _chiudi_giornata(
+    conn: sqlite3.Connection, ora: datetime, argomento: str, router: Router | None
+) -> Risposta:
+    """Il tap su «Chiudi la giornata di ieri»: fa quello che farebbe `/diario ieri`."""
+    giorno = leggi_giorno_comando(argomento, ora.date())
+    if giorno is None:
+        return Risposta(testo="Questo bottone non è più valido.")
+    if router is None:
+        # Non può capitare dal bot vero, che il router ce l'ha sempre: è la
+        # stessa rete del bottone «Aggiorna il profilo».
+        return Risposta(testo="Il riassunto ha bisogno del modello, che non è configurato.")
+    return diario_giorno(conn, ora, router, giorno=giorno)
+
+
 def _azione_diario(conn: sqlite3.Connection, ora: datetime, nome: str, voce_id: int) -> Risposta:
     if nome == "approva":
         voce = dom_diario.approva(conn, voce_id, ora)
@@ -453,7 +548,11 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         categorie = dom_spese.per_categoria(del_mese)[:5]
         if categorie:
             pezzi.append("\n".join(f"• {escape(nome)} — {euro(cent)}" for nome, cent in categorie))
-        pezzi.append("<b>Ultime</b>\n" + "\n".join(_riga_spesa(s, oggi) for s in del_mese[:5]))
+        ultime = del_mese[:5]
+        pezzi.append(
+            "<b>Ultime</b>\n"
+            + "\n".join(f"{i}. {_riga_spesa(s, oggi)}" for i, s in enumerate(ultime, 1))
+        )
 
     if fuori:
         pezzi.append(
@@ -463,12 +562,22 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         )
 
     bottoni: list[list[Bottone]] = []
+    if del_mese:
+        # Una spesa sbagliata la si nota quasi sempre subito dopo averla detta,
+        # e prima di questi bottoni l'unica uscita era «Annulla» sul messaggio
+        # appena ricevuto: passato quello, bisognava aprire la dashboard. Qui
+        # si toglie in un tap; per **correggere** un importo o una data resta
+        # la pagina Spese, dove c'è una tastiera vera (§8.5).
+        pezzi.append("<i>Una di queste è sbagliata? Il numero la toglie.</i>")
+        bottoni.append(
+            [Bottone(f"🗑 {i}", azioni.spesa("elimina", s.id)) for i, s in enumerate(ultime, 1)]
+        )
     if attesa:
         pezzi.append(
             f"<i>{plurale(len(attesa), 'scontrino letto', 'scontrini letti')} "
             "in attesa di conferma.</i>"
         )
-        bottoni = _bottoni_scontrino(attesa[0])
+        bottoni = bottoni + _bottoni_scontrino(attesa[0])
 
     return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
 
@@ -561,6 +670,15 @@ def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: 
     if nome == "scarta":
         dom_spese.elimina(conn, spesa_id)
         return Risposta(testo="Scontrino buttato: non è entrato nei conti.")
+    if nome == "elimina":
+        spesa = dom_spese.leggi(conn, spesa_id)
+        dom_spese.elimina(conn, spesa_id)
+        return Risposta(
+            testo=(
+                f"Tolta dai conti: <b>{escape(spesa.descrizione)}</b>, "
+                f"{euro(spesa.centesimi)}{escape(etichetta_quando(spesa.giorno, ora.date()))}"
+            )
+        )
     return Risposta(testo="Questo bottone non è più valido.")
 
 
@@ -822,6 +940,10 @@ def esegui_azione(
             return _imposta_scadenza(conn, ora, int(azione.argomento), azione.nome[3:])
         elif azione.dominio == "s" and azione.nome == "preso":
             dom_lista.imposta_preso(conn, int(azione.argomento), True, ora)
+        elif azione.dominio == "d" and azione.nome == "chiudi":
+            # L'unico bottone del diario il cui argomento è una data e non un
+            # id: chiude una giornata raccontata in ritardo (§8.4).
+            return _chiudi_giornata(conn, ora, azione.argomento, router)
         elif azione.dominio == "d":
             return _azione_diario(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "p":

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 from custode_api import schemi
 from custode_api.dipendenze import ConnDip, OraDip
@@ -171,9 +171,14 @@ def movimento(spesa: dom.Spesa, oggi: date) -> schemi.Movimento:
     return schemi.Movimento(
         id=str(spesa.id),
         dataLabel=etichetta_giorno(spesa.giorno, oggi),
+        # La data in chiaro accanto all'etichetta: «ieri» si legge, ma per
+        # correggere una spesa il form ha bisogno del giorno vero da
+        # rimandare indietro.
+        data=spesa.giorno.isoformat(),
         descrizione=spesa.descrizione,
         categoria=spesa.categoria or SENZA_CATEGORIA,
         importo=spesa.euro,
+        luogo=spesa.luogo,
         daScontrino=spesa.fonte is dom.Fonte.SCONTRINO or None,
     )
 
@@ -265,6 +270,11 @@ def registra_spesa(
             centesimi=dom.in_centesimi(corpo.importo),
             descrizione=corpo.descrizione,
             ora=ora,
+            # Una spesa scritta a mano è quasi sempre una che ti sei dimenticato
+            # di dire al bot: senza la data finirebbe a oggi, cioè nel giorno
+            # sbagliato proprio nel caso per cui la stai scrivendo qui (§8.5).
+            giorno=_giorno(corpo.data, ora.date()),
+            luogo=corpo.luogo,
             categoria=corpo.categoria,
             # Il nome l'hai scritto tu nella dashboard, non l'ha proposto un
             # modello: la differenza si vede quando si fa ordine fra le
@@ -281,6 +291,148 @@ def registra_spesa(
         dom_assistente.categorizza_se_serve(conn, ora, spesa.id, instradatore)
         spesa = dom.leggi(conn, spesa.id)
     return movimento(spesa, ora.date())
+
+
+# — categorie (§8.5) ——————————————————————————————————
+#
+# Registrate **prima** di `/{spesa_id}`: con l'ordine inverso «categorie»
+# finirebbe nel parametro intero della rotta della singola spesa, e la pagina
+# riceverebbe un 422 invece dell'elenco.
+
+
+def _categoria(conn: ConnDip, categoria: dom.Categoria, spese: list[dom.Spesa]) -> schemi.Categoria:
+    sue = [s for s in spese if s.categoria == categoria.nome]
+    return schemi.Categoria(
+        id=str(categoria.id),
+        nome=categoria.nome,
+        attiva=categoria.attiva,
+        daUtente=categoria.creata_da == "utente" or None,
+        spese=len(sue),
+        totale=_euro(dom.totale(sue)),
+    )
+
+
+@router.get("/categorie", response_model=list[schemi.Categoria], response_model_exclude_none=True)
+def elenco_categorie(conn: ConnDip) -> list[schemi.Categoria]:
+    """Tutte le categorie, comprese quelle spente: servono a fare ordine.
+
+    Il conteggio delle spese è su **tutto** lo storico e non sul periodo della
+    pagina: quando decidi se unire due categorie, ciò che conta è quante spese
+    ci sono attaccate in tutto, non quante ne hai fatte questo mese.
+    """
+    spese = dom.elenco(conn, da=None, a=None)
+    return [_categoria(conn, c, spese) for c in dom.categorie(conn)]
+
+
+@router.patch(
+    "/categorie/{categoria_id}",
+    response_model=schemi.Categoria,
+    response_model_exclude_none=True,
+)
+def modifica_categoria(
+    categoria_id: int, corpo: schemi.ModificaCategoria, conn: ConnDip
+) -> schemi.Categoria:
+    """Rinomina una categoria o la spegne. Le spese attaccate restano dov'erano."""
+    try:
+        if corpo.nome is not None:
+            dom.rinomina_categoria(conn, categoria_id, corpo.nome)
+        if corpo.attiva is not None:
+            conn.execute(
+                "UPDATE expense_categories SET attiva = ? WHERE id = ?",
+                (int(corpo.attiva), categoria_id),
+            )
+        aggiornata = next(c for c in dom.categorie(conn) if c.id == categoria_id)
+    except (LookupError, StopIteration) as errore:
+        raise HTTPException(status_code=404, detail="Categoria non trovata.") from errore
+    except ValueError as errore:
+        raise HTTPException(status_code=422, detail=str(errore)) from errore
+    return _categoria(conn, aggiornata, dom.elenco(conn, da=None, a=None))
+
+
+@router.post("/categorie/{categoria_id}/unisci", status_code=204)
+def unisci_categoria(categoria_id: int, corpo: schemi.UnisciCategoria, conn: ConnDip) -> Response:
+    """Sposta le spese di una categoria su un'altra e spegne la prima (§8.5).
+
+    È il rimedio ai doppioni semantici che il modello non ha evitato — «Cibo»
+    accanto ad «Alimentari», o il nome di un negozio finito fra le categorie
+    prima che il controllo lo impedisse. Si spegne invece di cancellare, così
+    resta traccia di come si chiamava.
+    """
+    esistenti = {c.id for c in dom.categorie(conn)}
+    try:
+        destinazione = int(corpo.inId)
+    except ValueError as errore:
+        raise HTTPException(
+            status_code=422, detail="Categoria di destinazione non valida."
+        ) from errore
+    if categoria_id not in esistenti or destinazione not in esistenti:
+        raise HTTPException(status_code=404, detail="Categoria non trovata.")
+    if categoria_id == destinazione:
+        raise HTTPException(status_code=422, detail="Una categoria non si unisce a sé stessa.")
+
+    dom.unisci_categorie(conn, categoria_id, destinazione)
+    return Response(status_code=204)
+
+
+# — la singola spesa ————————————————————————————————
+
+
+def _giorno(grezza: str | None, oggi: date) -> date | None:
+    """La data mandata dalla dashboard, validata. `None` = oggi.
+
+    Un 422 e non un silenzioso ritorno a oggi: qui la data l'hai scritta tu in
+    un campo, e sbagliarla è un errore da correggere, non un'incertezza del
+    modello da assorbire come succede col linguaggio libero (§8.5).
+    """
+    if grezza is None or not grezza.strip():
+        return None
+    try:
+        giorno = date.fromisoformat(grezza.strip())
+    except ValueError as errore:
+        raise HTTPException(
+            status_code=422, detail="Data non valida: serve AAAA-MM-GG."
+        ) from errore
+    if giorno > oggi:
+        raise HTTPException(status_code=422, detail="Una spesa non può essere datata nel futuro.")
+    return giorno
+
+
+@router.patch("/{spesa_id}", response_model=schemi.Movimento, response_model_exclude_none=True)
+def modifica_spesa(
+    spesa_id: int, corpo: schemi.ModificaSpesa, conn: ConnDip, ora: OraDip
+) -> schemi.Movimento:
+    """Corregge una spesa già nei conti (§8.5).
+
+    È la strada per l'errore che si scopre dopo: un importo letto male, una
+    data sbagliata, la categoria che non è quella. Prima di questa rotta
+    l'unica uscita era «Annulla» sul messaggio Telegram appena ricevuto.
+    """
+    try:
+        spesa = dom.modifica(
+            conn,
+            spesa_id,
+            ora,
+            centesimi=dom.in_centesimi(corpo.importo) if corpo.importo is not None else None,
+            descrizione=corpo.descrizione,
+            giorno=_giorno(corpo.data, ora.date()),
+            luogo=corpo.luogo,
+            categoria=corpo.categoria,
+        )
+    except dom.SpesaInesistente as errore:
+        raise HTTPException(status_code=404, detail="Spesa non trovata.") from errore
+    except ValueError as errore:
+        raise HTTPException(status_code=422, detail=str(errore)) from errore
+    return movimento(spesa, ora.date())
+
+
+@router.delete("/{spesa_id}", status_code=204)
+def elimina_spesa(spesa_id: int, conn: ConnDip) -> Response:
+    """Cancella una spesa. Serve anche a scartare uno scontrino letto male."""
+    try:
+        dom.elimina(conn, spesa_id)
+    except dom.SpesaInesistente as errore:
+        raise HTTPException(status_code=404, detail="Spesa non trovata.") from errore
+    return Response(status_code=204)
 
 
 @router.post(

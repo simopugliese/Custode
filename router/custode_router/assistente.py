@@ -38,6 +38,7 @@ from custode_core.formato import (
     etichetta_quando,
     etichetta_scadenza,
     euro,
+    giorno_con_preposizione,
 )
 from custode_router import spese as router_spese
 from custode_router.compiti import Compito
@@ -105,8 +106,8 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
         "data": {
             "type": "string",
             "description": (
-                "Per registra_spesa e segna_abitudini: il giorno a cui si"
-                " riferisce il messaggio, in"
+                "Per registra_spesa, segna_abitudini e annota_diario: il giorno"
+                " a cui si riferisce il messaggio, in"
                 " formato AAAA-MM-GG. Se il messaggio dice quando («ieri»,"
                 " «l'altro ieri», «sabato scorso», «il 3»), calcola quel giorno"
                 " a partire dalla data di oggi che trovi in cima al contesto."
@@ -209,7 +210,11 @@ Regole:
   «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
   palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
   alla frase da annotare (ripulita dagli intercalari, NON riassunta: il
-  riassunto lo fa un altro passaggio, a fine giornata).
+  riassunto lo fa un altro passaggio, a fine giornata). Se il messaggio dice
+  di **quale giornata** sta parlando — «ti racconto la giornata di ieri»,
+  «ieri ho studiato tutto il pomeriggio», «sabato sono stato male» — metti quel
+  giorno in `data`, come per le spese: ci finisce tutto il racconto, non solo
+  la prima frase. Senza indicazioni è la giornata di oggi, e `data` resta vuota.
 - Se il messaggio non chiede nessuna di queste cose e non racconta niente (un
   saluto, una domanda, un «ok»), rispondi con azione «nessuna»: è una risposta
   corretta, non un fallimento.
@@ -266,6 +271,13 @@ class Esito:
     """Il frammento di diario appena scritto, da togliere se si annulla."""
     spesa_id: int | None = None
     """La spesa appena registrata, da cancellare se si annulla."""
+    giorno: date | None = None
+    """Il giorno toccato dall'azione, quando non è oggi.
+
+    Serve al bot per il bottone «Chiudi la giornata di ieri» (§8.4): senza, un
+    racconto arrivato in ritardo resterebbe grezzo per sempre, perché `/diario`
+    guarda solo oggi.
+    """
     istante_log: int | None = None
     """L'istante in cui sono stati scritti i log di abitudini di questo messaggio.
 
@@ -432,8 +444,11 @@ def _leggi_scadenza(testo: str) -> date | datetime | None:
         return None
 
 
-def _leggi_giorno_spesa(testo: str, oggi: date) -> date | None:
-    """Il giorno di una spesa detta a parole: lo risolve il modello, lo valida qui.
+def _leggi_giorno(testo: str, oggi: date) -> date | None:
+    """Il giorno a cui si riferisce il messaggio: lo risolve il modello, lo valida qui.
+
+    Vale per tutto ciò che ha una data: la spesa di ieri, l'abitudine segnata
+    ieri, la giornata di diario che stai raccontando in ritardo.
 
     **Perché a risolvere «ieri» è il modello e non il codice.** Il contesto che
     riceve dice già «Oggi è 2026-09-03», quindi ha tutto per rispondere una
@@ -577,13 +592,21 @@ def esegui(
         nota = intenzione.titolo or ""
         if not nota.strip():
             return Esito(testo="Non ho capito cosa annotare.")
+        # «Ti racconto la giornata di ieri» va sul diario di ieri: una voce è
+        # del **giorno raccontato**, non del momento in cui lo racconti (§8.4),
+        # e raccontare in ritardo è normale quanto raccontare la sera stessa.
+        # Se quel giorno era già approvato il dominio lo riporta in raccolta e
+        # tiene comunque leggibile l'approvazione precedente.
+        giorno = _leggi_giorno(intenzione.data, ora.date()) or ora.date()
         _voce, frammento_id = dom_diario.aggiungi_materiale(
-            conn, giorno=ora.date(), testo=nota, ora=ora, da_vocale=da_vocale
+            conn, giorno=giorno, testo=nota, ora=ora, da_vocale=da_vocale
         )
+        quando = giorno_con_preposizione(giorno, ora.date())
         return Esito(
-            testo="Annotato nel diario di oggi.",
+            testo=f"Annotato nel diario {quando}.",
             azione=intenzione.azione,
             frammento_id=frammento_id,
+            giorno=giorno,
         )
 
     return Esito(testo="Non ho capito cosa vuoi che faccia.")
@@ -611,7 +634,7 @@ def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzi
         # spesa è quella in cui hai speso, non quella in cui l'hai registrata
         # (§8.5). Senza questo il giorno detto si perdeva in silenzio, mentre
         # dalla foto di uno scontrino arrivava giusto.
-        giorno=_leggi_giorno_spesa(intenzione.data, ora.date()),
+        giorno=_leggi_giorno(intenzione.data, ora.date()),
         categoria=_categoria_esistente(conn, intenzione.categoria),
         luogo=intenzione.luogo or None,
     )
@@ -633,7 +656,7 @@ def _segna_abitudini(conn: sqlite3.Connection, ora: datetime, intenzione: Intenz
     una decisione, e prenderla al posto tuo perché hai nominato una cosa a caso
     riempirebbe l'elenco di righe che non hai voluto.
     """
-    giorno = _leggi_giorno_spesa(intenzione.data, ora.date()) or ora.date()
+    giorno = _leggi_giorno(intenzione.data, ora.date()) or ora.date()
     fatte, ignote_f = _abbina(conn, intenzione.abitudini_fatte)
     non_fatte, ignote_n = _abbina(conn, intenzione.abitudini_non_fatte)
     # Se il modello mette la stessa abitudine da entrambe le parti, vince il

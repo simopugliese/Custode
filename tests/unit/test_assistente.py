@@ -325,6 +325,86 @@ def test_il_contesto_dice_anche_che_giorno_della_settimana_e(
     assert "lunedì" in router.chiamate[0]["utente"]
 
 
+# — la giornata raccontata in ritardo (§8.4) —
+
+
+def test_ti_racconto_la_giornata_di_ieri_finisce_su_ieri(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Il bug osservato sul Pi: «ti racconto la giornata di ieri» annotava a oggi."""
+    ieri = ora.date() - timedelta(days=1)
+    esito = _esegui(
+        conn,
+        ora,
+        "Ti racconto la giornata di ieri: ho studiato tutto il pomeriggio",
+        {
+            "azione": "annota_diario",
+            "titolo": "Ho studiato tutto il pomeriggio",
+            "data": ieri.isoformat(),
+        },
+    )
+
+    assert dom_diario.leggi_giorno(conn, ora.date()) is None
+    voce = dom_diario.leggi_giorno(conn, ieri)
+    assert voce is not None and voce.grezzo == "Ho studiato tutto il pomeriggio"
+    assert "di ieri" in esito.testo
+    # Il bot ne ha bisogno per offrire «Chiudi la giornata di ieri».
+    assert esito.giorno == ieri
+
+
+def test_senza_data_il_racconto_e_di_oggi(conn: sqlite3.Connection, ora: datetime) -> None:
+    esito = _esegui(
+        conn, ora, "giornata pesante", {"azione": "annota_diario", "titolo": "Giornata pesante"}
+    )
+    assert dom_diario.leggi_giorno(conn, ora.date()) is not None
+    assert "di oggi" in esito.testo
+
+
+def test_annotare_su_un_giorno_gia_approvato_non_cancella_l_approvato(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Aggiungere qualcosa in ritardo non deve buttare via ciò che avevi confermato."""
+    ieri = ora.date() - timedelta(days=1)
+    voce, _ = dom_diario.aggiungi_materiale(conn, giorno=ieri, testo="Prima parte", ora=ora)
+    dom_diario.approva(conn, voce.id, ora, testo="Giornata tranquilla.")
+
+    _esegui(
+        conn,
+        ora,
+        "mi ero dimenticato: ieri sera sono anche andato in palestra",
+        {
+            "azione": "annota_diario",
+            "titolo": "Sono andato in palestra",
+            "data": ieri.isoformat(),
+        },
+    )
+
+    aggiornata = dom_diario.leggi_giorno(conn, ieri)
+    assert aggiornata is not None
+    # L'approvazione precedente resta leggibile finché non ne approvi una nuova,
+    # ma la giornata torna aperta perché la bozza non comprende la frase nuova.
+    assert aggiornata.riassunto_approvato == "Giornata tranquilla."
+    assert aggiornata.stato is dom_diario.Stato.IN_RACCOLTA
+    assert "palestra" in aggiornata.grezzo
+
+
+def test_un_racconto_datato_nel_futuro_torna_a_oggi(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Una giornata che non è ancora successa non si può raccontare."""
+    _esegui(
+        conn,
+        ora,
+        "x",
+        {
+            "azione": "annota_diario",
+            "titolo": "Qualcosa",
+            "data": (ora.date() + timedelta(days=2)).isoformat(),
+        },
+    )
+    assert dom_diario.leggi_giorno(conn, ora.date()) is not None
+
+
 # — abitudini da testo libero (§8.6) —
 
 

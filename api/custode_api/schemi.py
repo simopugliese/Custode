@@ -236,9 +236,12 @@ class DiarioData(BaseModel):
 class Movimento(BaseModel):
     id: str
     dataLabel: str
+    data: str
+    """Il giorno in AAAA-MM-GG: `dataLabel` si legge, questa si rimanda indietro."""
     descrizione: str
     categoria: str
     importo: float
+    luogo: str | None = None
     daScontrino: bool | None = None
 
 
@@ -393,6 +396,47 @@ class NuovaSpesa(BaseModel):
     importo: float
     descrizione: str
     categoria: str | None = None
+    luogo: str | None = None
+    data: str | None = None
+    """Il giorno della spesa in AAAA-MM-GG. Assente = oggi (§8.5)."""
+
+
+class Categoria(BaseModel):
+    """Una categoria di spesa, con quanto le sta attaccato (§8.5)."""
+
+    id: str
+    nome: str
+    attiva: bool
+    daUtente: bool | None = None
+    """Vero se il nome l'hai scritto tu: una proposta del modello si corregge
+    con criteri diversi da una tua scelta."""
+    spese: int
+    totale: float
+
+
+class ModificaCategoria(BaseModel):
+    nome: str | None = None
+    attiva: bool | None = None
+
+
+class UnisciCategoria(BaseModel):
+    """`POST /api/spese/categorie/:id/unisci`: dove far confluire le spese."""
+
+    inId: str
+
+
+class ModificaSpesa(BaseModel):
+    """`PATCH /api/spese/:id`: solo i campi passati vengono toccati.
+
+    `luogo` e `categoria` a stringa vuota **tolgono** il valore: è l'unico modo
+    di correggere un luogo che il modello si è inventato.
+    """
+
+    importo: float | None = None
+    descrizione: str | None = None
+    categoria: str | None = None
+    luogo: str | None = None
+    data: str | None = None
 
 
 class ConfermaScontrino(BaseModel):

@@ -54,4 +54,7 @@ export const api = {
     request<T>(path, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
   patch: <T,>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  // Serve a togliere una spesa sbagliata (§8.5): risponde 204, quindi il tipo
+  // di ritorno è sempre vuoto.
+  del: (path: string) => request<void>(path, { method: 'DELETE' }),
 };

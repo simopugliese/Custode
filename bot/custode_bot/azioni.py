@@ -13,6 +13,7 @@ Forma: `dominio:azione:argomento:vista`
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Literal
 
 Vista = Literal["task", "oggi", "lista"]
@@ -71,6 +72,16 @@ def voce_presa(voce_id: int, vista: Vista) -> str:
 def diario(nome: str, voce_id: int) -> str:
     """Approvazione, riscrittura e scarto di una bozza di diario (§8.4)."""
     return Azione("d", nome, str(voce_id), "task").dato()
+
+
+def diario_giorno(giorno: date) -> str:
+    """Chiude la giornata di un giorno passato, raccontato in ritardo (§8.4).
+
+    L'argomento è la data ISO invece dell'id della voce: il bottone compare
+    subito dopo aver annotato, quando la voce esiste già, ma la data è ciò che
+    resta valido anche se quella voce viene disfatta con «Annulla».
+    """
+    return Azione("d", "chiudi", giorno.isoformat(), "task").dato()
 
 
 def profilo(nome: str, argomento: int | str = "") -> str:

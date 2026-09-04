@@ -217,10 +217,39 @@ export interface ListaSpesaData {
 export interface Movimento {
   id: string;
   dataLabel: string;
+  data: string; // AAAA-MM-GG: dataLabel si legge, questa si rimanda indietro
   descrizione: string;
   categoria: string;
   importo: number;
+  luogo?: string;
   daScontrino?: boolean;
+}
+
+export interface NuovaSpesa {
+  importo: number;
+  descrizione: string;
+  categoria?: string;
+  luogo?: string;
+  data?: string; // assente = oggi
+}
+
+/** Solo i campi passati vengono toccati. `luogo` e `categoria` a stringa vuota
+ *  tolgono il valore. */
+export interface ModificaSpesa {
+  importo?: number;
+  descrizione?: string;
+  categoria?: string;
+  luogo?: string;
+  data?: string;
+}
+
+export interface CategoriaSpesaGestione {
+  id: string;
+  nome: string;
+  attiva: boolean;
+  daUtente?: boolean;
+  spese: number;
+  totale: number;
 }
 
 export interface SpeseData {

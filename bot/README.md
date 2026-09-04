@@ -36,8 +36,8 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/lista` | La lista della spesa per reparto, spuntabile |
 | `/aggiungi <voce>` | Aggiunge alla lista della spesa |
 | `/svuota` | Toglie le voci già prese, previa conferma |
-| `/diario` | Chiude la giornata e propone il riassunto da approvare |
-| `/spese` | Quanto hai speso questo mese, per categoria |
+| `/diario [giorno]` | Chiude la giornata (`/diario ieri`, `/diario 2 set`) e propone il riassunto da approvare |
+| `/spese` | Quanto hai speso questo mese, con un tap per togliere una spesa sbagliata |
 | `/profilo` | Cosa Custode ha capito di te, e quanti segnali sono in attesa |
 | `/abitudini` | Come stai andando questa settimana, con un tap per segnare oggi |
 | `/aiuto` | L'elenco qui sopra |
@@ -60,11 +60,17 @@ Una **foto** è uno scontrino: vedi §8.5 qui sotto.
 
 Non c'è un momento in cui «si scrive il diario»: quello che racconti durante il
 giorno — «capitolo 3 finalmente chiaro», «che palle il frontend» — il router lo
-riconosce come materiale da diario e lo mette da parte sulla **giornata di
-oggi**, grezzo, con un bottone «Annulla» che toglie esattamente quella frase.
+riconosce come materiale da diario e lo mette da parte sulla **giornata che
+stai raccontando**, grezzo, con un bottone «Annulla» che toglie esattamente
+quella frase. Di solito è oggi, ma «ti racconto la giornata di ieri» finisce su
+ieri: una voce è del giorno raccontato, non del momento in cui lo racconti.
 
 `/diario` chiude la giornata: il materiale va a **Claude** (§6), che ne scrive
-un riassunto e dei tag, e il bot te lo rimanda con tre uscite.
+un riassunto e dei tag, e il bot te lo rimanda con tre uscite. Per un giorno
+passato ci sono due strade, entrambe pensate per non doversi ricordare niente:
+il bottone **«Chiudi la giornata di ieri»** che compare subito sotto
+l'annotazione, e `/diario ieri` (o `/diario 2 set`, `/diario 2026-09-02`) per
+quando ci ripensi dopo.
 
 - **Approva** — entra nel diario così com'è.
 - **Modifica** — il bot chiede il testo corretto, e il messaggio successivo
@@ -143,6 +149,16 @@ uv run python -m custode_bot.main
 I test non hanno bisogno di un token: `tests/integration/test_bot_end_to_end.py`
 fa passare aggiornamenti veri attraverso l'applicazione con un bot finto al
 posto della rete.
+
+## Le spese sbagliate (§8.5)
+
+«Annulla» copre l'errore che noti subito. Per quello che scopri dopo, `/spese`
+numera le ultime spese e ogni numero è un bottone che **toglie** quella riga:
+prima bisognava aprire la dashboard anche solo per cancellare un doppione.
+
+**Correggere** un importo o una data si fa invece dalla pagina Spese, dove c'è
+una tastiera vera: una conversazione a bottoni per cambiare quattro campi è
+scomoda proprio dove lo schermo è piccolo.
 
 ## Abitudini (§8.6)
 

@@ -7,7 +7,7 @@ senza Claude, con un router finto che risponde quello che gli si dice.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from custode_bot import azioni, risposte
@@ -321,3 +321,47 @@ def test_uno_scontrino_in_attesa_si_ripresenta_in_spese(
 
 def test_spese_e_nell_aiuto() -> None:
     assert "/spese" in risposte.aiuto().testo
+
+
+# — togliere una spesa dal bot (§8.5) —
+
+
+def test_le_ultime_spese_sono_numerate_e_togliibili(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Prima di questi bottoni, passata la finestra di «Annulla» serviva il browser."""
+    for descrizione in ("colazione", "benzina"):
+        dom.registra(conn, centesimi=800, descrizione=descrizione, ora=ora)
+
+    risposta = risposte.elenco_spese(conn, ora)
+
+    assert "1. " in risposta.testo and "2. " in risposta.testo
+    dati = [b.dato for riga in risposta.bottoni for b in riga]
+    assert any(d.startswith("e:elimina:") for d in dati)
+
+
+def test_il_tap_toglie_la_spesa_e_lo_dice(conn: sqlite3.Connection, ora: datetime) -> None:
+    spesa = dom.registra(conn, centesimi=1700, descrizione="spesa xyz", ora=ora)
+
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("elimina", spesa.id))
+
+    assert dom.elenco(conn) == []
+    assert "spesa xyz" in risposta.testo
+    assert "17,00 €" in risposta.testo
+
+
+def test_il_tap_dice_anche_il_giorno_se_non_e_oggi(conn: sqlite3.Connection, ora: datetime) -> None:
+    spesa = dom.registra(
+        conn,
+        centesimi=1700,
+        descrizione="spesa xyz",
+        ora=ora,
+        giorno=ora.date() - timedelta(days=1),
+    )
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("elimina", spesa.id))
+    assert "di ieri" in risposta.testo
+
+
+def test_togliere_una_spesa_gia_tolta_non_esplode(conn: sqlite3.Connection, ora: datetime) -> None:
+    risposta = risposte.esegui_azione(conn, ora, azioni.spesa("elimina", 999))
+    assert "non esiste" in risposta.testo.lower() or "non è più" in risposta.testo.lower()
