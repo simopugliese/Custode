@@ -57,7 +57,7 @@ COMANDI = [
     BotCommand("lista", "La lista della spesa"),
     BotCommand("aggiungi", "Aggiungi alla lista della spesa"),
     BotCommand("svuota", "Togli dalla lista le voci già prese"),
-    BotCommand("diario", "Chiudi la giornata e leggi il riassunto"),
+    BotCommand("diario", "Chiudi la giornata (anche «/diario ieri»)"),
     BotCommand("spese", "Quanto hai speso questo mese"),
     BotCommand("abitudini", "Come stai andando questa settimana"),
     BotCommand("profilo", "Cosa ho capito di te"),
@@ -131,15 +131,33 @@ def crea_applicazione(
             risposta = risposte.chiedi_svuota(conn)
         await _rispondi(update, risposta)
 
-    async def cmd_diario(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
-        """Chiude la giornata (§8.4). Può volerci qualche secondo: è Claude."""
+    async def cmd_diario(update: Update, contesto: ContextTypes.DEFAULT_TYPE) -> None:
+        """Chiude la giornata (§8.4). Può volerci qualche secondo: è Claude.
+
+        Accetta un giorno — `/diario ieri`, `/diario 2 set` — perché una
+        giornata si può raccontare in ritardo, e allora il materiale sta sul
+        giorno raccontato, non su oggi.
+        """
         messaggio = update.effective_message
         if messaggio is not None:
             # Il riassunto passa da Claude e non è istantaneo: senza un segnale
             # sembra che il comando sia caduto nel vuoto.
             await messaggio.reply_chat_action(ChatAction.TYPING)
+        adesso = ora()
+        giorno = risposte.leggi_giorno_comando(" ".join(contesto.args or []), adesso.date())
+        if giorno is None:
+            await _rispondi(
+                update,
+                risposte.Risposta(
+                    testo=(
+                        "Non ho capito che giorno. Prova <code>/diario</code>, "
+                        "<code>/diario ieri</code> o <code>/diario 2 set</code>."
+                    )
+                ),
+            )
+            return
         with connessione() as conn:
-            risposta = risposte.diario_oggi(conn, ora(), instradatore)
+            risposta = risposte.diario_giorno(conn, adesso, instradatore, giorno=giorno)
         await _rispondi(update, risposta)
 
     async def cmd_profilo(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:

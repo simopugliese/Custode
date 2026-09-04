@@ -8,7 +8,7 @@ e senza modelli, con un router finto al posto di Claude.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -45,7 +45,7 @@ def _testi_bottoni(risposta: risposte.Risposta) -> list[str]:
 def _proponi(conn: sqlite3.Connection, ora: datetime, testo: str = "in biblioteca") -> dom.Voce:
     """Porta la giornata fino alla bozza, come farebbe /diario."""
     dom.aggiungi_materiale(conn, giorno=ora.date(), testo=testo, ora=ora)
-    risposte.diario_oggi(conn, ora, RouterFinto())  # type: ignore[arg-type]
+    risposte.diario_giorno(conn, ora, RouterFinto())  # type: ignore[arg-type]
     voce = dom.leggi_giorno(conn, ora.date())
     assert voce is not None
     return voce
@@ -56,9 +56,9 @@ def _proponi(conn: sqlite3.Connection, ora: datetime, testo: str = "in bibliotec
 
 def test_senza_materiale_non_chiama_claude(conn: sqlite3.Connection, ora: datetime) -> None:
     router = RouterFinto()
-    risposta = risposte.diario_oggi(conn, ora, router)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, router)  # type: ignore[arg-type]
 
-    assert "non mi hai ancora raccontato niente" in risposta.testo
+    assert "non mi hai raccontato niente" in risposta.testo
     assert router.chiamate == []
 
 
@@ -66,7 +66,7 @@ def test_chiude_la_giornata_e_propone(conn: sqlite3.Connection, ora: datetime) -
     dom.aggiungi_materiale(conn, giorno=ora.date(), testo="mattina in biblioteca", ora=ora)
     router = RouterFinto()
 
-    risposta = risposte.diario_oggi(conn, ora, router)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, router)  # type: ignore[arg-type]
 
     assert "Hai passato la mattina in biblioteca." in risposta.testo
     # Le tre uscite di §8.4, tutte a un tap.
@@ -81,10 +81,10 @@ def test_chiude_la_giornata_e_propone(conn: sqlite3.Connection, ora: datetime) -
 def test_un_secondo_diario_non_richiama_claude(conn: sqlite3.Connection, ora: datetime) -> None:
     """La bozza c'è già: rigenerarla sarebbe spesa buttata (§1)."""
     dom.aggiungi_materiale(conn, giorno=ora.date(), testo="materiale", ora=ora)
-    risposte.diario_oggi(conn, ora, RouterFinto())  # type: ignore[arg-type]
+    risposte.diario_giorno(conn, ora, RouterFinto())  # type: ignore[arg-type]
 
     secondo = RouterFinto()
-    risposta = risposte.diario_oggi(conn, ora, secondo)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, secondo)  # type: ignore[arg-type]
 
     assert secondo.chiamate == []
     assert "Hai passato la mattina in biblioteca." in risposta.testo
@@ -94,7 +94,7 @@ def test_se_claude_non_risponde_il_materiale_resta(conn: sqlite3.Connection, ora
     dom.aggiungi_materiale(conn, giorno=ora.date(), testo="mattina in biblioteca", ora=ora)
     router = RouterFinto(errore=ProviderNonRaggiungibile("giù"))
 
-    risposta = risposte.diario_oggi(conn, ora, router)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, router)  # type: ignore[arg-type]
 
     assert "Riprova fra poco" in risposta.testo or "riprova fra poco" in risposta.testo
     voce = dom.leggi_giorno(conn, ora.date())
@@ -108,7 +108,7 @@ def test_una_giornata_gia_nel_diario_si_rilegge(conn: sqlite3.Connection, ora: d
     dom.approva(conn, voce.id, ora)
 
     router = RouterFinto()
-    risposta = risposte.diario_oggi(conn, ora, router)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, router)  # type: ignore[arg-type]
 
     assert "già nel diario" in risposta.testo
     assert router.chiamate == []
@@ -123,7 +123,7 @@ def test_materiale_nuovo_su_una_giornata_chiusa_la_fa_riproporre(
 
     dom.aggiungi_materiale(conn, giorno=ora.date(), testo="poi è successo altro", ora=ora)
     router = RouterFinto({"riassunto": "Versione integrata.", "tag": ["studio"]})
-    risposta = risposte.diario_oggi(conn, ora, router)  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, router)  # type: ignore[arg-type]
 
     assert "Versione integrata." in risposta.testo
     # La vecchia versione approvata è nel prompt: la nuova la integra, non
@@ -221,7 +221,7 @@ def test_in_attesa_di_riscrittura_diario_lo_ricorda(
     voce = _proponi(conn, ora)
     risposte.esegui_azione(conn, ora, azioni.diario("modifica", voce.id))
 
-    risposta = risposte.diario_oggi(conn, ora, RouterFinto())  # type: ignore[arg-type]
+    risposta = risposte.diario_giorno(conn, ora, RouterFinto())  # type: ignore[arg-type]
     assert "parola per parola" in risposta.testo
 
 
@@ -281,3 +281,63 @@ def test_l_aiuto_racconta_il_diario() -> None:
 @pytest.mark.parametrize("nome", ["approva", "modifica", "scarta", "annmod"])
 def test_i_callback_data_stanno_nel_limite_di_telegram(nome: str) -> None:
     assert len(azioni.diario(nome, 999999).encode()) <= 64
+
+
+# — chiudere una giornata raccontata in ritardo (§8.4) —
+
+
+@pytest.mark.parametrize(
+    ("argomento", "scarto"),
+    [("", 0), ("oggi", 0), ("ieri", 1), ("l'altro ieri", 2), ("IERI", 1)],
+)
+def test_leggi_giorno_comando_relativo(argomento: str, scarto: int) -> None:
+    oggi = date(2026, 8, 31)
+    assert risposte.leggi_giorno_comando(argomento, oggi) == oggi - timedelta(days=scarto)
+
+
+def test_leggi_giorno_comando_accetta_le_forme_che_il_bot_stampa() -> None:
+    """«2 set» è come il bot stesso scrive le date: deve poterla rileggere."""
+    oggi = date(2026, 9, 10)
+    assert risposte.leggi_giorno_comando("2 set", oggi) == date(2026, 9, 2)
+    assert risposte.leggi_giorno_comando("2026-09-02", oggi) == date(2026, 9, 2)
+    # Un giorno di questo mese non ancora arrivato si legge come quello dell'anno prima.
+    assert risposte.leggi_giorno_comando("20 set", oggi) == date(2025, 9, 20)
+
+
+@pytest.mark.parametrize("argomento", ["domani", "2026-13-45", "settimana scorsa", "32 set"])
+def test_un_giorno_che_non_si_capisce_vale_none(argomento: str) -> None:
+    assert risposte.leggi_giorno_comando(argomento, date(2026, 8, 31)) is None
+
+
+def test_chiudere_ieri_riassume_ieri(conn: sqlite3.Connection, ora: datetime) -> None:
+    ieri = ora.date() - timedelta(days=1)
+    dom.aggiungi_materiale(conn, giorno=ieri, testo="Studiato tutto il giorno", ora=ora)
+    router = RouterFinto({"riassunto": "Giornata di studio.", "tag": ["studio"]})
+
+    risposta = risposte.diario_giorno(conn, ora, router, giorno=ieri)  # type: ignore[arg-type]
+
+    voce = dom.leggi_giorno(conn, ieri)
+    assert voce is not None and voce.riassunto_proposto == "Giornata di studio."
+    assert "Giornata di studio." in risposta.testo
+
+
+def test_il_bottone_chiude_il_giorno_che_dice(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Il tap fa esattamente quello che farebbe `/diario ieri`."""
+    ieri = ora.date() - timedelta(days=1)
+    dom.aggiungi_materiale(conn, giorno=ieri, testo="Studiato", ora=ora)
+    router = RouterFinto({"riassunto": "Studio.", "tag": []})
+
+    risposte.esegui_azione(conn, ora, azioni.diario_giorno(ieri), router)  # type: ignore[arg-type]
+
+    voce = dom.leggi_giorno(conn, ieri)
+    assert voce is not None and voce.riassunto_proposto == "Studio."
+
+
+def test_chiudere_un_giorno_vuoto_lo_dice_col_suo_nome(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    ieri = ora.date() - timedelta(days=1)
+    router = RouterFinto({"riassunto": "x", "tag": []})
+    risposta = risposte.diario_giorno(conn, ora, router, giorno=ieri)  # type: ignore[arg-type]
+    assert "Dom 30 agosto" in risposta.testo
+    assert router.chiamate == []

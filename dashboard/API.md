@@ -274,7 +274,8 @@ silenzio, non cambia `rispostaLabel`, e la revisione avviene su Telegram (il
 profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
 Oggi copre task, lista della spesa, diario e spese —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
-il materiale del diario di oggi (§8.4), e uno con dentro una cifra già pagata
+il materiale del diario del giorno che racconta — «ti racconto la giornata di
+ieri» finisce su ieri, non su oggi (§8.4) — e uno con dentro una cifra già pagata
 («ho pagato 8€ la colazione») diventa una spesa (§8.5). Se la frase dice
 **quando** hai speso («ieri ho pagato 17 euro la spesa»), la spesa si registra
 a quel giorno e non a oggi, e `rispostaLabel` lo dice in coda («, di ieri»,
