@@ -37,7 +37,7 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/aggiungi <voce>` | Aggiunge alla lista della spesa |
 | `/svuota` | Toglie le voci già prese, previa conferma |
 | `/diario [giorno]` | Chiude la giornata (`/diario ieri`, `/diario 2 set`) e propone il riassunto da approvare |
-| `/spese` | Quanto hai speso questo mese, per categoria |
+| `/spese` | Quanto hai speso questo mese, con un tap per togliere una spesa sbagliata |
 | `/profilo` | Cosa Custode ha capito di te, e quanti segnali sono in attesa |
 | `/abitudini` | Come stai andando questa settimana, con un tap per segnare oggi |
 | `/aiuto` | L'elenco qui sopra |
@@ -149,6 +149,16 @@ uv run python -m custode_bot.main
 I test non hanno bisogno di un token: `tests/integration/test_bot_end_to_end.py`
 fa passare aggiornamenti veri attraverso l'applicazione con un bot finto al
 posto della rete.
+
+## Le spese sbagliate (§8.5)
+
+«Annulla» copre l'errore che noti subito. Per quello che scopri dopo, `/spese`
+numera le ultime spese e ogni numero è un bottone che **toglie** quella riga:
+prima bisognava aprire la dashboard anche solo per cancellare un doppione.
+
+**Correggere** un importo o una data si fa invece dalla pagina Spese, dove c'è
+una tastiera vera: una conversazione a bottoni per cambiare quattro campi è
+scomoda proprio dove lo schermo è piccolo.
 
 ## Abitudini (§8.6)
 

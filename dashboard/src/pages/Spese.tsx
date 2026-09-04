@@ -8,8 +8,19 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
 import { Bar } from '../components/Bar';
 import { Money, Percent } from '../components/Money';
+import { FormSpesa } from '../components/FormSpesa';
 import { Icon } from '../lib/icons';
-import { useConfermaScontrino, useSpese } from '../hooks/useSpese';
+import {
+  useCategorieSpesa,
+  useConfermaScontrino,
+  useEliminaSpesa,
+  useModificaCategoria,
+  useModificaSpesa,
+  useRegistraSpesa,
+  useSpese,
+  useUnisciCategorie,
+} from '../hooks/useSpese';
+import type { Movimento } from '../types/api';
 
 const PERIODI = [
   { value: 'settimana', label: 'Settimana' },
@@ -21,6 +32,19 @@ export default function Spese() {
   const [periodo, setPeriodo] = useState<'settimana' | 'mese' | 'anno'>('mese');
   const { data, isLoading, error, refetch } = useSpese(periodo);
   const conferma = useConfermaScontrino();
+  const registra = useRegistraSpesa();
+  const modifica = useModificaSpesa();
+  const elimina = useEliminaSpesa();
+  const categorie = useCategorieSpesa();
+  const modificaCategoria = useModificaCategoria();
+  const unisci = useUnisciCategorie();
+
+  const [formAperto, setFormAperto] = useState(false);
+  const [inModifica, setInModifica] = useState<Movimento | null>(null);
+  const [categoriaScontrino, setCategoriaScontrino] = useState('');
+  const [daUnire, setDaUnire] = useState<string | null>(null);
+
+  const nomiCategorie = (categorie.data ?? []).filter((c) => c.attiva).map((c) => c.nome);
 
   return (
     <>
@@ -56,11 +80,26 @@ export default function Spese() {
                   <div style={{ marginLeft: 6 }}>
                     <SegmentedControl name="vSpese" options={[...PERIODI]} value={periodo} onChange={(v) => setPeriodo(v as typeof periodo)} />
                   </div>
-                  <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => setFormAperto((aperto) => !aperto)}
+                  >
                     <Icon name="plus" size={14} />
                     Registra spesa
                   </button>
                 </div>
+
+                {formAperto && (
+                  <FormSpesa
+                    categorie={nomiCategorie}
+                    inCorso={registra.isPending}
+                    onAnnulla={() => setFormAperto(false)}
+                    onSalva={(corpo) =>
+                      registra.mutate(corpo, { onSuccess: () => setFormAperto(false) })
+                    }
+                  />
+                )}
 
                 {data.andamentoGiorni.length > 0 && (
                   <div>
@@ -99,22 +138,64 @@ export default function Spese() {
                         <th>Descrizione</th>
                         <th>Categoria</th>
                         <th style={{ textAlign: 'right' }}>Importo</th>
+                        <th />
                       </tr>
                     </thead>
                     <tbody>
-                      {data.movimenti.map((m) => (
-                        <tr key={m.id}>
-                          <td className="cu-mono">{m.dataLabel}</td>
-                          <td>
-                            {m.descrizione}
-                            {m.daScontrino && <span className="cu-muted"> · da scontrino</span>}
-                          </td>
-                          <td>
-                            <Tag variant="neutral">{m.categoria}</Tag>
-                          </td>
-                          <td className="cu-mono" style={{ textAlign: 'right' }}>{m.importo.toFixed(2)}</td>
-                        </tr>
-                      ))}
+                      {data.movimenti.map((m) =>
+                        inModifica?.id === m.id ? (
+                          <tr key={m.id}>
+                            <td colSpan={5} style={{ padding: '10px 0' }}>
+                              <FormSpesa
+                                spesa={m}
+                                categorie={nomiCategorie}
+                                inCorso={modifica.isPending}
+                                onAnnulla={() => setInModifica(null)}
+                                onSalva={(corpo) =>
+                                  modifica.mutate(
+                                    { id: m.id, ...corpo },
+                                    { onSuccess: () => setInModifica(null) },
+                                  )
+                                }
+                              />
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={m.id}>
+                            <td className="cu-mono">{m.dataLabel}</td>
+                            <td>
+                              {m.descrizione}
+                              {m.luogo && m.luogo !== m.descrizione && (
+                                <span className="cu-muted"> · {m.luogo}</span>
+                              )}
+                              {m.daScontrino && <span className="cu-muted"> · da scontrino</span>}
+                            </td>
+                            <td>
+                              <Tag variant="neutral">{m.categoria}</Tag>
+                            </td>
+                            <td className="cu-mono" style={{ textAlign: 'right' }}>{m.importo.toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              <button
+                                className="btn btn-ghost"
+                                style={{ fontSize: 12 }}
+                                onClick={() => setInModifica(m)}
+                                title="Correggi importo, data, descrizione o categoria"
+                              >
+                                Correggi
+                              </button>
+                              <button
+                                className="btn btn-ghost"
+                                style={{ fontSize: 12 }}
+                                onClick={() => elimina.mutate(m.id)}
+                                disabled={elimina.isPending}
+                                title="Toglila dai conti"
+                              >
+                                Elimina
+                              </button>
+                            </td>
+                          </tr>
+                        ),
+                      )}
                     </tbody>
                   </table>
                   {data.movimenti.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '14px 0' }}>Nessun movimento nel periodo.</div>}
@@ -158,6 +239,89 @@ export default function Spese() {
                   </div>
                 )}
 
+                {(categorie.data ?? []).length > 0 && (
+                  <div>
+                    {/* «Fai ordine» e non «Categorie»: il blocco qui sopra si chiama
+                        già così e dice quanto pesa ciascuna. Due titoli uguali nella
+                        stessa colonna sono due cose che sembrano la stessa. */}
+                    <div className="row" style={{ marginBottom: 10 }}>
+                      <h5>Fai ordine</h5>
+                      <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
+                        rinomina, unisci i doppioni
+                      </span>
+                    </div>
+                    <div>
+                      {(categorie.data ?? []).map((c) => (
+                        <div
+                          className="listrow"
+                          style={{ padding: '10px 0', gap: 6, alignItems: 'center' }}
+                          key={c.id}
+                        >
+                          <input
+                            defaultValue={c.nome}
+                            onBlur={(e) => {
+                              const nome = e.target.value.trim();
+                              if (nome && nome !== c.nome) modificaCategoria.mutate({ id: c.id, nome });
+                            }}
+                            className={c.attiva ? undefined : 'cu-muted'}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              fontSize: 14,
+                              padding: '4px 6px',
+                              background: 'none',
+                              border: '1px solid transparent',
+                            }}
+                            aria-label={`Nome della categoria ${c.nome}`}
+                          />
+                          <span className="cu-mono cu-muted" style={{ fontSize: 12 }}>
+                            {c.spese}
+                          </span>
+                          {daUnire === c.id ? (
+                            <select
+                              autoFocus
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  unisci.mutate(
+                                    { id: c.id, inId: e.target.value },
+                                    { onSuccess: () => setDaUnire(null) },
+                                  );
+                                }
+                              }}
+                              style={{ fontSize: 12, padding: '3px 4px' }}
+                            >
+                              <option value="">unisci in…</option>
+                              {(categorie.data ?? [])
+                                .filter((altra) => altra.id !== c.id && altra.attiva)
+                                .map((altra) => (
+                                  <option key={altra.id} value={altra.id}>
+                                    {altra.nome}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            c.attiva && (
+                              <button
+                                className="btn btn-ghost"
+                                style={{ fontSize: 12 }}
+                                onClick={() => setDaUnire(c.id)}
+                                title="Sposta le sue spese su un'altra categoria"
+                              >
+                                Unisci
+                              </button>
+                            )
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="cu-muted" style={{ fontSize: 12, marginTop: 8 }}>
+                      Il numero sono le spese attaccate. Unire sposta quelle spese e spegne la
+                      categoria, senza cancellarla.
+                    </div>
+                  </div>
+                )}
+
                 {data.scontrinoInAttesa && (
                   <div>
                     <h5 style={{ marginBottom: 10 }}>In attesa</h5>
@@ -170,10 +334,32 @@ export default function Spese() {
                         Letto da foto del {data.scontrinoInAttesa.dataLabel} · categoria proposta: {data.scontrinoInAttesa.categoriaProposta}
                       </div>
                       <div className="row" style={{ gap: 6 }}>
-                        <button className="btn btn-primary" onClick={() => conferma.mutate({ id: data.scontrinoInAttesa!.id })} disabled={conferma.isPending}>
+                        <input
+                          list="categorie-in-uso"
+                          value={categoriaScontrino}
+                          onChange={(e) => setCategoriaScontrino(e.target.value)}
+                          placeholder={data.scontrinoInAttesa.categoriaProposta}
+                          style={{ flex: 1, padding: '6px 8px', fontSize: 13 }}
+                          aria-label="Categoria dello scontrino"
+                        />
+                        <button
+                          className="btn btn-primary"
+                          onClick={() =>
+                            conferma.mutate(
+                              {
+                                id: data.scontrinoInAttesa!.id,
+                                categoria: categoriaScontrino.trim() || undefined,
+                              },
+                              { onSuccess: () => setCategoriaScontrino('') },
+                            )
+                          }
+                          disabled={conferma.isPending}
+                        >
                           Conferma
                         </button>
-                        <button className="btn btn-ghost">Cambia categoria</button>
+                      </div>
+                      <div className="cu-muted" style={{ fontSize: 12 }}>
+                        Lascia il campo vuoto per tenere la categoria proposta.
                       </div>
                     </div>
                   </div>

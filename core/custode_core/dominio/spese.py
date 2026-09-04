@@ -302,6 +302,61 @@ def registra(
     return leggi(conn, int(cursore.lastrowid or 0))
 
 
+def modifica(
+    conn: sqlite3.Connection,
+    spesa_id: int,
+    ora: datetime,
+    *,
+    centesimi: int | None = None,
+    descrizione: str | None = None,
+    giorno: date | None = None,
+    luogo: str | None = None,
+    categoria: str | None = None,
+) -> Spesa:
+    """Corregge una spesa già registrata. Tocca solo i campi passati.
+
+    Serve perché una spesa sbagliata la si scopre **dopo**: un 17 diventato 71,
+    una data che il modello ha letto male su uno scontrino, una categoria che
+    non è quella. Fino a ieri l'unica uscita era «Annulla» sul messaggio appena
+    ricevuto, e passata quella si sarebbe dovuto aprire sqlite3 sul Pi.
+
+    `luogo` e `categoria` accettano la stringa vuota per **togliere** il valore:
+    è l'unico modo di correggere un luogo inventato senza cancellare la spesa.
+    """
+    spesa = leggi(conn, spesa_id)
+
+    if centesimi is not None:
+        if centesimi <= 0:
+            raise ValueError("l'importo di una spesa dev'essere positivo")
+        conn.execute("UPDATE expenses SET importo = ? WHERE id = ?", (centesimi, spesa_id))
+
+    if descrizione is not None:
+        testo = descrizione.strip()
+        if not testo:
+            raise ValueError("la descrizione di una spesa non può essere vuota")
+        conn.execute("UPDATE expenses SET descrizione = ? WHERE id = ?", (testo, spesa_id))
+
+    if giorno is not None:
+        # Stessa regola di §8.5 valida in scrittura: ogni vista finisce a oggi,
+        # quindi spostare una spesa in avanti la farebbe sparire da ovunque.
+        if giorno > ora.date():
+            raise ValueError("una spesa non può essere datata nel futuro")
+        conn.execute("UPDATE expenses SET data = ? WHERE id = ?", (giorno.isoformat(), spesa_id))
+
+    if luogo is not None:
+        pulito = luogo.strip() or None
+        conn.execute("UPDATE expenses SET luogo = ? WHERE id = ?", (pulito, spesa_id))
+
+    if categoria is not None:
+        nome = categoria.strip()
+        # Una categoria scelta da te, non proposta dal modello: la differenza
+        # conta quando si fa ordine fra le categorie.
+        nuova = assicura_categoria(conn, nome, ora, da_utente=True).id if nome else None
+        conn.execute("UPDATE expenses SET categoria_id = ? WHERE id = ?", (nuova, spesa_id))
+
+    return leggi(conn, spesa.id)
+
+
 def conferma(
     conn: sqlite3.Connection, spesa_id: int, ora: datetime, *, categoria: str | None = None
 ) -> Spesa:

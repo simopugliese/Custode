@@ -548,7 +548,11 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         categorie = dom_spese.per_categoria(del_mese)[:5]
         if categorie:
             pezzi.append("\n".join(f"• {escape(nome)} — {euro(cent)}" for nome, cent in categorie))
-        pezzi.append("<b>Ultime</b>\n" + "\n".join(_riga_spesa(s, oggi) for s in del_mese[:5]))
+        ultime = del_mese[:5]
+        pezzi.append(
+            "<b>Ultime</b>\n"
+            + "\n".join(f"{i}. {_riga_spesa(s, oggi)}" for i, s in enumerate(ultime, 1))
+        )
 
     if fuori:
         pezzi.append(
@@ -558,12 +562,22 @@ def elenco_spese(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         )
 
     bottoni: list[list[Bottone]] = []
+    if del_mese:
+        # Una spesa sbagliata la si nota quasi sempre subito dopo averla detta,
+        # e prima di questi bottoni l'unica uscita era «Annulla» sul messaggio
+        # appena ricevuto: passato quello, bisognava aprire la dashboard. Qui
+        # si toglie in un tap; per **correggere** un importo o una data resta
+        # la pagina Spese, dove c'è una tastiera vera (§8.5).
+        pezzi.append("<i>Una di queste è sbagliata? Il numero la toglie.</i>")
+        bottoni.append(
+            [Bottone(f"🗑 {i}", azioni.spesa("elimina", s.id)) for i, s in enumerate(ultime, 1)]
+        )
     if attesa:
         pezzi.append(
             f"<i>{plurale(len(attesa), 'scontrino letto', 'scontrini letti')} "
             "in attesa di conferma.</i>"
         )
-        bottoni = _bottoni_scontrino(attesa[0])
+        bottoni = bottoni + _bottoni_scontrino(attesa[0])
 
     return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
 
@@ -656,6 +670,15 @@ def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: 
     if nome == "scarta":
         dom_spese.elimina(conn, spesa_id)
         return Risposta(testo="Scontrino buttato: non è entrato nei conti.")
+    if nome == "elimina":
+        spesa = dom_spese.leggi(conn, spesa_id)
+        dom_spese.elimina(conn, spesa_id)
+        return Risposta(
+            testo=(
+                f"Tolta dai conti: <b>{escape(spesa.descrizione)}</b>, "
+                f"{euro(spesa.centesimi)}{escape(etichetta_quando(spesa.giorno, ora.date()))}"
+            )
+        )
     return Risposta(testo="Questo bottone non è più valido.")
 
 

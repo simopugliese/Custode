@@ -18,7 +18,7 @@ identica anche il bot Telegram.
 
 Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
 `PATCH`), `/api/lista-spesa` (+ `POST`, `PATCH`, `svuota-presi`),
-`/api/diario` (+ `approva`, `scarta`), `/api/spese` (+ `POST`, `conferma`),
+`/api/diario` (+ `approva`, `scarta`), `/api/spese` (+ `POST`, `PATCH`, `DELETE`, `conferma`, `categorie`),
 `/api/abitudini` (+ `POST`, `PATCH`, `log`, `proposta/accetta|rifiuta`), e
 `GET /api/health` per lo smoke test post-deploy (§10).
 

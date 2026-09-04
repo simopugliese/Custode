@@ -6,7 +6,7 @@ passano dalle stesse query che userà la dashboard.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -365,3 +365,162 @@ class TestConBudget:
         assert blocco["scontriniInAttesa"] == 1
         # Non è ancora speso: aspetta un sì.
         assert blocco["speso"] == 0.0
+
+
+# — correggere ed eliminare (§8.5) —
+
+
+def _registra(client: TestClient, **campi: Any) -> dict[str, Any]:
+    corpo: dict[str, Any] = {"importo": 17.0, "descrizione": "spesa xyz", "categoria": "Alimentari"}
+    corpo.update(campi)
+    risposta = client.post("/api/spese", json=corpo)
+    assert risposta.status_code == 200, risposta.text
+    movimento: dict[str, Any] = risposta.json()
+    return movimento
+
+
+def test_una_spesa_scritta_a_mano_puo_avere_la_sua_data(client: TestClient, ora: datetime) -> None:
+    """Quasi sempre è una che ti sei dimenticato di dire al bot: la data serve."""
+    ieri = (ora.date() - timedelta(days=1)).isoformat()
+    movimento = _registra(client, data=ieri, luogo="Bar Rossi")
+    assert movimento["data"] == ieri
+    assert movimento["dataLabel"] == "ieri"
+    assert movimento["luogo"] == "Bar Rossi"
+
+
+def test_correggere_l_importo(client: TestClient) -> None:
+    movimento = _registra(client)
+    corretto = client.patch(f"/api/spese/{movimento['id']}", json={"importo": 71.0}).json()
+    assert corretto["importo"] == 71.0
+    # Il resto non si muove.
+    assert corretto["descrizione"] == "spesa xyz"
+
+
+def test_correggere_la_data_la_sposta_di_periodo(client: TestClient, ora: datetime) -> None:
+    """Il caso vero: una spesa finita nel giorno sbagliato va rimessa a posto."""
+    movimento = _registra(client)
+    fuori = ora.date() - timedelta(days=40)
+
+    corretto = client.patch(
+        f"/api/spese/{movimento['id']}", json={"data": fuori.isoformat()}
+    ).json()
+
+    assert corretto["data"] == fuori.isoformat()
+    # E il totale del mese non la conta più.
+    assert client.get("/api/spese?periodo=mese").json()["movimenti"] == []
+
+
+def test_correggere_la_categoria(client: TestClient) -> None:
+    movimento = _registra(client)
+    corretto = client.patch(f"/api/spese/{movimento['id']}", json={"categoria": "Casa"}).json()
+    assert corretto["categoria"] == "Casa"
+
+
+def test_svuotare_la_categoria(client: TestClient) -> None:
+    movimento = _registra(client)
+    corretto = client.patch(f"/api/spese/{movimento['id']}", json={"categoria": ""}).json()
+    assert corretto["categoria"] == "Senza categoria"
+
+
+@pytest.mark.parametrize(
+    "corpo",
+    [{"importo": 0}, {"importo": -3}, {"descrizione": "  "}, {"data": "31/08/2026"}],
+)
+def test_una_correzione_impossibile_e_422(client: TestClient, corpo: dict[str, Any]) -> None:
+    movimento = _registra(client)
+    assert client.patch(f"/api/spese/{movimento['id']}", json=corpo).status_code == 422
+
+
+def test_non_si_puo_spostare_una_spesa_nel_futuro(client: TestClient, ora: datetime) -> None:
+    movimento = _registra(client)
+    domani = (ora.date() + timedelta(days=1)).isoformat()
+    assert client.patch(f"/api/spese/{movimento['id']}", json={"data": domani}).status_code == 422
+
+
+def test_eliminare_una_spesa(client: TestClient) -> None:
+    movimento = _registra(client)
+    assert client.delete(f"/api/spese/{movimento['id']}").status_code == 204
+    assert client.get("/api/spese?periodo=mese").json()["movimenti"] == []
+
+
+def test_correggere_o_eliminare_qualcosa_che_non_esiste(client: TestClient) -> None:
+    assert client.patch("/api/spese/999", json={"importo": 3.0}).status_code == 404
+    assert client.delete("/api/spese/999").status_code == 404
+
+
+# — categorie: rinominare e unire (§8.5) —
+
+
+def test_l_elenco_delle_categorie_dice_quanto_c_e_attaccato(client: TestClient) -> None:
+    _registra(client, categoria="Alimentari", importo=10.0)
+    _registra(client, categoria="Bricoman", importo=150.0, descrizione="vernice")
+
+    categorie = {c["nome"]: c for c in client.get("/api/spese/categorie").json()}
+
+    assert categorie["Bricoman"]["spese"] == 1
+    assert categorie["Bricoman"]["totale"] == 150.0
+    assert categorie["Alimentari"]["attiva"] is True
+
+
+def test_rinominare_una_categoria(client: TestClient) -> None:
+    _registra(client, categoria="Bricoman", importo=150.0)
+    (bricoman,) = [c for c in client.get("/api/spese/categorie").json() if c["nome"] == "Bricoman"]
+
+    rinominata = client.patch(
+        f"/api/spese/categorie/{bricoman['id']}", json={"nome": "Casa"}
+    ).json()
+
+    assert rinominata["nome"] == "Casa"
+    # La spesa si porta dietro il nome nuovo, senza essere toccata.
+    assert client.get("/api/spese?periodo=mese").json()["movimenti"][0]["categoria"] == "Casa"
+
+
+def test_unire_due_categorie_sposta_le_spese_e_spegne_la_prima(client: TestClient) -> None:
+    """Il rimedio al doppione semantico che il modello non ha evitato."""
+    _registra(client, categoria="Alimentari", importo=10.0)
+    _registra(client, categoria="Cibo", importo=20.0, descrizione="pranzo")
+    per_nome = {c["nome"]: c["id"] for c in client.get("/api/spese/categorie").json()}
+
+    risposta = client.post(
+        f"/api/spese/categorie/{per_nome['Cibo']}/unisci", json={"inId": per_nome["Alimentari"]}
+    )
+
+    assert risposta.status_code == 204
+    categorie = {c["nome"]: c for c in client.get("/api/spese/categorie").json()}
+    assert categorie["Alimentari"]["spese"] == 2
+    assert categorie["Alimentari"]["totale"] == 30.0
+    # Spenta, non cancellata: resta traccia di come si chiamava.
+    assert categorie["Cibo"]["attiva"] is False
+    assert categorie["Cibo"]["spese"] == 0
+
+
+def test_unire_una_categoria_a_se_stessa_non_ha_senso(client: TestClient) -> None:
+    _registra(client, categoria="Alimentari")
+    (una,) = client.get("/api/spese/categorie").json()
+    risposta = client.post(f"/api/spese/categorie/{una['id']}/unisci", json={"inId": una["id"]})
+    assert risposta.status_code == 422
+
+
+def test_una_categoria_che_non_esiste(client: TestClient) -> None:
+    _registra(client, categoria="Alimentari")
+    (una,) = client.get("/api/spese/categorie").json()
+    assert client.patch("/api/spese/categorie/999", json={"nome": "X"}).status_code == 404
+    assert (
+        client.post(f"/api/spese/categorie/{una['id']}/unisci", json={"inId": "999"}).status_code
+        == 404
+    )
+
+
+def test_spegnere_una_categoria_la_toglie_dalle_proposte_del_modello(
+    client: TestClient, db_path: Path
+) -> None:
+    """Una categoria spenta non deve più essere offerta all'interprete (§6)."""
+    _registra(client, categoria="Bricoman")
+    (bricoman,) = client.get("/api/spese/categorie").json()
+    client.patch(f"/api/spese/categorie/{bricoman['id']}", json={"attiva": False})
+
+    conn = connect(db_path)
+    try:
+        assert [c.nome for c in dom.categorie(conn, solo_attive=True)] == []
+    finally:
+        conn.close()

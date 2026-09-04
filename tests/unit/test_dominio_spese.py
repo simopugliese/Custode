@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -236,3 +236,82 @@ def test_chi_ha_scelto_la_categoria_resta_scritto(conn: sqlite3.Connection) -> N
     _spesa(conn, descrizione="scritta da me", categoria="Casa", categoria_da_utente=True)
     per_nome = {c.nome: c.creata_da for c in dom.categorie(conn)}
     assert per_nome == {"Alimentari": "ia", "Casa": "utente"}
+
+
+# — correggere una spesa già registrata (§8.5) —
+
+
+def _una(conn: sqlite3.Connection, ora: datetime) -> dom.Spesa:
+    return dom.registra(
+        conn,
+        centesimi=1700,
+        descrizione="spesa xyz",
+        ora=ora,
+        giorno=ora.date() - timedelta(days=3),
+        luogo="Bar Rossi",
+        categoria="Alimentari",
+    )
+
+
+def test_modifica_tocca_solo_quello_che_passi(conn: sqlite3.Connection, ora: datetime) -> None:
+    spesa = _una(conn, ora)
+    corretta = dom.modifica(conn, spesa.id, ora, centesimi=7100)
+
+    assert corretta.centesimi == 7100
+    # Tutto il resto è rimasto dov'era.
+    assert (corretta.descrizione, corretta.luogo, corretta.categoria, corretta.giorno) == (
+        spesa.descrizione,
+        spesa.luogo,
+        spesa.categoria,
+        spesa.giorno,
+    )
+
+
+def test_modifica_la_data(conn: sqlite3.Connection, ora: datetime) -> None:
+    spesa = _una(conn, ora)
+    ieri = ora.date() - timedelta(days=1)
+    assert dom.modifica(conn, spesa.id, ora, giorno=ieri).giorno == ieri
+
+
+def test_non_si_puo_spostare_una_spesa_nel_futuro(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Sparirebbe da ogni vista, che finisce a oggi (§8.5)."""
+    spesa = _una(conn, ora)
+    with pytest.raises(ValueError):
+        dom.modifica(conn, spesa.id, ora, giorno=ora.date() + timedelta(days=1))
+
+
+@pytest.mark.parametrize("centesimi", [0, -100])
+def test_un_importo_non_positivo_non_passa(
+    conn: sqlite3.Connection, ora: datetime, centesimi: int
+) -> None:
+    spesa = _una(conn, ora)
+    with pytest.raises(ValueError):
+        dom.modifica(conn, spesa.id, ora, centesimi=centesimi)
+
+
+def test_una_descrizione_vuota_non_passa(conn: sqlite3.Connection, ora: datetime) -> None:
+    spesa = _una(conn, ora)
+    with pytest.raises(ValueError):
+        dom.modifica(conn, spesa.id, ora, descrizione="   ")
+
+
+def test_la_stringa_vuota_toglie_luogo_e_categoria(conn: sqlite3.Connection, ora: datetime) -> None:
+    """È l'unico modo di correggere un luogo che il modello si è inventato."""
+    spesa = _una(conn, ora)
+    corretta = dom.modifica(conn, spesa.id, ora, luogo="", categoria="")
+    assert corretta.luogo is None
+    assert corretta.categoria is None
+
+
+def test_una_categoria_nuova_scritta_da_te_risulta_tua(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    spesa = _una(conn, ora)
+    dom.modifica(conn, spesa.id, ora, categoria="Casa")
+    creata = dom.trova_categoria(conn, "Casa")
+    assert creata is not None and creata.creata_da == "utente"
+
+
+def test_modificare_una_spesa_che_non_esiste(conn: sqlite3.Connection, ora: datetime) -> None:
+    with pytest.raises(dom.SpesaInesistente):
+        dom.modifica(conn, 999, ora, centesimi=100)
