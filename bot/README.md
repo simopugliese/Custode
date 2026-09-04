@@ -39,11 +39,13 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 | `/diario` | Chiude la giornata e propone il riassunto da approvare |
 | `/spese` | Quanto hai speso questo mese, per categoria |
 | `/profilo` | Cosa Custode ha capito di te, e quanti segnali sono in attesa |
+| `/abitudini` | Come stai andando questa settimana, con un tap per segnare oggi |
 | `/aiuto` | L'elenco qui sopra |
 
 Oltre ai comandi il bot capisce il **linguaggio libero**, scritto o dettato:
 «ricordami di chiamare l'officina», «sto finendo il latte», «fatto la
-bolletta». Il messaggio passa dal router (§6), che ne ricava un'intenzione
+bolletta», «oggi palestra e lettura, ma niente meditazione». Il messaggio passa
+dal router (§6), che ne ricava un'intenzione
 strutturata; il bot esegue subito e dice cosa ha fatto, lasciando un bottone
 «Annulla» — l'interpretazione è automatica, quindi disfare deve costare un tap.
 
@@ -141,3 +143,18 @@ uv run python -m custode_bot.main
 I test non hanno bisogno di un token: `tests/integration/test_bot_end_to_end.py`
 fa passare aggiornamenti veri attraverso l'applicazione con un bot finto al
 posto della rete.
+
+## Abitudini (§8.6)
+
+Il bot le **segna**, non le crea: «oggi palestra e lettura, ma niente
+meditazione» aggancia i nomi all'elenco di quelle che segui e scrive tre log in
+un colpo, con un «Annulla» che li toglie tutti e tre — quella frase è stato un
+gesto solo. Un nome che non è nell'elenco viene detto («non seguo
+«Chitarra»»), mai creato: aprire un'abitudine è una decisione, e si prende
+dalla pagina Abitudini della dashboard.
+
+`/abitudini` mostra l'aderenza della settimana con gli stessi numeri della
+dashboard — §8.6 la vuole in tutti e due i posti, e due conti diversi che
+dicono due numeri diversi sono peggio di uno solo. Il tap su un'abitudine già
+segnata **toglie** il log invece di scrivere «non fatta»: un tap per sbaglio
+deve riportare al silenzio, non affermare il contrario.

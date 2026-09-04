@@ -188,9 +188,61 @@ e la si sistema dopo. Importo non positivo o descrizione vuota → `422`.
 ## Abitudini
 
 `GET /api/abitudini?vista=settimana|mese` → `AbitudiniData`
+`POST /api/abitudini` body `{ nome, targetSettimanale }` → `AbitudineDettaglio`
+`PATCH /api/abitudini/:id` body `{ nome?, targetSettimanale?, attiva? }` → `AbitudineDettaglio`
 `PATCH /api/abitudini/:id/log` body `{ data: string, fatto: boolean }` → `AbitudineDettaglio`
 `POST /api/abitudini/:id/proposta/accetta` → `204`
 `POST /api/abitudini/:id/proposta/rifiuta` → `204`
+
+Le due rotte di **creazione e modifica** non erano nella v1 di questo
+contratto, ma §8.6 vuole le abitudini «aggiungibili, disattivabili e
+modificabili in qualsiasi momento» e il bot le sa solo segnare: sono quindi il
+canale con cui si gestiscono, ed è il bottone «Nuova abitudine» della pagina a
+usarle. `targetSettimanale` va da 1 a 7 (7 = tutti i giorni); fuori scala,
+nome vuoto o nome già usato da un'altra abitudine → `422`. `attiva: false`
+**non cancella**: toglie l'abitudine dalla pagina lasciando i suoi log dove
+sono, e riattivarla ne riprende la storia. Creare con un nome che esiste già
+riprende quella, invece di aprire un doppione che spezzerebbe la storia in due.
+
+`vista` cambia il **periodo su cui si contano i fatti**, non i pallini: i sette
+di ogni riga sono sempre la settimana corrente, lunedì → domenica, perché
+l'intestazione della colonna nella pagina è fissa. Con `vista=settimana`
+`goalRatioLabel` è «fatte/target» (es. `2/3`); con `vista=mese` il denominatore
+è proporzionale ai **giorni trascorsi** del mese, arrotondato e mai sotto 1
+(es. `8/13`) — contare i giorni che devono ancora arrivare farebbe apparire
+ogni inizio periodo come un disastro. `evidenziata` compare **solo** quando
+`fatte >= denominatore`, cioè esattamente quando il rapporto che si legge dice
+che l'obiettivo è centrato.
+
+`stats.costanzaMese` è sempre **mensile**, in tutte e due le viste (è quello che
+dice il nome): l'aderenza media di tutte le abitudini attive, con il tetto al
+100% per ciascuna. `streakMigliore` e `streak[].valoreLabel` sono in **giorni**
+consecutivi; se oggi non è ancora segnato la striscia si conta fino a ieri,
+altrimenti la mattina sarebbe sempre zero. `meseSingolaAbitudine` è il
+calendario a pallini della **sola** abitudine più costante del mese, dal primo
+del mese a oggi — una griglia per ognuna sarebbe un muro di pallini.
+
+`PATCH .../log` accetta solo un giorno passato o oggi (`data` in `AAAA-MM-GG`):
+un giorno futuro dà `422`, per lo stesso motivo per cui una spesa datata in
+avanti viene scartata (§8.5) — ogni vista finisce a oggi. Rimandare lo stesso
+giorno **aggiorna** il log invece di accodarne un altro, e `fatto: false` non è
+la stessa cosa di un log assente: è un «non l'ho fatta» detto esplicitamente,
+che non conta nell'aderenza ma resta scritto.
+
+`avviso` compare **solo** quando c'è un'abitudine che non segni da almeno dieci
+giorni, e ne nomina una — la più ferma. Un'abitudine mai segnata non lo fa
+scattare: è nuova, non è in calo.
+
+`proposta` è un adeguamento del target proposto dal report mensile (§8.6):
+`:id` nelle due rotte `proposta/accetta|rifiuta` è **l'id della proposta**, che
+è quello che il campo contiene. «Accetta» applica il nuovo target, «rifiuta»
+archivia e basta; in entrambi i casi la proposta sparisce dalle risposte
+successive. Decidere due volte la stessa proposta → `409`; una proposta che non
+esiste → `404`.
+
+`report` è il racconto scritto da Claude per la vista scelta — il settimanale
+per `vista=settimana`, il mensile per `vista=mese` — ed è **assente** finché il
+worker non ne ha scritto uno: campo assente ≠ campo vuoto.
 
 ## Regole di contesto
 
@@ -223,7 +275,12 @@ profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
 Oggi copre task, lista della spesa, diario e spese —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
 il materiale del diario di oggi (§8.4), e uno con dentro una cifra già pagata
-(«ho pagato 8€ la colazione») diventa una spesa (§8.5). Per un messaggio che non chiede nulla
+(«ho pagato 8€ la colazione») diventa una spesa (§8.5). Se la frase dice
+**quando** hai speso («ieri ho pagato 17 euro la spesa»), la spesa si registra
+a quel giorno e non a oggi, e `rispostaLabel` lo dice in coda («, di ieri»,
+«, del 29 ago») — come già fa la conferma di uno scontrino. Una data nel futuro
+viene scartata e vale oggi: ogni vista finisce a oggi, quindi una spesa datata
+in avanti resterebbe scritta e invisibile (§8.5). Per un messaggio che non chiede nulla
 di previsto la risposta lo dice, senza errore.
 
 **Risponde sempre 200**, anche quando il modello non è configurato o non

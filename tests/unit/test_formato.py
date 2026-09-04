@@ -11,6 +11,7 @@ from custode_core.formato import (
     etichetta_data_ora,
     etichetta_giorno,
     etichetta_ora,
+    etichetta_quando,
     etichetta_scadenza,
     inizio_settimana,
     plurale,
@@ -77,3 +78,17 @@ def test_plurale() -> None:
 )
 def test_inizio_settimana(giorno: date, atteso: date) -> None:
     assert inizio_settimana(giorno) == atteso
+
+
+@pytest.mark.parametrize(
+    ("giorno", "atteso"),
+    [
+        (date(2026, 8, 31), ""),  # è oggi: non si dice niente
+        (date(2026, 8, 30), ", di ieri"),
+        (date(2026, 8, 26), ", del 26 ago"),
+        (date(2025, 9, 2), ", del 2 set 2025"),
+    ],
+)
+def test_etichetta_quando(giorno: date, atteso: str) -> None:
+    """La preposizione segue l'etichetta: «di ieri» ma «del 26 ago»."""
+    assert etichetta_quando(giorno, ORA.date()) == atteso

@@ -92,6 +92,22 @@ def etichetta_giorno(giorno: date, oggi: date) -> str:
     return f"{giorno.day} {_mese_breve(giorno)}"
 
 
+def etichetta_quando(giorno: date, oggi: date) -> str:
+    """ ", di ieri" oppure ", del 26 ago" — il giorno di qualcosa, se non è oggi.
+
+    Vuota quando il giorno *è* oggi: la coda serve a dire che qualcosa è finito
+    su una data diversa da quella in cui l'hai registrato, e ripetere "di oggi"
+    in ogni conferma sarebbe rumore.
+
+    La preposizione cambia con l'etichetta: si dice «di ieri» ma «del 26 ago».
+    Con una sola si leggerebbe «del ieri», e si nota.
+    """
+    if giorno == oggi:
+        return ""
+    etichetta = etichetta_giorno(giorno, oggi)
+    return f", {'del' if etichetta[0].isdigit() else 'di'} {etichetta}"
+
+
 def etichetta_scadenza(scadenza: date | datetime | None, ora: datetime) -> str | None:
     """Etichetta di scadenza per una riga di task.
 

@@ -59,6 +59,7 @@ COMANDI = [
     BotCommand("svuota", "Togli dalla lista le voci già prese"),
     BotCommand("diario", "Chiudi la giornata e leggi il riassunto"),
     BotCommand("spese", "Quanto hai speso questo mese"),
+    BotCommand("abitudini", "Come stai andando questa settimana"),
     BotCommand("profilo", "Cosa ho capito di te"),
     BotCommand("aiuto", "Cosa so fare"),
 ]
@@ -310,6 +311,13 @@ def crea_applicazione(
         CommandHandler(
             "spese",
             comando(lambda conn, ora_, _: risposte.elenco_spese(conn, ora_)),
+            filters=solo_io,
+        )
+    )
+    applicazione.add_handler(
+        CommandHandler(
+            "abitudini",
+            comando(lambda conn, ora_, _: risposte.elenco_abitudini(conn, ora_)),
             filters=solo_io,
         )
     )

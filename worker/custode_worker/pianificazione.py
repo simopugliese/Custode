@@ -14,6 +14,7 @@ from custode_core.formato import inizio_settimana
 
 RIEPILOGO_SETTIMANALE = "riepilogo_settimanale"
 BACKUP = "backup"
+REPORT_MENSILE_ABITUDINI = "report_mensile_abitudini"
 
 
 def momento_previsto(lunedi: date, giorno: str, ore: int, minuti: int) -> datetime:
@@ -54,6 +55,28 @@ def giorno_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date:
     if adesso >= datetime.combine(adesso.date(), time(hour=ore, minute=minuti)):
         return adesso.date()
     return adesso.date() - timedelta(days=1)
+
+
+def mese_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date | None:
+    """Il primo giorno del mese da raccontare adesso, o None se non è ora.
+
+    Il mese si chiude quando è finito: il resoconto di settembre parte il primo
+    di ottobre, alla stessa ora del riepilogo settimanale. Come per la
+    settimana si guarda anche a quello prima, così un Pi spento il primo del
+    mese recupera appena torna acceso invece di saltare un mese intero —
+    e più indietro no, perché un resoconto di due mesi fa non lo legge nessuno.
+    """
+    primo = adesso.date().replace(day=1)
+    scorso = (primo - timedelta(days=1)).replace(day=1)
+    for candidato in (scorso, (scorso - timedelta(days=1)).replace(day=1)):
+        fine = _primo_del_mese_dopo(candidato)
+        if adesso >= datetime.combine(fine, time(hour=ore, minute=minuti)):
+            return candidato
+    return None
+
+
+def _primo_del_mese_dopo(primo: date) -> date:
+    return (primo.replace(day=28) + timedelta(days=4)).replace(day=1)
 
 
 # — registro delle esecuzioni —

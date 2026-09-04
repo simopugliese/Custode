@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -61,3 +63,25 @@ def test_messaggio_vuoto(client: TestClient) -> None:
     risposta = client.post("/api/assistente/messaggio", json={"testo": "   "})
     assert risposta.status_code == 200
     assert risposta.json()["rispostaLabel"]
+
+
+def test_una_spesa_detta_per_ieri_finisce_a_ieri(
+    client: TestClient, modello: RouterFinto, ora: datetime
+) -> None:
+    """Il giro completo del bug osservato sul Pi, dalla frase alla pagina Spese."""
+    ieri = ora.date() - timedelta(days=1)
+    modello.risposta = {
+        "azione": "registra_spesa",
+        "titolo": "spesa xyz",
+        "importo": 17,
+        "data": ieri.isoformat(),
+    }
+
+    risposta = client.post(
+        "/api/assistente/messaggio", json={"testo": "ieri ho pagato 17 euro la spesa xyz"}
+    )
+    assert "di ieri" in risposta.json()["rispostaLabel"]
+
+    # E la pagina la data la mostra dov'è davvero, non dove è stata registrata.
+    (movimento,) = client.get("/api/spese?periodo=mese").json()["movimenti"]
+    assert movimento["dataLabel"] == "ieri"
