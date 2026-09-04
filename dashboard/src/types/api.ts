@@ -252,6 +252,18 @@ export interface AbitudiniData {
   meseSingolaAbitudine: { nome: string; giorni: boolean[]; nota: string };
   streak: { nome: string; valoreLabel: string; evidenziata?: boolean; mutedValue?: boolean; mutedRow?: boolean }[];
   proposta?: { id: string; titolo: string; motivazione: string };
+  report?: { periodoLabel: string; testo: string }; // il racconto scritto da Claude (§8.6)
+}
+
+export interface NuovaAbitudine {
+  nome: string;
+  targetSettimanale: number; // da 1 a 7
+}
+
+export interface ModificaAbitudine {
+  nome?: string;
+  targetSettimanale?: number;
+  attiva?: boolean;
 }
 
 // — Regole di contesto —

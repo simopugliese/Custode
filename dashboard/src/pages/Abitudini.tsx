@@ -8,12 +8,30 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { DotRow, DotGrid } from '../components/DotGrid';
 import { Checkbox } from '../components/Checkbox';
 import { Icon } from '../lib/icons';
-import { useAbitudiniPage, useLogAbitudine, useRispondiPropostaAbitudine } from '../hooks/useAbitudini';
+import {
+  useAbitudiniPage,
+  useCreaAbitudine,
+  useLogAbitudine,
+  useModificaAbitudine,
+  useRispondiPropostaAbitudine,
+} from '../hooks/useAbitudini';
+import type { AbitudineDettaglio } from '../types/api';
 
 const VISTE = [
   { value: 'settimana', label: 'Settimana' },
   { value: 'mese', label: 'Mese' },
 ] as const;
+
+// Da 1 a 7: il target è settimanale (§7), e 7 vuol dire tutti i giorni.
+const TARGET = [1, 2, 3, 4, 5, 6, 7];
+
+/** Il target attuale, letto dall'etichetta che il backend ha già composto.
+ *  Le etichette italiane le produce il backend (`core/formato.py`): qui si
+ *  ricava solo il numero da preselezionare nella tendina. */
+function targetDi(h: AbitudineDettaglio): number {
+  if (h.frequenzaLabel.startsWith('tutti')) return 7;
+  return Number(h.frequenzaLabel.match(/\d+/)?.[0] ?? 3);
+}
 
 function oggiISO() {
   return new Date().toISOString().slice(0, 10);
@@ -24,6 +42,27 @@ export default function Abitudini() {
   const { data, isLoading, error, refetch } = useAbitudiniPage(vista);
   const log = useLogAbitudine();
   const proposta = useRispondiPropostaAbitudine();
+  const crea = useCreaAbitudine();
+  const modifica = useModificaAbitudine();
+  const [formAperto, setFormAperto] = useState(false);
+  const [nuovoNome, setNuovoNome] = useState('');
+  const [nuovoTarget, setNuovoTarget] = useState(3);
+  const [inModifica, setInModifica] = useState<string | null>(null);
+
+  function aggiungi(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nuovoNome.trim()) return;
+    crea.mutate(
+      { nome: nuovoNome.trim(), targetSettimanale: nuovoTarget },
+      {
+        onSuccess: () => {
+          setNuovoNome('');
+          setNuovoTarget(3);
+          setFormAperto(false);
+        },
+      },
+    );
+  }
 
   return (
     <>
@@ -59,11 +98,47 @@ export default function Abitudini() {
                   <div style={{ marginLeft: 6 }}>
                     <SegmentedControl name="vAb" options={[...VISTE]} value={vista} onChange={(v) => setVista(v as typeof vista)} />
                   </div>
-                  <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => setFormAperto((aperto) => !aperto)}
+                  >
                     <Icon name="plus" size={14} />
                     Nuova abitudine
                   </button>
                 </div>
+
+                {formAperto && (
+                  <form onSubmit={aggiungi} className="row" style={{ gap: 8, alignItems: 'flex-end' }}>
+                    <label style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span className="cu-kicker">Nome</span>
+                      <input
+                        autoFocus
+                        value={nuovoNome}
+                        onChange={(e) => setNuovoNome(e.target.value)}
+                        placeholder="Palestra"
+                        style={{ padding: '8px 10px', fontSize: 14 }}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span className="cu-kicker">Volte a settimana</span>
+                      <select
+                        value={nuovoTarget}
+                        onChange={(e) => setNuovoTarget(Number(e.target.value))}
+                        style={{ padding: '8px 10px', fontSize: 14 }}
+                      >
+                        {TARGET.map((n) => (
+                          <option key={n} value={n}>
+                            {n === 7 ? 'tutti i giorni' : n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button className="btn btn-secondary" type="submit" disabled={crea.isPending}>
+                      Aggiungi
+                    </button>
+                  </form>
+                )}
 
                 <div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: '0 22px', borderBottom: '2px solid var(--color-divider)', paddingBottom: 8 }}>
@@ -85,7 +160,55 @@ export default function Abitudini() {
                     >
                       <div>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>{h.nome}</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>{h.frequenzaLabel}</div>
+                        {inModifica === h.id ? (
+                          <div className="row" style={{ gap: 6, marginTop: 4 }}>
+                            <select
+                              autoFocus
+                              defaultValue={targetDi(h)}
+                              onChange={(e) =>
+                                modifica.mutate(
+                                  { id: h.id, targetSettimanale: Number(e.target.value) },
+                                  { onSuccess: () => setInModifica(null) },
+                                )
+                              }
+                              style={{ padding: '4px 6px', fontSize: 12 }}
+                            >
+                              {TARGET.map((n) => (
+                                <option key={n} value={n}>
+                                  {n === 7 ? 'tutti i giorni' : `${n} a settimana`}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              className="btn btn-ghost"
+                              style={{ fontSize: 12 }}
+                              onClick={() =>
+                                modifica.mutate(
+                                  { id: h.id, attiva: false },
+                                  { onSuccess: () => setInModifica(null) },
+                                )
+                              }
+                            >
+                              Non la seguo più
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            className="cu-muted"
+                            onClick={() => setInModifica(h.id)}
+                            style={{
+                              fontSize: 12,
+                              background: 'none',
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              textAlign: 'left',
+                            }}
+                            title="Cambia obiettivo o smetti di seguirla"
+                          >
+                            {h.frequenzaLabel}
+                          </button>
+                        )}
                       </div>
                       <DotRow values={h.giorni} />
                       <span
@@ -143,6 +266,28 @@ export default function Abitudini() {
                     ))}
                   </div>
                 </div>
+
+                {data.report && (
+                  <div>
+                    <div className="row" style={{ marginBottom: 10 }}>
+                      <h5>Il racconto</h5>
+                      <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
+                        {data.report.periodoLabel}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        borderTop: '1px solid var(--color-divider)',
+                        paddingTop: 12,
+                        fontSize: 14,
+                        lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap',
+                      }}
+                    >
+                      {data.report.testo}
+                    </div>
+                  </div>
+                )}
 
                 {data.proposta && (
                   <div>

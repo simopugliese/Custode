@@ -20,12 +20,14 @@ from datetime import date, datetime, timedelta
 from html import escape
 
 from custode_bot import risposte
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import profilo as dom_profilo
 from custode_core.formato import etichetta_giorno_voce
 from custode_router import Router
 from custode_router import diario as router_diario
 from custode_router.errori import ErroreRouter
+from custode_worker import abitudini as worker_abitudini
 
 log = logging.getLogger("custode.worker")
 
@@ -38,6 +40,9 @@ class Esito:
     voci_lette: int
     riepilogo_scritto: bool
     candidati_da_rivedere: int
+    report_abitudini: bool
+    """Se il resoconto delle abitudini di §8.6 è finito nel messaggio."""
+
     messaggio: risposte.Risposta | None
     """Cosa mandare su Telegram. `None` = non c'è niente da dire, e non si manda."""
 
@@ -50,14 +55,22 @@ def _etichetta_settimana(lunedi: date) -> str:
 
 
 def _messaggio(
-    lunedi: date, riepilogo: str | None, candidati: int, conn: sqlite3.Connection
+    lunedi: date,
+    riepilogo: str | None,
+    candidati: int,
+    conn: sqlite3.Connection,
+    abitudini: risposte.Risposta | None = None,
 ) -> risposte.Risposta | None:
-    """Compone il messaggio settimanale: prima il riepilogo, poi la revisione.
+    """Compone il messaggio settimanale: riepilogo, abitudini, revisione.
 
-    Se non c'è né l'uno né l'altra non si manda niente: un messaggio
+    Se non c'è niente di tutto questo non si manda niente: un messaggio
     automatico che dice «non ho niente da dirti» è solo una notifica sprecata.
+
+    Le abitudini di §8.6 viaggiano **in questo** messaggio e non in uno loro:
+    arriverebbero lo stesso giorno alla stessa ora, e due notifiche di fila
+    sono due interruzioni per una cosa sola.
     """
-    if riepilogo is None and candidati == 0:
+    if riepilogo is None and candidati == 0 and abitudini is None:
         return None
 
     pezzi: list[str] = []
@@ -68,6 +81,9 @@ def _messaggio(
             f"<b>La tua settimana</b>\n<i>{escape(_etichetta_settimana(lunedi))}</i>\n\n"
             + escape(riepilogo)
         )
+
+    if abitudini is not None:
+        pezzi.append(abitudini.testo)
 
     if candidati:
         revisione = risposte.revisione_settimanale(conn)
@@ -114,12 +130,22 @@ def esegui(
                 errore = router_diario.messaggio_errore(guasto)
                 log.warning("riepilogo settimanale non riuscito: %s", guasto)
 
+    # Il resoconto delle abitudini (§8.6) è indipendente dal riepilogo del
+    # diario: se Claude non risponde per uno, l'altro parte lo stesso, come già
+    # succede fra riepilogo e revisione dei candidati.
+    esito_abitudini = worker_abitudini.esegui(
+        conn, ora, periodo=dom_abitudini.Periodo.SETTIMANA, chiave=lunedi, router=router
+    )
+
     candidati = dom_profilo.da_rivedere(conn)
     return Esito(
         settimana_inizio=lunedi,
         voci_lette=len(voci),
         riepilogo_scritto=riepilogo is not None,
         candidati_da_rivedere=len(candidati),
-        messaggio=_messaggio(lunedi, riepilogo, len(candidati), conn),
-        errore=errore,
+        report_abitudini=esito_abitudini.messaggio is not None,
+        messaggio=_messaggio(
+            lunedi, riepilogo, len(candidati), conn, abitudini=esito_abitudini.messaggio
+        ),
+        errore=errore or esito_abitudini.errore,
     )

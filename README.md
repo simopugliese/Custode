@@ -42,9 +42,10 @@ in quattro punti sarebbe l'errore più facile da fare.
 | CI: build e avvio delle immagini Docker (§10) | fatto |
 | Backup cifrato del DB + runbook di restore (§9, §11) | fatto |
 | Spese: a parole e da foto dello scontrino (§8.5) | fatto |
-| Abitudini, calendario, corsi, meteo, digest | da fare |
+| Abitudini: log a parole, aderenza in codice, report Claude (§8.6) | fatto |
+| Calendario, corsi, meteo, digest | da fare |
 
-Home, Task, Lista della spesa, Diario e Spese mostrano dati veri, letti e
+Home, Task, Lista della spesa, Diario, Spese e Abitudini mostrano dati veri, letti e
 scritti su SQLite, e la barra «A Custode» funziona in linguaggio libero. Le altre pagine
 ricevono un `501` che dice quale modulo manca, e mostrano quel messaggio: è il
 comportamento previsto, non un bug.
@@ -63,6 +64,14 @@ si fotografa: lo legge Claude, e la sintesi entra nei conti solo dopo un tuo
 sì — lì il modello legge dei numeri da un'immagine, e vale la conferma. Le
 categorie nascono da zero e le propone Claude confrontandole con quelle che già
 usi, così somigliano a come spendi tu.
+
+Le **abitudini** si aggiungono dalla dashboard («palestra, almeno 3 volte a
+settimana») e si segnano parlando: «oggi palestra e lettura, ma niente
+meditazione» le aggiorna tutte e tre in un colpo. L'aderenza in percentuale la
+calcola il codice, senza modelli; a incrociarla con diario e spese è un
+resoconto scritto da Claude, settimanale e mensile, che ogni tanto propone di
+adeguare un obiettivo che non regge — proposta che resta tale finché non premi
+«Accetta».
 
 In parallelo, ogni messaggio passa da un controllo leggero che cerca i segnali
 utili a descrivere come sei fatto. Una volta a settimana il worker ti manda il

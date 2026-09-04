@@ -26,6 +26,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
@@ -52,6 +53,7 @@ class Azione(StrEnum):
     SEGNA_PRESO = "segna_voce_presa"
     ANNOTA_DIARIO = "annota_diario"
     REGISTRA_SPESA = "registra_spesa"
+    SEGNA_ABITUDINI = "segna_abitudini"
     NESSUNA = "nessuna"
 
 
@@ -103,7 +105,8 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
         "data": {
             "type": "string",
             "description": (
-                "Per registra_spesa: il giorno in cui è stata fatta la spesa, in"
+                "Per registra_spesa e segna_abitudini: il giorno a cui si"
+                " riferisce il messaggio, in"
                 " formato AAAA-MM-GG. Se il messaggio dice quando («ieri»,"
                 " «l'altro ieri», «sabato scorso», «il 3»), calcola quel giorno"
                 " a partire dalla data di oggi che trovi in cima al contesto."
@@ -116,6 +119,26 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
                 "Per registra_spesa: la categoria fra quelle GIÀ IN USO che"
                 " contiene questa spesa, copiata esattamente dall'elenco."
                 " Stringa vuota se nessuna di quelle calza — non inventarne una."
+            ),
+        },
+        # §6 ha una riga sua per il «log abitudini da testo libero», ma con lo
+        # stesso provider dell'interprete: viaggia quindi nella stessa
+        # chiamata, come già fanno il diario e i segnali per il profilo.
+        "abitudini_fatte": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Per segna_abitudini: le abitudini che il messaggio dice di aver"
+                " FATTO, copiate esattamente dall'elenco di quelle esistenti."
+                " Vuoto se non ne nomina nessuna — non inventarne."
+            ),
+        },
+        "abitudini_non_fatte": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Per segna_abitudini: quelle che il messaggio dice di NON aver"
+                " fatto («ma non ho letto»), copiate dallo stesso elenco."
             ),
         },
         # Il canale passivo di §8.4 viaggia nella stessa risposta dell'azione:
@@ -175,6 +198,13 @@ Regole:
   metti in `data` quel giorno risolto in AAAA-MM-GG, contandolo dalla data di
   oggi che trovi in cima al contesto. Una spesa è già stata fatta: `data` non
   può essere nel futuro. Se il messaggio non dice quando, lascia `data` vuota.
+- Il messaggio dice di aver fatto (o non fatto) delle **abitudini fra quelle
+  che segui** — «oggi palestra e lettura, ma niente meditazione», «fatta la
+  corsa» → segna_abitudini, con i nomi copiati esattamente dall'elenco delle
+  abitudini attive, divisi fra `abitudini_fatte` e `abitudini_non_fatte`. Vale
+  solo per quelle nell'elenco: «ho fatto la spesa» non è un'abitudine se non
+  c'è scritta. Se il messaggio dice anche quando («ieri ho fatto palestra»),
+  metti quel giorno in `data`, come per le spese.
 - Il messaggio racconta com'è andata, come sta o cosa pensa — «giornata pesante»,
   «finalmente ho capito il capitolo 3», «il frontend mi annoia», «stamattina
   palestra, poi biblioteca fino a tardi» → annota_diario, con `titolo` uguale
@@ -217,6 +247,8 @@ class Intenzione:
     data: str = ""
     """Il giorno della spesa, come l'ha risolto il modello. Vuoto = oggi."""
     categoria: str = ""
+    abitudini_fatte: tuple[str, ...] = ()
+    abitudini_non_fatte: tuple[str, ...] = ()
     segnale: str = "nessuno"
     segnale_estratto: str = ""
     segnale_domanda: str = ""
@@ -234,6 +266,13 @@ class Esito:
     """Il frammento di diario appena scritto, da togliere se si annulla."""
     spesa_id: int | None = None
     """La spesa appena registrata, da cancellare se si annulla."""
+    istante_log: int | None = None
+    """L'istante in cui sono stati scritti i log di abitudini di questo messaggio.
+
+    Fa da identificatore per «Annulla» (§8.6): un messaggio può segnare tre
+    abitudini insieme e i 64 byte del `callback_data` non reggono una lista di
+    id, mentre l'istante — uno solo per messaggio — le indica tutte.
+    """
     giorni: int = 1
     """Giorni di rinvio applicati, per poterli togliere se si annulla."""
     candidato_id: int | None = None
@@ -248,7 +287,13 @@ class Esito:
     @property
     def identificatore(self) -> int | None:
         """Cosa deve indicare il bottone «Annulla», qualunque azione sia stata."""
-        for valore in (self.task_id, self.voce_id, self.frammento_id, self.spesa_id):
+        for valore in (
+            self.task_id,
+            self.voce_id,
+            self.frammento_id,
+            self.spesa_id,
+            self.istante_log,
+        ):
             if valore is not None:
                 return valore
         return None
@@ -276,6 +321,15 @@ def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
     righe.append(
         "Reparti già in uso: "
         + ("; ".join(sorted({v.reparto for v in voci})) if voci else "nessuno")
+    )
+    attive = dom_abitudini.elenco(conn)
+    righe.append(
+        "Abitudini che segui: "
+        + (
+            "; ".join(f"{a.nome} ({a.target_settimanale}/settimana)" for a in attive)
+            if attive
+            else "nessuna"
+        )
     )
     categorie = [c.nome for c in dom_spese.categorie(conn, solo_attive=True)]
     righe.append(
@@ -320,6 +374,8 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         luogo=str(dati.get("luogo") or "").strip(),
         data=str(dati.get("data") or "").strip(),
         categoria=str(dati.get("categoria") or "").strip(),
+        abitudini_fatte=_leggi_nomi(dati.get("abitudini_fatte")),
+        abitudini_non_fatte=_leggi_nomi(dati.get("abitudini_non_fatte")),
         segnale=_leggi_segnale(dati.get("segnale")),
         segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
         segnale_domanda=str(dati.get("segnale_domanda") or "").strip(),
@@ -335,6 +391,20 @@ def _leggi_importo(grezzo: object) -> float:
     if isinstance(grezzo, bool) or not isinstance(grezzo, int | float):
         return 0.0
     return float(grezzo) if grezzo > 0 else 0.0
+
+
+def _leggi_nomi(grezzo: object) -> tuple[str, ...]:
+    """Una lista di nomi dal modello, ripulita di ciò che non è una stringa.
+
+    Non si controlla qui che i nomi esistano davvero: quello lo fa `esegui`,
+    che ha la connessione e può dire quali non ha riconosciuto.
+    """
+    if not isinstance(grezzo, list):
+        return ()
+    nomi = [str(v).strip() for v in grezzo if str(v).strip()]
+    # L'ordine è quello in cui il modello li ha detti, ma senza ripetizioni:
+    # «palestra e palestra» non deve produrre due righe uguali nella risposta.
+    return tuple(dict.fromkeys(nomi))
 
 
 SEGNALI = ("nessuno", "chiaro", "ambiguo")
@@ -497,6 +567,9 @@ def esegui(
     if intenzione.azione is Azione.REGISTRA_SPESA:
         return _registra_spesa(conn, ora, intenzione)
 
+    if intenzione.azione is Azione.SEGNA_ABITUDINI:
+        return _segna_abitudini(conn, ora, intenzione)
+
     if intenzione.azione is Azione.ANNOTA_DIARIO:
         # Il testo si annota grezzo: il riassunto è un passaggio a parte, a fine
         # giornata, e passa da Claude (§6, §8.4). Qui non si perde nulla di ciò
@@ -549,6 +622,79 @@ def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzi
         azione=intenzione.azione,
         spesa_id=spesa.id,
     )
+
+
+def _segna_abitudini(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> Esito:
+    """«Palestra e lettura, ma niente meditazione» → tre log in un colpo (§8.6).
+
+    Il matching lo fa il modello contro l'elenco che ha ricevuto (§6: «matching
+    contro lista abitudini esistenti»), ma i nomi si ricontrollano qui: uno che
+    non esiste viene **detto**, non creato in silenzio. Creare un'abitudine è
+    una decisione, e prenderla al posto tuo perché hai nominato una cosa a caso
+    riempirebbe l'elenco di righe che non hai voluto.
+    """
+    giorno = _leggi_giorno_spesa(intenzione.data, ora.date()) or ora.date()
+    fatte, ignote_f = _abbina(conn, intenzione.abitudini_fatte)
+    non_fatte, ignote_n = _abbina(conn, intenzione.abitudini_non_fatte)
+    # Se il modello mette la stessa abitudine da entrambe le parti, vince il
+    # «non fatto»: è l'informazione più specifica di una frase come «ho fatto
+    # tutto tranne la meditazione», dove «tutto» è generico e l'eccezione no.
+    fatte = [a for a in fatte if a.id not in {b.id for b in non_fatte}]
+
+    if not fatte and not non_fatte:
+        ignote = ignote_f + ignote_n
+        if ignote:
+            nomi = ", ".join(f"«{n}»" for n in ignote)
+            return Esito(testo=f"Non seguo nessuna abitudine che si chiami {nomi}.")
+        return Esito(testo="Non ho capito quali abitudini segnare.")
+
+    for abitudine in fatte:
+        dom_abitudini.segna(conn, abitudine.id, giorno=giorno, fatto=True, ora=ora)
+    for abitudine in non_fatte:
+        dom_abitudini.segna(conn, abitudine.id, giorno=giorno, fatto=False, ora=ora)
+
+    return Esito(
+        testo=_frase_abitudini(fatte, non_fatte, ignote_f + ignote_n, giorno, ora.date()),
+        azione=intenzione.azione,
+        istante_log=int(ora.replace(microsecond=0).timestamp()),
+    )
+
+
+def _abbina(
+    conn: sqlite3.Connection, nomi: tuple[str, ...]
+) -> tuple[list[dom_abitudini.Abitudine], list[str]]:
+    """I nomi detti dal modello divisi fra abitudini vere e nomi sconosciuti."""
+    trovate: list[dom_abitudini.Abitudine] = []
+    ignote: list[str] = []
+    for nome in nomi:
+        abitudine = dom_abitudini.trova(conn, nome)
+        # Una disattivata resta fuori: se hai smesso di seguirla, un messaggio
+        # che la nomina non deve rimetterla nei conti senza dirtelo.
+        if abitudine is None or not abitudine.attiva:
+            ignote.append(nome)
+        else:
+            trovate.append(abitudine)
+    return trovate, ignote
+
+
+def _frase_abitudini(
+    fatte: list[dom_abitudini.Abitudine],
+    non_fatte: list[dom_abitudini.Abitudine],
+    ignote: list[str],
+    giorno: date,
+    oggi: date,
+) -> str:
+    pezzi: list[str] = []
+    if fatte:
+        pezzi.append("Segnate: " + ", ".join(a.nome for a in fatte))
+    if non_fatte:
+        pezzi.append("non fatte: " + ", ".join(a.nome for a in non_fatte))
+    frase = " — ".join(pezzi) + etichetta_quando(giorno, oggi)
+    if ignote:
+        # Detto, non taciuto: senza questa riga un nome sbagliato sembrerebbe
+        # registrato, e te ne accorgeresti solo guardando le percentuali.
+        frase += f" (non seguo {', '.join(f'«{n}»' for n in ignote)})"
+    return frase
 
 
 def _frase_spesa(spesa: dom_spese.Spesa, oggi: date) -> str:
@@ -735,6 +881,16 @@ def annulla(
             spesa = dom_spese.leggi(conn, identificatore)
             dom_spese.elimina(conn, identificatore)
             return f"Annullata: {spesa.descrizione}, {euro(spesa.centesimi)}"
+        if azione is Azione.SEGNA_ABITUDINI:
+            # `identificatore` qui è l'istante di scrittura, non un id di riga:
+            # un messaggio segna più abitudini insieme e i 64 byte del bottone
+            # non reggono una lista (vedi `Esito.istante_log`).
+            tolte = dom_abitudini.togli_log_creati_il(conn, datetime.fromtimestamp(identificatore))
+            if not tolte:
+                return "Quei log non ci sono più: niente da annullare."
+            elenco_tolte = ", ".join(tolte)
+            coda = "non è più segnata" if len(tolte) == 1 else "non sono più segnate"
+            return f"Annullato: {elenco_tolte} {coda}."
         if azione is Azione.ANNOTA_DIARIO:
             # `identificatore` è il frammento, non la voce del giorno: si toglie
             # esattamente la frase aggiunta, lasciando intatto il resto della

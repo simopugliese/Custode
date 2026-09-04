@@ -22,16 +22,20 @@ from types import FrameType
 from custode_bot.config import ImpostazioniBot, get_impostazioni_bot
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.formato import adesso
 from custode_core.migrazioni import migra
 from custode_router import Router
+from custode_worker import abitudini as worker_abitudini
 from custode_worker import backup, settimanale
 from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 from custode_worker.pianificazione import (
     BACKUP,
+    REPORT_MENSILE_ABITUDINI,
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     giorno_dovuto,
+    mese_dovuto,
     segna_eseguito,
     settimana_dovuta,
 )
@@ -59,6 +63,7 @@ def giro(
     ora = adesso(impostazioni.timezone)
     _giro_backup(impostazioni, worker, ora)
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
+    _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
 
 
 def _giro_backup(impostazioni: Settings, worker: ImpostazioniWorker, ora: datetime) -> None:
@@ -133,6 +138,58 @@ def _giro_settimanale(
             esito.voci_lette,
             "sì" if esito.riepilogo_scritto else "no",
             esito.candidati_da_rivedere,
+        )
+
+
+def _giro_mensile_abitudini(
+    impostazioni: Settings,
+    worker: ImpostazioniWorker,
+    ora: datetime,
+    *,
+    router: Router,
+    telegram: ClientTelegram,
+) -> None:
+    """Il resoconto mensile delle abitudini (§8.6).
+
+    Ha un job suo e non viaggia col settimanale perché guarda un periodo
+    diverso: §8.6 lo vuole «per i trend più lenti», ed è l'unico che può
+    proporre di adeguare un target. Gira il primo del mese, alla stessa ora del
+    riepilogo settimanale.
+    """
+    ore, minuti = worker.ora_e_minuto()
+    primo = mese_dovuto(ora, ore=ore, minuti=minuti)
+    if primo is None:
+        return
+
+    with connessione(impostazioni.db_path) as conn:
+        if gia_eseguito(conn, REPORT_MENSILE_ABITUDINI, primo):
+            return
+
+        log.info("resoconto mensile delle abitudini per %s", primo.isoformat())
+        esito = worker_abitudini.esegui(
+            conn, ora, periodo=dom_abitudini.Periodo.MESE, chiave=primo, router=router
+        )
+
+        if esito.errore is not None:
+            # Non si segna come fatto: al prossimo giro si riprova, invece di
+            # perdere il mese per un timeout.
+            log.warning("resoconto mensile non riuscito, riproverò: %s", esito.errore)
+            return
+
+        if esito.messaggio is not None:
+            try:
+                telegram.manda(esito.messaggio)
+            except InvioNonRiuscito as errore:
+                log.warning("invio del resoconto mensile non riuscito, riproverò: %s", errore)
+                return
+
+        segna_eseguito(conn, REPORT_MENSILE_ABITUDINI, primo, ora)
+        log.info(
+            "mese %s: %d abitudini, report=%s, proposta=%s",
+            primo.isoformat(),
+            esito.abitudini_lette,
+            "sì" if esito.report_scritto else "no",
+            "sì" if esito.proposta_creata else "no",
         )
 
 

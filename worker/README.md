@@ -80,8 +80,16 @@ scrive. Il runbook completo è in [DEPLOY.md §7](../DEPLOY.md).
 ## Stato
 
 Fatti: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
-dei candidati per il profilo e la rifusione che ne segue, e il **backup
-giornaliero** del database (§9).
+dei candidati per il profilo e la rifusione che ne segue; il **backup
+giornaliero** del database (§9); i **resoconti delle abitudini** settimanale e
+mensile (§8.6).
+
+Il resoconto settimanale delle abitudini viaggia **dentro** il messaggio del
+riepilogo del diario invece che in uno suo: arriverebbe lo stesso giorno alla
+stessa ora, e due notifiche di fila sono due interruzioni per una cosa sola. È
+però indipendente da lui — se Claude non risponde per uno, l'altro parte
+comunque. Il mensile ha un job suo, il primo del mese: è l'unico che può
+proporre di adeguare un target, perché sette giorni non sono una tendenza.
 
 Da fare, ognuno insieme al modulo che serve: controllo delle scadenze dei task
 (§8.2), digest mattutino (§8.13), valutazione delle regole di contesto approvate

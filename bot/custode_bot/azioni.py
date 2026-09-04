@@ -6,7 +6,7 @@ la stringa venga costruita a mano in un punto e letta a mano in un altro.
 
 Forma: `dominio:azione:argomento:vista`
   dominio  t = task, s = lista spesa, d = diario, p = profilo,
-           e = spese (§8.5), x = azioni di servizio
+           e = spese (§8.5), a = abitudini (§8.6), x = azioni di servizio
   vista    da quale elenco è partito il tap, per ridisegnare quello giusto
 """
 
@@ -27,7 +27,7 @@ class AzioneNonValida(ValueError):
 
 @dataclass(frozen=True)
 class Azione:
-    dominio: Literal["t", "s", "d", "p", "e", "x"]
+    dominio: Literal["t", "s", "d", "p", "e", "a", "x"]
     nome: str
     argomento: str = ""
     vista: Vista = "task"
@@ -41,7 +41,7 @@ def leggi(dato: str) -> Azione:
     if len(pezzi) != 4:
         raise AzioneNonValida(dato)
     dominio, nome, argomento, sigla_vista = pezzi
-    if dominio not in ("t", "s", "d", "p", "e", "x") or sigla_vista not in VISTE_PER_SIGLA:
+    if dominio not in ("t", "s", "d", "p", "e", "a", "x") or sigla_vista not in VISTE_PER_SIGLA:
         raise AzioneNonValida(dato)
     return Azione(
         dominio=dominio,  # type: ignore[arg-type]
@@ -81,6 +81,11 @@ def profilo(nome: str, argomento: int | str = "") -> str:
 def spesa(nome: str, spesa_id: int) -> str:
     """Conferma o scarto di uno scontrino letto (§8.5)."""
     return Azione("e", nome, str(spesa_id), "task").dato()
+
+
+def abitudine(nome: str, abitudine_id: int) -> str:
+    """Segna o toglie il log di oggi da `/abitudini` (§8.6)."""
+    return Azione("a", nome, str(abitudine_id), "task").dato()
 
 
 def svuota(conferma: bool) -> str:

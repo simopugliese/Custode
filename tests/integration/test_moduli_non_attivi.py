@@ -9,7 +9,6 @@ pytestmark = pytest.mark.integration
 
 PAGINE = [
     ("/api/lezioni", "lezioni e corsi"),
-    ("/api/abitudini", "abitudini"),
     ("/api/regole", "regole di contesto"),
     ("/api/impostazioni", "impostazioni"),
 ]
@@ -24,8 +23,8 @@ def test_pagine_non_attive(client: TestClient, percorso: str, modulo: str) -> No
 
 
 def test_le_mutazioni_dei_moduli_assenti(client: TestClient) -> None:
-    assert client.patch("/api/abitudini/1/log", json={}).status_code == 501
     assert client.patch("/api/regole/1", json={}).status_code == 501
+    assert client.post("/api/regole/1/approva").status_code == 501
 
 
 def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
@@ -36,6 +35,7 @@ def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
         "/api/lista-spesa",
         "/api/spese",
         "/api/diario",
+        "/api/abitudini",
         "/api/health",
     ):
         assert client.get(percorso).status_code == 200

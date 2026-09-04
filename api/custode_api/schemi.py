@@ -124,11 +124,15 @@ class ListaSpesaData(BaseModel):
 
 
 class HabitRow(BaseModel):
+    """Una riga di abitudine (§8.6). La stessa forma la usa la Home."""
+
     id: str
     nome: str
     giorni: list[bool]
+    """Sette voci, lunedì → domenica: i pallini della settimana corrente."""
     progressoLabel: str
     evidenziata: bool | None = None
+    """Vero solo quando l'obiettivo del periodo è centrato: la pagina lo evidenzia."""
 
 
 class CalendarEventItem(BaseModel):
@@ -287,6 +291,90 @@ class NuovoTask(BaseModel):
 class ModificaTask(BaseModel):
     fatto: bool | None = None
     rinviaGiorni: int | None = None
+
+
+# — Abitudini (§8.6) —
+
+
+class AbitudineDettaglio(HabitRow):
+    frequenzaLabel: str
+    goalRatioLabel: str
+    segnataOggi: bool
+
+
+class ObiettiviCentrati(BaseModel):
+    fatti: int
+    totali: int
+
+
+class StatsAbitudini(BaseModel):
+    attive: int
+    obiettiviCentrati: ObiettiviCentrati
+    streakMigliore: int
+    costanzaMese: int
+
+
+class MeseAbitudine(BaseModel):
+    """Il calendario a pallini di una sola abitudine, dal primo del mese a oggi."""
+
+    nome: str
+    giorni: list[bool]
+    nota: str
+
+
+class StreakAbitudine(BaseModel):
+    nome: str
+    valoreLabel: str
+    evidenziata: bool | None = None
+    mutedValue: bool | None = None
+    mutedRow: bool | None = None
+
+
+class PropostaAbitudine(BaseModel):
+    """«Custode propone»: un adeguamento del target, da accettare o rifiutare."""
+
+    id: str
+    titolo: str
+    motivazione: str
+
+
+class ReportAbitudini(BaseModel):
+    """Il racconto scritto da Claude (§8.6). Assente finché non ne esiste uno."""
+
+    periodoLabel: str
+    testo: str
+
+
+class AbitudiniData(BaseModel):
+    periodoLabel: str
+    titolo: str
+    avviso: str | None = None
+    stats: StatsAbitudini
+    abitudini: list[AbitudineDettaglio]
+    meseSingolaAbitudine: MeseAbitudine
+    streak: list[StreakAbitudine]
+    proposta: PropostaAbitudine | None = None
+    report: ReportAbitudini | None = None
+
+
+class LogAbitudine(BaseModel):
+    """`PATCH /api/abitudini/:id/log`. `data` è il giorno in AAAA-MM-GG."""
+
+    data: str
+    fatto: bool
+
+
+class NuovaAbitudine(BaseModel):
+    nome: str
+    targetSettimanale: int
+
+
+class ModificaAbitudine(BaseModel):
+    """Tutti i campi opzionali: §8.6 vuole poter cambiare una cosa sola."""
+
+    nome: str | None = None
+    targetSettimanale: int | None = None
+    attiva: bool | None = None
 
 
 class NuovaVoceSpesa(BaseModel):

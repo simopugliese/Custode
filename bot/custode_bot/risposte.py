@@ -18,6 +18,7 @@ from html import escape
 
 from custode_bot import azioni
 from custode_bot.azioni import Vista
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
@@ -29,6 +30,7 @@ from custode_core.formato import (
     etichetta_quando,
     etichetta_scadenza,
     euro,
+    inizio_settimana,
     plurale,
 )
 from custode_router import Router
@@ -88,6 +90,7 @@ def aiuto() -> Risposta:
             "/svuota — togli dalla lista le voci già prese\n"
             "/diario — chiudi la giornata e leggi il riassunto da approvare\n"
             "/spese — quanto hai speso questo mese\n"
+            "/abitudini — come stai andando questa settimana\n"
             "/profilo — cosa ho capito di te\n"
             "/aiuto — questo messaggio\n\n"
             "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
@@ -561,6 +564,80 @@ def _azione_spesa(conn: sqlite3.Connection, ora: datetime, nome: str, spesa_id: 
     return Risposta(testo="Questo bottone non è più valido.")
 
 
+# — abitudini (§8.6) ————————————————————————————————
+
+
+def elenco_abitudini(conn: sqlite3.Connection, ora: datetime) -> Risposta:
+    """`/abitudini`: come stai andando questa settimana, con un tap per segnare.
+
+    L'aderenza è la stessa che vede la dashboard, calcolata dalle stesse
+    funzioni: §8.6 la vuole «sia in dashboard che a richiesta via bot», e due
+    conti diversi che dicono due numeri diversi sono peggio di uno solo.
+    """
+    attive = dom_abitudini.elenco(conn)
+    if not attive:
+        return Risposta(
+            testo=(
+                "Non segui ancora nessuna abitudine.\n\n"
+                "<i>Si aggiungono dalla dashboard, nella pagina Abitudini. "
+                "Poi qui basta dirmi «oggi palestra e lettura».</i>"
+            )
+        )
+
+    oggi = ora.date()
+    lunedi = inizio_settimana(oggi)
+    log = dom_abitudini.log_del_periodo(conn, da=lunedi - timedelta(days=60), a=oggi)
+
+    righe: list[str] = []
+    bottoni: list[list[Bottone]] = []
+    for abitudine in attive:
+        fatti = log.get(abitudine.id, set())
+        nella_settimana = len([g for g in fatti if lunedi <= g <= oggi])
+        striscia = dom_abitudini.striscia(fatti, oggi)
+        spunta = "✅" if dom_abitudini.segnata(conn, abitudine.id, oggi) else "▫️"
+        coda = f" · {plurale(striscia, 'giorno', 'giorni')} di fila" if striscia else ""
+        righe.append(
+            f"{spunta} <b>{escape(abitudine.nome)}</b> — "
+            f"{nella_settimana}/{abitudine.target_settimanale}{escape(coda)}"
+        )
+        bottoni.append(
+            [
+                Bottone(
+                    f"{'Togli' if spunta == '✅' else 'Segna'} {abitudine.nome}",
+                    azioni.abitudine("oggi", abitudine.id),
+                )
+            ]
+        )
+
+    pezzi = ["<b>Questa settimana</b>\n" + "\n".join(righe)]
+    ultimo = dom_abitudini.ultimo_report(conn, periodo=dom_abitudini.Periodo.SETTIMANA)
+    if ultimo is not None and ultimo.chiave >= lunedi - timedelta(days=7):
+        # Solo il resoconto recente: uno di tre settimane fa non racconta più
+        # questa settimana, e riproporlo ad ogni `/abitudini` lo svuoterebbe.
+        pezzi.append(f"<i>{escape(ultimo.testo)}</i>")
+    return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
+
+
+def _azione_abitudine(
+    conn: sqlite3.Connection, ora: datetime, nome: str, abitudine_id: int
+) -> Risposta:
+    """Il tap su un'abitudine: segna oggi, o toglie se era già segnata."""
+    if nome != "oggi":
+        return Risposta(testo="Questo bottone non è più valido.")
+    try:
+        dom_abitudini.leggi(conn, abitudine_id)  # esiste ancora?
+    except dom_abitudini.AbitudineInesistente:
+        return Risposta(testo="Quell'abitudine non c'è più.")
+
+    if dom_abitudini.segnata(conn, abitudine_id, ora.date()):
+        # Toglie invece di scrivere «non fatta»: un tap per sbaglio deve
+        # riportare al silenzio, non affermare il contrario (§8.6).
+        dom_abitudini.togli_log(conn, abitudine_id, ora.date())
+    else:
+        dom_abitudini.segna(conn, abitudine_id, giorno=ora.date(), fatto=True, ora=ora)
+    return elenco_abitudini(conn, ora)
+
+
 # — profilo (§8.4) ————————————————————————————————————
 
 
@@ -751,6 +828,8 @@ def esegui_azione(
             return _azione_profilo(conn, ora, azione.nome, azione.argomento, router)
         elif azione.dominio == "e":
             return _azione_spesa(conn, ora, azione.nome, int(azione.argomento))
+        elif azione.dominio == "a":
+            return _azione_abitudine(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "x" and azione.nome == "annulla":
             return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":

@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
@@ -322,6 +323,148 @@ def test_il_contesto_dice_anche_che_giorno_della_settimana_e(
     router = RouterFinto()
     assistente.interpreta(conn, ora, "x", router)  # type: ignore[arg-type]
     assert "lunedì" in router.chiamate[0]["utente"]
+
+
+# — abitudini da testo libero (§8.6) —
+
+
+def _abitudini(conn: sqlite3.Connection, ora: datetime) -> dict[str, int]:
+    return {
+        nome: dom_abitudini.crea(conn, nome=nome, target_settimanale=3, ora=ora).id
+        for nome in ("Palestra", "Lettura", "Meditazione")
+    }
+
+
+def test_una_frase_segna_piu_abitudini_insieme(conn: sqlite3.Connection, ora: datetime) -> None:
+    """«ho fatto x,y ma non z» è UN gesto: tre log, una risposta, un «Annulla»."""
+    ids = _abitudini(conn, ora)
+    esito = _esegui(
+        conn,
+        ora,
+        "oggi palestra e lettura, ma niente meditazione",
+        {
+            "azione": "segna_abitudini",
+            "abitudini_fatte": ["Palestra", "Lettura"],
+            "abitudini_non_fatte": ["Meditazione"],
+        },
+    )
+
+    assert dom_abitudini.segnata(conn, ids["Palestra"], ora.date()) is True
+    assert dom_abitudini.segnata(conn, ids["Lettura"], ora.date()) is True
+    assert dom_abitudini.segnata(conn, ids["Meditazione"], ora.date()) is False
+    assert "Palestra, Lettura" in esito.testo
+    assert "Meditazione" in esito.testo
+
+
+def test_le_abitudini_segnate_si_annullano_con_un_tap(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    ids = _abitudini(conn, ora)
+    esito = _esegui(
+        conn,
+        ora,
+        "palestra e lettura",
+        {"azione": "segna_abitudini", "abitudini_fatte": ["Palestra", "Lettura"]},
+    )
+    assert esito.identificatore is not None
+
+    testo = assistente.annulla(conn, ora, esito.azione, identificatore=esito.identificatore)
+
+    assert "Palestra" in testo and "Lettura" in testo
+    # Annullare riporta al silenzio, non scrive «non fatto».
+    assert dom_abitudini.segnata(conn, ids["Palestra"], ora.date()) is None
+    assert dom_abitudini.segnata(conn, ids["Lettura"], ora.date()) is None
+
+
+def test_un_nome_che_non_segui_viene_detto_non_creato(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Creare un'abitudine è una decisione: non la si prende al posto suo."""
+    _abitudini(conn, ora)
+    esito = _esegui(
+        conn,
+        ora,
+        "palestra e chitarra",
+        {"azione": "segna_abitudini", "abitudini_fatte": ["Palestra", "Chitarra"]},
+    )
+
+    assert "«Chitarra»" in esito.testo
+    assert [a.nome for a in dom_abitudini.elenco(conn, solo_attive=False)] == [
+        "Palestra",
+        "Lettura",
+        "Meditazione",
+    ]
+
+
+def test_solo_nomi_sconosciuti_non_segna_niente(conn: sqlite3.Connection, ora: datetime) -> None:
+    _abitudini(conn, ora)
+    esito = _esegui(
+        conn, ora, "ho fatto scherma", {"azione": "segna_abitudini", "abitudini_fatte": ["Scherma"]}
+    )
+    assert "Non seguo" in esito.testo
+    assert esito.identificatore is None
+    assert dom_abitudini.log_del_periodo(conn, da=ora.date(), a=ora.date()) == {}
+
+
+def test_un_abitudine_disattivata_non_si_riaccende_di_nascosto(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    ids = _abitudini(conn, ora)
+    dom_abitudini.modifica(conn, ids["Lettura"], attiva=False)
+
+    esito = _esegui(
+        conn, ora, "lettura", {"azione": "segna_abitudini", "abitudini_fatte": ["Lettura"]}
+    )
+
+    assert "Non seguo" in esito.testo
+    assert dom_abitudini.segnata(conn, ids["Lettura"], ora.date()) is None
+
+
+def test_segnare_per_ieri(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Lo stesso campo `data` delle spese: «ieri ho fatto palestra» va a ieri."""
+    ids = _abitudini(conn, ora)
+    ieri = ora.date() - timedelta(days=1)
+    esito = _esegui(
+        conn,
+        ora,
+        "ieri ho fatto palestra",
+        {
+            "azione": "segna_abitudini",
+            "abitudini_fatte": ["Palestra"],
+            "data": ieri.isoformat(),
+        },
+    )
+    assert dom_abitudini.segnata(conn, ids["Palestra"], ieri) is True
+    assert "di ieri" in esito.testo
+
+
+def test_fatto_e_non_fatto_insieme_vince_il_non_fatto(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """«tutto tranne la meditazione»: l'eccezione è più specifica del generico."""
+    ids = _abitudini(conn, ora)
+    _esegui(
+        conn,
+        ora,
+        "ho fatto tutto tranne la meditazione",
+        {
+            "azione": "segna_abitudini",
+            "abitudini_fatte": ["Palestra", "Meditazione"],
+            "abitudini_non_fatte": ["Meditazione"],
+        },
+    )
+    assert dom_abitudini.segnata(conn, ids["Meditazione"], ora.date()) is False
+    assert dom_abitudini.segnata(conn, ids["Palestra"], ora.date()) is True
+
+
+def test_il_contesto_elenca_le_abitudini_col_target(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Senza l'elenco il modello non può agganciare nessun nome (§6)."""
+    _abitudini(conn, ora)
+    router = RouterFinto()
+    assistente.interpreta(conn, ora, "x", router)  # type: ignore[arg-type]
+    assert "Palestra (3/settimana)" in router.chiamate[0]["utente"]
 
 
 # — la categoria: chi la decide, e quando (§6) —

@@ -12,11 +12,17 @@ schema §7 in quattro servizi.
   c'è. Le usano sia l'API sia il bot.
 - `migrazioni/` — lo schema di §7, un file `NNN_nome.sql` per volta.
 - `dominio/` — i servizi che API, bot e worker usano identici: `task.py`,
-  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`.
+  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`.
 
-Da fare, con i moduli funzionali: abitudini, calendario, corsi.
+Da fare, con i moduli funzionali: calendario, corsi.
 
 Una nota su `spese.py`: gli importi ci stanno dentro in **centesimi**, come
 interi, e diventano euro solo al confine con l'API e col bot. Sommare float per
 centinaia di spese produce totali che non tornano per qualche centesimo, e su
 dei soldi un totale che non torna è un bug che si nota.
+
+Una nota su `abitudini.py`: le funzioni che calcolano — `attesi`, `aderenza`,
+`striscia`, `presenze` — sono **pure** e prendono insiemi di date, non una
+connessione. §8.6 vuole quei numeri «calcolati in codice, senza LLM», e
+un'aderenza sbagliata è un bug che si nota mesi dopo: volerla provare su ottanta
+combinazioni di giorni non deve costare ottanta database.

@@ -112,3 +112,33 @@ def test_un_orario_storto_si_scopre_subito(valore: str) -> None:
     """Meglio che il worker si rifiuti di partire che girare senza scattare mai."""
     with pytest.raises(ValueError):
         ImpostazioniWorker(ora_riepilogo=valore, _env_file=None).ora_e_minuto()  # type: ignore[call-arg]
+
+
+# — il resoconto mensile delle abitudini (§8.6) —
+
+
+@pytest.mark.parametrize(
+    ("adesso", "atteso"),
+    [
+        # Il primo di settembre alle 21:00 si racconta agosto.
+        (datetime(2026, 9, 1, 21, 0), date(2026, 8, 1)),
+        # Alle 20:59 agosto non è ancora dovuto: si guarda indietro di uno, e
+        # il candidato è luglio — che al primo giro è già stato fatto e viene
+        # fermato dal registro. È la stessa finestra di recupero della
+        # settimana: un Pi spento all'ora prevista non perde il periodo.
+        (datetime(2026, 9, 1, 20, 59), date(2026, 7, 1)),
+        # A metà mese resta agosto: che sia già stato raccontato lo dice il registro.
+        (datetime(2026, 9, 15, 12, 0), date(2026, 8, 1)),
+        # Pi spento per due settimane: si recupera appena torna su.
+        (datetime(2026, 9, 14, 21, 0), date(2026, 8, 1)),
+    ],
+)
+def test_mese_dovuto(adesso: datetime, atteso: date | None) -> None:
+    assert pianificazione.mese_dovuto(adesso, ore=21, minuti=0) == atteso
+
+
+def test_a_gennaio_si_guarda_a_dicembre_dell_anno_prima() -> None:
+    """Il cambio d'anno non deve far saltare un mese."""
+    assert pianificazione.mese_dovuto(datetime(2027, 1, 1, 21, 0), ore=21, minuti=0) == date(
+        2026, 12, 1
+    )
