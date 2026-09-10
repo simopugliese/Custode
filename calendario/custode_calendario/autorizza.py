@@ -12,11 +12,14 @@ calendario ci sia dentro. Un flusso che fallisce con «invalid_scope» al primo
 tentativo costerebbe più di quanto fa risparmiare. Il reindirizzamento su
 localhost funziona con le credenziali «Desktop app» per qualunque permesso.
 
-**Il Pi è headless: dove si lancia questo comando?** Dove c'è un browser. Sono
-due strade, tutte e due documentate in DEPLOY.md:
-- sul tuo computer, e poi il token si incolla nel `.env` del Pi;
-- sul Pi via SSH, con `ssh -L 8765:localhost:8765`, così il browser del tuo
-  computer raggiunge il server che questo comando apre sul Pi.
+**Il Pi è headless, e non ha Python: dove si lancia questo comando?** Dentro
+l'immagine del worker, con `docker compose run`, e col browser sul proprio
+computer collegato da un tunnel SSH (`ssh -L 8765:localhost:8765`). In un
+container `127.0.0.1` è l'interno del container, quindi lì serve
+`CALENDARIO_ASCOLTA_SU=0.0.0.0` e la porta pubblicata. In alternativa si lancia
+sul proprio computer, dove il browser c'è già, e si incolla il token nel `.env`
+del Pi: il permesso non è legato alla macchina che lo ha chiesto. Tutte e due le
+strade sono in DEPLOY.md § 3-bis.
 
 Il token viene **stampato**, non scritto: scriverlo in automatico vorrebbe dire
 che questo comando sappia dove sta il `.env` di un ambiente che non conosce, e
@@ -175,9 +178,20 @@ def principale() -> int:
     _Raccoglitore.errore = ""
     _Raccoglitore.stato_atteso = stato
 
-    server = http.server.HTTPServer(
-        (impostazioni.ascolta_su, impostazioni.porta_autorizzazione), _Raccoglitore
-    )
+    try:
+        server = http.server.HTTPServer(
+            (impostazioni.ascolta_su, impostazioni.porta_autorizzazione), _Raccoglitore
+        )
+    except OSError as errore:
+        # Capita davvero: il comando aspetta cinque minuti, e chi lo rilancia
+        # perché «non stava succedendo niente» si trovava un traceback di
+        # Python al posto di una frase. Il rimedio è banale, ma va detto.
+        raise CalendarioNonRaggiungibile(
+            f"la porta {impostazioni.porta_autorizzazione} è occupata ({errore})."
+            " Probabilmente c'è un'altra autorizzazione in corso: chiudila, o"
+            " cambia porta con CALENDARIO_PORTA_AUTORIZZAZIONE — ricordando di"
+            " registrare il nuovo indirizzo di reindirizzamento su Google."
+        ) from errore
     filo = threading.Thread(target=server.handle_request, daemon=True)
     filo.start()
 
