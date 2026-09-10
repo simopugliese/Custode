@@ -12,7 +12,7 @@ richiedono qualità, visione o ragionamento a Claude.
   OpenAI, ma qui se ne usa una sola chiamata: non vale l'SDK di OpenAI).
 - `claude.py` — client sull'SDK ufficiale `anthropic`, con structured outputs.
 - `router.py` — mette insieme le due cose.
-- `assistente.py` — dal testo libero all'azione: è ciò che rende utile tutto il
+- `assistente.py` — dal testo libero alle azioni: è ciò che rende utile tutto il
   resto (§8.1).
 - `diario.py` — dal materiale grezzo di una giornata al riassunto proposto, e
   dalle voci approvate di una settimana al riepilogo (§8.4).
@@ -28,15 +28,26 @@ condiviso non deve sapere che esistono dei modelli.
 
 ## Il modello non tocca il database
 
-`assistente.py` chiede al modello solo un'**intenzione strutturata** (`azione`,
-`titolo`, `riferimento`, …) e la traduce lui in chiamate ai servizi di dominio.
+`assistente.py` chiede al modello solo **intenzioni strutturate** (`azione`,
+`titolo`, `riferimento`, …) e le traduce lui in chiamate ai servizi di dominio.
 Un modello che sbaglia può quindi far fare a Custode una cosa sbagliata fra
 quelle previste, mai una cosa non prevista. I riferimenti a task e voci
 esistenti vengono risolti in codice, e un riferimento ambiguo non chiude nulla:
 meglio non fare niente che indovinare.
 
+Le intenzioni sono una **lista** perché un messaggio può chiedere più cose
+insieme — «giornata pesante, devo ricordarmi di mandare la mail» è insieme una
+nota di diario e un task. Con un solo posto per una sola azione il modello era
+costretto a sceglierne una e l'altra si perdeva: vedi §8.1 di ARCHITECTURE.md.
+Il codice mette ordine su ciò che il modello può sbagliare — «nessuna» accanto
+a un'azione vera, doppioni, un `annota_diario` ripetuto, un numero assurdo di
+azioni — senza chiamarlo una seconda volta.
+
 Ogni azione dell'assistente lascia un bottone «Annulla», perché
-l'interpretazione è automatica e tornare indietro deve costare un tap.
+l'interpretazione è automatica e tornare indietro deve costare un tap. È il
+motivo per cui a ogni azione corrisponde un **messaggio separato**: una
+conferma sola avrebbe un bottone solo, e disfare la cosa sbagliata porterebbe
+via anche l'altra.
 
 ## Stato
 

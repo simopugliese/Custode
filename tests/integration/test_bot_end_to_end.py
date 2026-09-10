@@ -93,7 +93,7 @@ class RouterFinto:
     """Al posto del modello: risponde l'intenzione che gli si dice."""
 
     def __init__(self) -> None:
-        self.risposta: dict[str, Any] = {"azione": "nessuna"}
+        self.risposta: dict[str, Any] = {"azioni": [{"azione": "nessuna"}]}
         # Per compito, quando un test ne esercita più d'uno nello stesso giro:
         # l'interpretazione del messaggio e il riassunto del diario tornano
         # forme diverse (§6 li manda anche a provider diversi).
@@ -108,6 +108,14 @@ class RouterFinto:
             "luogo": "Conad",
             "data": "",
             "voci": ["Latte — 1,29"],
+        }
+
+    def interpreta_come(self, *azioni: dict[str, Any]) -> None:
+        """Fa rispondere all'interprete queste azioni, nella forma vera dello schema."""
+        campi_messaggio = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
+        self.risposta = {
+            "azioni": [{k: v for k, v in a.items() if k not in campi_messaggio} for a in azioni],
+            **{k: v for a in azioni for k, v in a.items() if k in campi_messaggio},
         }
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
@@ -344,7 +352,7 @@ def test_svuota_chiede_conferma_prima_di_cancellare(
 def test_il_testo_libero_passa_dal_modello_ed_esegue(
     app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
 ) -> None:
-    modello.risposta = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+    modello.interpreta_come({"azione": "aggiungi_voce_spesa", "titolo": "latte"})
 
     _manda(app, finto, "sto finendo il latte")
 
@@ -359,7 +367,7 @@ def test_il_testo_libero_lascia_un_bottone_per_annullare(
     app: Application, finto: BotFinto, modello: RouterFinto, db_path: Path
 ) -> None:
     """L'interpretazione è automatica: disfare deve costare un tap."""
-    modello.risposta = {"azione": "aggiungi_task", "titolo": "Cosa sbagliata"}
+    modello.interpreta_come({"azione": "aggiungi_task", "titolo": "Cosa sbagliata"})
     _manda(app, finto, "ricordami una cosa sbagliata")
 
     with connessione(db_path) as conn:
@@ -381,7 +389,7 @@ def test_un_vocale_passa_da_whisper_e_poi_dallo_stesso_percorso(
 ) -> None:
     """§8.1: via voce non cambia niente, cambia solo l'ingresso."""
     whisper.testo = "sto finendo il latte"
-    modello.risposta = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+    modello.interpreta_come({"azione": "aggiungi_voce_spesa", "titolo": "latte"})
 
     _manda_vocale(app, finto, b"OggS-finto")
 

@@ -110,6 +110,17 @@ def crea_applicazione(
             risposta.testo, parse_mode=ParseMode.HTML, reply_markup=_tastiera(risposta)
         )
 
+    async def _rispondi_tutte(update: Update, risposte_da_mandare: list[Risposta]) -> None:
+        """Un messaggio per cosa fatta, nell'ordine in cui sono state fatte.
+
+        Si mandano in sequenza e non in parallelo: Telegram non garantisce
+        l'ordine di consegna di due invii concorrenti, e leggere «Annotato nel
+        diario» prima di «Segnato: mandare la mail» racconterebbe una storia
+        diversa da quella vera.
+        """
+        for risposta in risposte_da_mandare:
+            await _rispondi(update, risposta)
+
     def comando(
         costruisci: Callable[[sqlite3.Connection, datetime, str], Risposta],
     ) -> Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[Any, Any, None]]:
@@ -234,8 +245,8 @@ def crea_applicazione(
         if messaggio is None or not messaggio.text:
             return
         with connessione() as conn:
-            risposta = risposte.messaggio_libero(conn, ora(), messaggio.text, instradatore)
-        await _rispondi(update, risposta)
+            da_mandare = risposte.messaggio_libero(conn, ora(), messaggio.text, instradatore)
+        await _rispondi_tutte(update, da_mandare)
 
     async def vocale(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         """Un vocale è un messaggio come gli altri: cambia solo l'ingresso (§8.1)."""
@@ -264,15 +275,18 @@ def crea_applicazione(
             return
 
         with connessione() as conn:
-            risposta = risposte.messaggio_libero(conn, ora(), testo, instradatore, da_vocale=True)
+            da_mandare = risposte.messaggio_libero(conn, ora(), testo, instradatore, da_vocale=True)
         # Si rimanda anche la trascrizione: se il modello ha capito male, si
-        # vede subito se la colpa è di whisper o dell'interpretazione.
-        await _rispondi(
-            update,
-            Risposta(
-                testo=f"<i>«{escape(testo)}»</i>\n\n{risposta.testo}", bottoni=risposta.bottoni
-            ),
-        )
+        # vede subito se la colpa è di whisper o dell'interpretazione. Sta sul
+        # **primo** messaggio soltanto: ripeterla sopra ognuno renderebbe la
+        # chat illeggibile proprio nei vocali lunghi, che sono quelli che ne
+        # producono più di uno.
+        prima = da_mandare[0]
+        da_mandare = [
+            Risposta(testo=f"<i>«{escape(testo)}»</i>\n\n{prima.testo}", bottoni=prima.bottoni),
+            *da_mandare[1:],
+        ]
+        await _rispondi_tutte(update, da_mandare)
 
     async def non_autorizzato(update: Update, _: ContextTypes.DEFAULT_TYPE) -> None:
         # Nessuna risposta: a un mittente non autorizzato non si conferma

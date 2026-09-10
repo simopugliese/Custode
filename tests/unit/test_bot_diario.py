@@ -180,7 +180,7 @@ def test_modifica_poi_riscrittura_verbatim(conn: sqlite3.Connection, ora: dateti
     # Il messaggio successivo *è* la voce: non passa dal modello, e infatti il
     # router finto non riceve nessuna chiamata.
     router = RouterFinto()
-    risposta = risposte.messaggio_libero(
+    (risposta,) = risposte.messaggio_libero(
         conn,
         ora,
         "Mattina in biblioteca, pomeriggio buttato.",
@@ -242,7 +242,7 @@ def test_una_frase_raccontata_finisce_nel_diario_con_annulla(
 ) -> None:
     router = RouterFinto({"azione": "annota_diario", "titolo": "giornata pesante"})
 
-    risposta = risposte.messaggio_libero(conn, ora, "che giornata pesante", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "che giornata pesante", router)  # type: ignore[arg-type]
 
     assert "Annotato nel diario" in risposta.testo
     assert _testi_bottoni(risposta) == ["Annulla"]
@@ -253,7 +253,7 @@ def test_una_frase_raccontata_finisce_nel_diario_con_annulla(
 
 def test_annullare_l_annotazione(conn: sqlite3.Connection, ora: datetime) -> None:
     router = RouterFinto({"azione": "annota_diario", "titolo": "giornata pesante"})
-    risposta = risposte.messaggio_libero(conn, ora, "che giornata pesante", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "che giornata pesante", router)  # type: ignore[arg-type]
     (dato,) = _dati_bottoni(risposta)
 
     annullata = risposte.esegui_azione(conn, ora, dato)

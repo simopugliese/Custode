@@ -358,5 +358,11 @@ export interface MessaggioAssistenteInput {
 }
 
 export interface MessaggioAssistenteOutput {
-  rispostaLabel?: string;
+  /**
+   * Una frase per ogni cosa fatta, nell'ordine in cui è stata fatta. Un
+   * messaggio può chiederne più d'una («giornata pesante, devo ricordarmi di
+   * mandare la mail» è insieme una nota di diario e un task), e il diario è
+   * sempre l'ultima. Mai vuota.
+   */
+  risposteLabel: string[];
 }

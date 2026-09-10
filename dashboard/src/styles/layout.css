@@ -31,7 +31,9 @@ html, body, #root { height: 100%; margin: 0; }
 .colL { padding: 28px 0; display: flex; flex-direction: column; gap: 32px; }
 .colR { padding: 28px 0 28px 44px; border-left: 1px solid var(--color-rule); display: flex; flex-direction: column; gap: 34px; }
 
-.ask { display: flex; align-items: center; gap: 14px; padding: 18px 0; border-top: 2px solid var(--color-divider); margin-top: auto; }
+.ask-blocco { margin-top: auto; }
+.ask { display: flex; align-items: center; gap: 14px; padding: 18px 0; border-top: 2px solid var(--color-divider); }
+.ask-esiti { display: flex; flex-direction: column; gap: 3px; padding-bottom: 18px; }
 .ask .input { background: transparent; border: 0; border-bottom: 1px solid var(--color-divider); padding-left: 0; border-radius: 0; }
 .ask .input:focus-visible { outline: none; border-bottom-color: var(--color-accent); }
 

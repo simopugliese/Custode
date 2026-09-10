@@ -14,12 +14,12 @@ pytestmark = pytest.mark.integration
 
 
 def test_un_messaggio_esegue_e_racconta(client: TestClient, modello: RouterFinto) -> None:
-    modello.risposta = {"azione": "aggiungi_voce_spesa", "titolo": "latte"}
+    modello.interpreta_come({"azione": "aggiungi_voce_spesa", "titolo": "latte"})
 
     risposta = client.post("/api/assistente/messaggio", json={"testo": "sto finendo il latte"})
 
     assert risposta.status_code == 200
-    assert risposta.json()["rispostaLabel"] == "Aggiunto alla lista: latte"
+    assert risposta.json()["risposteLabel"] == ["Aggiunto alla lista: latte"]
     # E si vede subito nella pagina che la dashboard ricarica dopo l'invio.
     lista = client.get("/api/lista-spesa").json()
     assert [v["nome"] for r in lista["reparti"] for v in r["voci"]] == ["latte"]
@@ -33,15 +33,13 @@ def test_lo_stesso_interprete_del_bot(client: TestClient, modello: RouterFinto) 
 
 
 def test_un_task_creato_dalla_dashboard(client: TestClient, modello: RouterFinto) -> None:
-    modello.risposta = {
-        "azione": "aggiungi_task",
-        "titolo": "Chiamare l'officina",
-        "scadenza": "2026-09-03",
-    }
+    modello.interpreta_come(
+        {"azione": "aggiungi_task", "titolo": "Chiamare l'officina", "scadenza": "2026-09-03"}
+    )
     risposta = client.post(
         "/api/assistente/messaggio", json={"testo": "ricordami di chiamare l'officina giovedì"}
     )
-    assert "Chiamare l'officina" in risposta.json()["rispostaLabel"]
+    assert "Chiamare l'officina" in risposta.json()["risposteLabel"][0]
 
     sezioni = {
         s["titolo"]: [t["titolo"] for t in s["task"]]
@@ -56,13 +54,13 @@ def test_quando_il_modello_non_risponde(client: TestClient, modello: RouterFinto
     # 200 con una frase leggibile: la barra non deve mostrare un errore HTTP
     # per una cosa che l'utente può semplicemente riprovare.
     assert risposta.status_code == 200
-    assert "Riprova" in risposta.json()["rispostaLabel"]
+    assert "Riprova" in risposta.json()["risposteLabel"][0]
 
 
 def test_messaggio_vuoto(client: TestClient) -> None:
     risposta = client.post("/api/assistente/messaggio", json={"testo": "   "})
     assert risposta.status_code == 200
-    assert risposta.json()["rispostaLabel"]
+    assert risposta.json()["risposteLabel"]
 
 
 def test_una_spesa_detta_per_ieri_finisce_a_ieri(
@@ -70,17 +68,19 @@ def test_una_spesa_detta_per_ieri_finisce_a_ieri(
 ) -> None:
     """Il giro completo del bug osservato sul Pi, dalla frase alla pagina Spese."""
     ieri = ora.date() - timedelta(days=1)
-    modello.risposta = {
-        "azione": "registra_spesa",
-        "titolo": "spesa xyz",
-        "importo": 17,
-        "data": ieri.isoformat(),
-    }
+    modello.interpreta_come(
+        {
+            "azione": "registra_spesa",
+            "titolo": "spesa xyz",
+            "importo": 17,
+            "data": ieri.isoformat(),
+        }
+    )
 
     risposta = client.post(
         "/api/assistente/messaggio", json={"testo": "ieri ho pagato 17 euro la spesa xyz"}
     )
-    assert "di ieri" in risposta.json()["rispostaLabel"]
+    assert "di ieri" in risposta.json()["risposteLabel"][0]
 
     # E la pagina la data la mostra dov'è davvero, non dove è stata registrata.
     (movimento,) = client.get("/api/spese?periodo=mese").json()["movimenti"]

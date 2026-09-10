@@ -14,14 +14,30 @@ from custode_api.dipendenze import prendi_ora
 from custode_api.main import crea_app
 from custode_core.config import Settings
 
+CAMPI_MESSAGGIO = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
+
 
 class RouterFinto:
     """Al posto del modello: risponde l'intenzione che gli si dice."""
 
     def __init__(self) -> None:
-        self.risposta: dict[str, Any] = {"azione": "nessuna"}
+        self.risposta: dict[str, Any] = {"azioni": [{"azione": "nessuna"}]}
         self.errore: Exception | None = None
         self.messaggi_visti: list[str] = []
+
+    def interpreta_come(self, *azioni: dict[str, Any]) -> None:
+        """Fa rispondere all'interprete queste azioni, nella forma vera.
+
+        I test descrivono un'azione come un dizionario piatto — che si legge
+        meglio — e qui finisce nella lista `azioni` dello schema, coi campi che
+        riguardano il messaggio intero (il segnale) lasciati fuori. Chi invece
+        deve fingere una risposta di **Claude** (una categoria di spesa, un
+        riassunto) continua a scrivere `risposta` a mano: ha un'altra forma.
+        """
+        self.risposta = {
+            "azioni": [{k: v for k, v in a.items() if k not in CAMPI_MESSAGGIO} for a in azioni],
+            **{k: v for a in azioni for k, v in a.items() if k in CAMPI_MESSAGGIO},
+        }
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         self.messaggi_visti.append(kwargs.get("utente", ""))

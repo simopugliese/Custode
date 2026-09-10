@@ -448,4 +448,5 @@ class MessaggioAssistente(BaseModel):
 
 
 class RispostaAssistente(BaseModel):
-    rispostaLabel: str | None = None
+    risposteLabel: list[str] = []
+    """Una frase per ogni cosa fatta, nell'ordine in cui è stata fatta."""
