@@ -23,7 +23,10 @@ def messaggio(
     corpo: schemi.MessaggioAssistente, richiesta: Request, conn: ConnDip, ora: OraDip
 ) -> schemi.RispostaAssistente:
     instradatore: Router = richiesta.app.state.router
-    esito = dom_assistente.interpreta_ed_esegui(conn, ora, corpo.testo, instradatore)
+    esiti = dom_assistente.interpreta_ed_esegui(conn, ora, corpo.testo, instradatore)
     # La dashboard invalida comunque le query della pagina dopo l'invio: qui
-    # basta rimandare la frase da mostrare.
-    return schemi.RispostaAssistente(rispostaLabel=esito.testo)
+    # bastano le frasi da mostrare. Sono una **lista** perché un messaggio può
+    # chiedere più cose insieme, e unirle in una stringa sola lascerebbe alla
+    # dashboard il problema di ridividerle — cioè un'etichetta prodotta a metà
+    # dal backend e a metà dal frontend, che è proprio ciò che si evita.
+    return schemi.RispostaAssistente(risposteLabel=[e.testo for e in esiti])

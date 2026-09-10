@@ -15,7 +15,7 @@ import pytest
 from pydantic_settings import SettingsConfigDict
 
 from custode_whisper.config import ImpostazioniWhisper
-from custode_whisper.trascrizione import ErroreTrascrizione, trascrivi
+from custode_whisper.trascrizione import ErroreTrascrizione, comando_whisper, trascrivi
 
 
 def _script(percorso: Path, corpo: str) -> Path:
@@ -122,3 +122,59 @@ def test_trascrizione_vuota(finti: Finti, tmp_path: Path) -> None:
     muto = _script(tmp_path / "muto", "exit 0")
     with pytest.raises(ErroreTrascrizione, match="capire"):
         trascrivi(b"audio", finti.con(binario=muto))
+
+
+# — il prompt col vocabolario del proprietario (§8.1) —
+
+
+def test_il_contesto_arriva_a_whisper_come_prompt(finti: Finti) -> None:
+    """Senza, «Bricoman» esce «bricomane» e l'interprete non aggancia più niente."""
+    trascrivi(b"audio", finti.impostazioni, "Meditazione, Bricoman.")
+    (riga,) = [r for r in finti.righe() if r.startswith("whisper")]
+    assert "--prompt Meditazione, Bricoman." in riga
+
+
+def test_senza_contesto_non_si_passa_un_prompt_vuoto(finti: Finti) -> None:
+    """Un `--prompt` vuoto è un argomento in più che non dice niente."""
+    trascrivi(b"audio", finti.impostazioni)
+    (riga,) = [r for r in finti.righe() if r.startswith("whisper")]
+    assert "--prompt" not in riga
+
+
+def test_il_contesto_usa_la_forma_lunga_del_flag(finti: Finti) -> None:
+    """In whisper.cpp `-p` è `--processors`: abbreviare farebbe partire N processi."""
+    comando = comando_whisper(finti.impostazioni, Path("/tmp/a.wav"), Path("/tmp/out"), "Palestra.")
+    assert "--prompt" in comando
+    assert "-p" not in comando
+
+
+def test_i_token_non_parlati_sono_soppressi(finti: Finti) -> None:
+    """Su silenzio e rumore Whisper inventa frasi da sottotitoli, in italiano."""
+    trascrivi(b"audio", finti.impostazioni)
+    (riga,) = [r for r in finti.righe() if r.startswith("whisper")]
+    assert "--suppress-nst" in riga
+
+
+def test_la_soppressione_si_puo_spegnere(finti: Finti) -> None:
+    trascrivi(b"audio", finti.con(sopprimi_non_parlato=False))
+    (riga,) = [r for r in finti.righe() if r.startswith("whisper")]
+    assert "--suppress-nst" not in riga
+
+
+# — l'audio ripulito prima di trascrivere —
+
+
+def test_l_audio_viene_ripulito_prima(finti: Finti) -> None:
+    """Un vocale registrato per strada è il caso normale, non l'eccezione."""
+    trascrivi(b"audio-ogg", finti.impostazioni)
+    (riga,) = [r for r in finti.righe() if r.startswith("ffmpeg")]
+    assert "-af highpass=f=80,dynaudnorm" in riga
+
+
+def test_i_filtri_si_possono_togliere(finti: Finti) -> None:
+    """Per confrontare col comportamento nudo, senza toccare il codice."""
+    trascrivi(b"audio-ogg", finti.con(filtri_audio=""))
+    (riga,) = [r for r in finti.righe() if r.startswith("ffmpeg")]
+    assert "-af" not in riga
+    # E il formato resta quello che whisper.cpp accetta.
+    assert "-ar 16000" in riga

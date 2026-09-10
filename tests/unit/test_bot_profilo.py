@@ -62,7 +62,7 @@ def test_un_segnale_chiaro_non_interrompe_la_conversazione(
         }
     )
 
-    risposta = risposte.messaggio_libero(conn, ora, "devo finire il sito", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "devo finire il sito", router)  # type: ignore[arg-type]
 
     # La risposta è quella dell'azione, e basta: nessuna domanda.
     assert "Segnato: Finire il sito" in risposta.testo
@@ -109,7 +109,7 @@ def test_un_segnale_ambiguo_fa_la_domanda_nello_stesso_messaggio(
         }
     )
 
-    risposta = risposte.messaggio_libero(conn, ora, "che palle il frontend", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "che palle il frontend", router)  # type: ignore[arg-type]
 
     # Una notifica sola: prima cosa ha fatto, poi la parentesi.
     assert "Annotato nel diario" in risposta.testo
@@ -126,7 +126,7 @@ def test_rispondere_si_lo_tiene(conn: sqlite3.Connection, ora: datetime) -> None
             "segnale_domanda": "Vale sempre?",
         }
     )
-    risposta = risposte.messaggio_libero(conn, ora, "che palle", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "che palle", router)  # type: ignore[arg-type]
     si = [d for d in _dati_bottoni(risposta) if ":si:" in d][0]
 
     esito = risposte.esegui_azione(conn, ora, si)
@@ -145,7 +145,7 @@ def test_rispondere_no_lo_butta(conn: sqlite3.Connection, ora: datetime) -> None
             "segnale_domanda": "Vale sempre?",
         }
     )
-    risposta = risposte.messaggio_libero(conn, ora, "che palle", router)  # type: ignore[arg-type]
+    (risposta,) = risposte.messaggio_libero(conn, ora, "che palle", router)  # type: ignore[arg-type]
     no = [d for d in _dati_bottoni(risposta) if ":no:" in d][0]
 
     esito = risposte.esegui_azione(conn, ora, no)
@@ -166,7 +166,7 @@ def test_una_domanda_alla_volta(conn: sqlite3.Connection, ora: datetime) -> None
     )
     risposte.messaggio_libero(conn, ora, "primo", router)  # type: ignore[arg-type]
 
-    seconda = risposte.messaggio_libero(conn, ora, "secondo", router)  # type: ignore[arg-type]
+    (seconda,) = risposte.messaggio_libero(conn, ora, "secondo", router)  # type: ignore[arg-type]
 
     assert "Vale sempre?" not in seconda.testo
     assert _testi_bottoni(seconda) == []

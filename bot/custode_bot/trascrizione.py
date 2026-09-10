@@ -21,7 +21,13 @@ class ClientWhisper:
     def configurato(self) -> bool:
         return bool(self._base_url)
 
-    def trascrivi(self, audio: bytes, nome_file: str = "vocale.ogg") -> str:
+    def trascrivi(self, audio: bytes, nome_file: str = "vocale.ogg", contesto: str = "") -> str:
+        """`contesto`: i nomi che il proprietario usa, per non farli sbagliare a Whisper.
+
+        Viaggia insieme all'audio invece di essere letto dal container che
+        trascrive: il database è di qui, e whisper resta un servizio senza
+        stato che riceve dei byte e restituisce del testo.
+        """
         if not self.configurato():
             raise TrascrizioneNonRiuscita("il servizio di trascrizione non è configurato")
         try:
@@ -29,6 +35,7 @@ class ClientWhisper:
                 risposta = client.post(
                     f"{self._base_url}/trascrivi",
                     files={"audio": (nome_file, audio, "application/octet-stream")},
+                    data={"contesto": contesto} if contesto else None,
                 )
         except httpx.HTTPError as errore:
             raise TrascrizioneNonRiuscita(f"servizio non raggiungibile: {errore}") from errore

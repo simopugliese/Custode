@@ -40,11 +40,36 @@ class RouterFinto:
         return self.risposta
 
 
+CAMPI_MESSAGGIO = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
+
+
+def _forma_modello(*piatte: dict[str, Any]) -> dict[str, Any]:
+    """Da uno o più dizionari piatti alla forma che il modello risponde davvero.
+
+    I test descrivono una azione come un dizionario solo — che è come si legge
+    meglio — e qui viene messa nella lista `azioni`, mentre i campi che
+    riguardano il messaggio intero (il segnale per il profilo) restano fuori.
+    Così i test dicono cosa conta e passano comunque dallo schema vero.
+    """
+    azioni = [{k: v for k, v in p.items() if k not in CAMPI_MESSAGGIO} for p in piatte]
+    messaggio = {k: v for p in piatte for k, v in p.items() if k in CAMPI_MESSAGGIO}
+    return {"azioni": azioni, **messaggio}
+
+
+def _esegui_tutte(
+    conn: sqlite3.Connection, ora: datetime, testo: str, *risposte: dict[str, Any]
+) -> list[assistente.Esito]:
+    router = RouterFinto(_forma_modello(*risposte))
+    return assistente.interpreta_ed_esegui(conn, ora, testo, router)  # type: ignore[arg-type]
+
+
 def _esegui(
     conn: sqlite3.Connection, ora: datetime, testo: str, risposta: dict[str, Any]
 ) -> assistente.Esito:
-    router = RouterFinto(risposta)
-    return assistente.interpreta_ed_esegui(conn, ora, testo, router)  # type: ignore[arg-type]
+    """Il caso di gran lunga più comune: il messaggio chiede una cosa sola."""
+    esiti = _esegui_tutte(conn, ora, testo, risposta)
+    assert len(esiti) == 1, f"attesa una sola azione, arrivate {len(esiti)}"
+    return esiti[0]
 
 
 # — il contesto passato al modello —
@@ -313,7 +338,7 @@ def test_una_spesa_vecchia_dice_la_data_per_esteso(conn: sqlite3.Connection, ora
 
 def test_lo_schema_ha_un_posto_per_la_data(conn: sqlite3.Connection, ora: datetime) -> None:
     """La causa del bug era qui: senza il campo, «ieri» non aveva dove finire."""
-    assert "data" in assistente.SCHEMA_INTENZIONE["properties"]
+    assert "data" in assistente.SCHEMA_AZIONE["properties"]
 
 
 def test_il_contesto_dice_anche_che_giorno_della_settimana_e(
@@ -560,10 +585,10 @@ def _registra_e_categorizza(
             self.chiamate.append({"compito": compito, **kwargs})
             if compito is Compito.CATEGORIE_SPESA:
                 return {"categoria": categoria_claude, "esistente": False}
-            return intenzione
+            return _forma_modello(intenzione)
 
     router = Due()
-    esito = assistente.interpreta_ed_esegui(conn, ora, "x", router)  # type: ignore[arg-type]
+    (esito,) = assistente.interpreta_ed_esegui(conn, ora, "x", router)  # type: ignore[arg-type]
     return esito, router
 
 
@@ -664,9 +689,9 @@ def test_se_claude_non_risponde_la_spesa_da_testo_resta_comunque(
             self.chiamate.append({"compito": compito, **kwargs})
             if compito is Compito.CATEGORIE_SPESA:
                 raise ProviderNonRaggiungibile("Claude non risponde")
-            return {"azione": "registra_spesa", "titolo": "birra", "importo": 4.5}
+            return _forma_modello({"azione": "registra_spesa", "titolo": "birra", "importo": 4.5})
 
-    esito = assistente.interpreta_ed_esegui(conn, ora, "x", SoloInterprete())  # type: ignore[arg-type]
+    (esito,) = assistente.interpreta_ed_esegui(conn, ora, "x", SoloInterprete())  # type: ignore[arg-type]
 
     (spesa,) = dom_spese.elenco(conn)
     assert spesa.centesimi == 450
@@ -728,6 +753,10 @@ def test_una_spesa_senza_categoria_la_chiede_a_claude_a_parte(
 def test_una_spesa_gia_categorizzata_non_ricosta_una_chiamata(
     conn: sqlite3.Connection, ora: datetime
 ) -> None:
+    # La categoria deve **esistere** perché l'interprete possa assegnarla: è la
+    # regola di §6, e senza questa riga la spesa nascerebbe senza categoria e il
+    # test verificherebbe un'altra cosa.
+    dom_spese.assicura_categoria(conn, "Alimentari", ora)
     esito = _esegui(
         conn,
         ora,
@@ -788,14 +817,14 @@ def test_messaggio_vuoto(conn: sqlite3.Connection, ora: datetime) -> None:
 
 def test_senza_chiave_lo_dice(conn: sqlite3.Connection, ora: datetime) -> None:
     router = RouterFinto(errore=ProviderNonConfigurato("manca la chiave"))
-    esito = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
+    (esito,) = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
     assert "non è ancora configurato" in esito.testo
     assert not esito.ha_cambiato_qualcosa
 
 
 def test_provider_giu_invita_a_riprovare(conn: sqlite3.Connection, ora: datetime) -> None:
     router = RouterFinto(errore=ProviderNonRaggiungibile("timeout"))
-    esito = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
+    (esito,) = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
     assert "Riprova" in esito.testo
 
 
@@ -916,8 +945,172 @@ def test_annullare_una_nota_gia_tolta(conn: sqlite3.Connection, ora: datetime) -
 
 def test_il_diario_e_fra_le_azioni_offerte_al_modello() -> None:
     """Un'azione che non è nell'enum dello schema il modello non la può scegliere."""
-    consentite = assistente.SCHEMA_INTENZIONE["properties"]["azione"]["enum"]
+    consentite = assistente.SCHEMA_AZIONE["properties"]["azione"]["enum"]
     assert "annota_diario" in consentite
+
+
+# — più cose in un messaggio solo —
+
+
+def test_un_racconto_con_un_promemoria_finisce_in_tutti_e_due(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Il bug osservato: il task veniva creato, il racconto spariva in silenzio.
+
+    Finché lo schema ammetteva una sola azione il modello doveva sceglierne
+    una — e il prompt gli diceva pure di preferire quella pratica. Il diario
+    restava vuoto senza che nessuno se ne accorgesse.
+    """
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "Oggi laboratorio pesante, tre ore sullo stesso bug. Devo ricordarmi di"
+        " mandare la mail al prof.",
+        {"azione": "aggiungi_task", "titolo": "Mandare la mail al prof"},
+        {"azione": "annota_diario", "titolo": "Oggi laboratorio pesante, tre ore sullo stesso bug"},
+    )
+
+    assert [t.titolo for t in dom_task.elenco(conn, fatto=False)] == ["Mandare la mail al prof"]
+    voce = dom_diario.leggi_giorno(conn, ora.date())
+    assert voce is not None
+    assert [f.testo for f in voce.frammenti] == [
+        "Oggi laboratorio pesante, tre ore sullo stesso bug"
+    ]
+    # Due esiti, uno per cosa fatta: nel bot diventano due messaggi, ognuno col
+    # suo «Annulla».
+    assert [e.azione for e in esiti] == [Azione.AGGIUNGI_TASK, Azione.ANNOTA_DIARIO]
+    assert esiti[0].task_id is not None
+    assert esiti[1].frammento_id is not None
+
+
+def test_il_diario_e_sempre_l_ultimo(conn: sqlite3.Connection, ora: datetime) -> None:
+    """L'ordine non lo decide il modello: prima cosa è stato fatto, poi la nota."""
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        {"azione": "annota_diario", "titolo": "Giornata storta"},
+        {"azione": "registra_spesa", "titolo": "benzina", "importo": 12},
+    )
+    assert [e.azione for e in esiti] == [Azione.REGISTRA_SPESA, Azione.ANNOTA_DIARIO]
+
+
+def test_due_promemoria_sono_due_task(conn: sqlite3.Connection, ora: datetime) -> None:
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "ricordami di chiamare l'officina e di comprare il regalo",
+        {"azione": "aggiungi_task", "titolo": "Chiamare l'officina"},
+        {"azione": "aggiungi_task", "titolo": "Comprare il regalo"},
+    )
+    assert len(esiti) == 2
+    assert {t.titolo for t in dom_task.elenco(conn, fatto=False)} == {
+        "Chiamare l'officina",
+        "Comprare il regalo",
+    }
+
+
+def test_un_doppione_esatto_si_conta_una_volta(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Un modello che si inceppa non deve creare due task uguali e due conferme."""
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        {"azione": "aggiungi_task", "titolo": "Chiamare l'officina"},
+        {"azione": "aggiungi_task", "titolo": "chiamare l'officina"},
+    )
+    assert len(esiti) == 1
+    assert len(dom_task.elenco(conn, fatto=False)) == 1
+
+
+def test_il_diario_non_si_spezza_in_due(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Il racconto è uno: due annota_diario darebbero due conferme per un gesto solo."""
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        {"azione": "annota_diario", "titolo": "Prima parte"},
+        {"azione": "annota_diario", "titolo": "Seconda parte"},
+    )
+    assert len(esiti) == 1
+    voce = dom_diario.leggi_giorno(conn, ora.date())
+    assert voce is not None
+    assert [f.testo for f in voce.frammenti] == ["Prima parte"]
+
+
+def test_una_nessuna_accanto_a_un_azione_sparisce(conn: sqlite3.Connection, ora: datetime) -> None:
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        {"azione": "nessuna"},
+        {"azione": "aggiungi_task", "titolo": "Cosa"},
+    )
+    assert [e.azione for e in esiti] == [Azione.AGGIUNGI_TASK]
+
+
+def test_una_lista_vuota_risponde_comunque(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Non si resta mai in silenzio: chi ha scritto deve leggere qualcosa."""
+    router = RouterFinto({"azioni": []})
+    esiti = assistente.interpreta_ed_esegui(conn, ora, "ciao", router)  # type: ignore[arg-type]
+    assert len(esiti) == 1
+    assert esiti[0].testo
+    assert not esiti[0].ha_cambiato_qualcosa
+
+
+def test_troppe_azioni_si_fermano_al_tetto(conn: sqlite3.Connection, ora: datetime) -> None:
+    """Un modello impazzito non riempie la chat di conferme."""
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        *[{"azione": "aggiungi_task", "titolo": f"Cosa {i}"} for i in range(10)],
+    )
+    assert len(esiti) == assistente.MASSIMO_AZIONI
+
+
+def test_la_vecchia_forma_a_azione_singola_funziona_ancora(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """DeepSeek garantisce JSON valido, non che rispetti lo schema (`deepseek.py`).
+
+    Una risposta che ignora la lista e mette `azione` in cima non deve
+    diventare un messaggio perso.
+    """
+    router = RouterFinto({"azione": "aggiungi_task", "titolo": "Cosa"})
+    (esito,) = assistente.interpreta_ed_esegui(conn, ora, "x", router)  # type: ignore[arg-type]
+    assert esito.azione is Azione.AGGIUNGI_TASK
+    assert [t.titolo for t in dom_task.elenco(conn, fatto=False)] == ["Cosa"]
+
+
+def test_il_segnale_si_attacca_all_ultimo_messaggio(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """La domanda di chiarimento è una parentesi su tutto, non su una azione."""
+    esiti = _esegui_tutte(
+        conn,
+        ora,
+        "x",
+        {"azione": "aggiungi_task", "titolo": "Cosa"},
+        {
+            "azione": "annota_diario",
+            "titolo": "Il frontend mi annoia",
+            "segnale": "ambiguo",
+            "segnale_estratto": "Preferisce il backend",
+            "segnale_domanda": "Vale sempre o era la giornata?",
+        },
+    )
+    assert esiti[0].domanda_chiarimento == ""
+    assert esiti[-1].domanda_chiarimento == "Vale sempre o era la giornata?"
+    assert esiti[-1].candidato_id is not None
+    # Il candidato è uno solo, non uno per azione.
+    assert len(dom_profilo.da_rivedere(conn)) == 1
+
+
+def test_lo_schema_chiede_una_lista_di_azioni() -> None:
+    """La causa del bug era qui: un solo posto per una sola azione."""
+    assert assistente.SCHEMA_INTENZIONE["properties"]["azioni"]["type"] == "array"
+    assert "azione" in assistente.SCHEMA_AZIONE["properties"]
 
 
 # — canale passivo per il profilo (§8.4) —

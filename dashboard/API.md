@@ -309,29 +309,46 @@ worker non ne ha scritto uno: campo assente ≠ campo vuoto.
 Ogni pagina ha una barra di input in stile chat, in cima allo stesso canale
 usato dal bot Telegram (§8.1 del documento di progettazione).
 
-`POST /api/assistente/messaggio` body `{ testo: string }` → `{ rispostaLabel?: string }`
+`POST /api/assistente/messaggio` body `{ testo: string }` → `{ risposteLabel: string[] }`
 
 Dopo l'invio la dashboard invalida le query della pagina corrente, così un
 comando come «sto finendo il latte» si riflette appena il backend lo elabora.
 
-Il testo passa dal router (§6), che ne ricava un'intenzione strutturata; il
-backend la esegue subito e restituisce in `rispostaLabel` la frase da mostrare
-(«Aggiunto alla lista: latte»). La stessa risposta del modello porta anche il
-controllo passivo di §8.4 sui segnali per il profilo: quello succede in
-silenzio, non cambia `rispostaLabel`, e la revisione avviene su Telegram (il
-profilo non ha ancora una pagina nella dashboard — si legge con `/profilo`).
-Oggi copre task, lista della spesa, diario e spese —
+Il testo passa dal router (§6), che ne ricava una o più intenzioni strutturate;
+il backend le esegue subito e restituisce in `risposteLabel` **una frase per
+ogni cosa fatta**, nell'ordine in cui è stata fatta («Aggiunto alla lista:
+latte»). Quasi sempre è una sola.
+
+**Perché una lista e non una stringa.** Un messaggio può chiedere più cose
+insieme: «giornata pesante in laboratorio, devo ricordarmi di mandare la mail
+al prof» è insieme un racconto per il diario e un promemoria. Unire le due
+frasi in una stringa sola lascerebbe alla dashboard il problema di ridividerle,
+cioè un'etichetta prodotta a metà dal backend e a metà dal frontend — mentre le
+etichette italiane le produce il backend. Su Telegram le stesse frasi diventano
+**messaggi separati**, uno per azione, ognuno col suo «Annulla»: così si disfa
+la cosa sbagliata senza toccare l'altra. Il diario è sempre l'ultima frase,
+perché si legge prima cosa Custode ha fatto e poi che ha preso nota.
+
+La stessa risposta del modello porta anche il controllo passivo di §8.4 sui
+segnali per il profilo: quello succede in silenzio, non aggiunge frasi a
+`risposteLabel`, e la revisione avviene su Telegram (il profilo non ha ancora
+una pagina nella dashboard — si legge con `/profilo`).
+
+Oggi copre task, lista della spesa, diario, spese e abitudini —
 un messaggio che racconta la giornata invece di chiedere qualcosa finisce fra
 il materiale del diario del giorno che racconta — «ti racconto la giornata di
 ieri» finisce su ieri, non su oggi (§8.4) — e uno con dentro una cifra già pagata
 («ho pagato 8€ la colazione») diventa una spesa (§8.5). Se la frase dice
 **quando** hai speso («ieri ho pagato 17 euro la spesa»), la spesa si registra
-a quel giorno e non a oggi, e `rispostaLabel` lo dice in coda («, di ieri»,
+a quel giorno e non a oggi, e la frase lo dice in coda («, di ieri»,
 «, del 29 ago») — come già fa la conferma di uno scontrino. Una data nel futuro
 viene scartata e vale oggi: ogni vista finisce a oggi, quindi una spesa datata
 in avanti resterebbe scritta e invisibile (§8.5). Per un messaggio che non chiede nulla
 di previsto la risposta lo dice, senza errore.
 
+`risposteLabel` non è mai vuota: anche un messaggio che non chiede niente e un
+guasto del modello producono la loro frase.
+
 **Risponde sempre 200**, anche quando il modello non è configurato o non
-risponde: il motivo arriva in `rispostaLabel` in italiano, perché è una cosa
+risponde: il motivo arriva in `risposteLabel` in italiano, perché è una cosa
 che l'utente può semplicemente riprovare, non un errore HTTP da mostrare.

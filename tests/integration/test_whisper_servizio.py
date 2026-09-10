@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import pytest
@@ -60,3 +61,67 @@ def test_non_pubblica_lo_schema(impostazioni: ImpostazioniWhisper) -> None:
     # Non è esposto e non serve a nessuno: superficie in meno (§9).
     with TestClient(crea_app(impostazioni)) as client:
         assert client.get("/openapi.json").status_code == 404
+
+
+# — il vocabolario del proprietario, dal bot fino a whisper.cpp —
+
+
+def _script(percorso: Path, corpo: str) -> Path:
+    percorso.write_text(f"#!/bin/sh\n{corpo}\n", encoding="utf-8")
+    percorso.chmod(percorso.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+    return percorso
+
+
+@pytest.fixture
+def impostazioni_vere(tmp_path: Path) -> tuple[ImpostazioniWhisper, Path]:
+    """Eseguibili finti ma funzionanti: il giro HTTP arriva fino al comando."""
+    registro = tmp_path / "argomenti.txt"
+    ffmpeg = _script(
+        tmp_path / "ffmpeg",
+        f'echo "ffmpeg $@" >> {registro}\n'
+        'for ultimo in "$@"; do :; done\n'
+        'printf "WAV" > "$ultimo"',
+    )
+    whisper = _script(
+        tmp_path / "whisper-cli",
+        f'echo "whisper $@" >> {registro}\n'
+        'prefisso=""\n'
+        "while [ $# -gt 0 ]; do\n"
+        '  if [ "$1" = "--output-file" ]; then prefisso="$2"; fi\n'
+        "  shift\n"
+        "done\n"
+        'printf "sono stato da Bricoman\\n" > "$prefisso.txt"',
+    )
+    modello = tmp_path / "modello.bin"
+    modello.write_bytes(b"finto")
+    return _Impostazioni(binario=whisper, modello=modello, ffmpeg=ffmpeg), registro
+
+
+def test_il_contesto_arriva_dal_form_fino_al_comando(
+    impostazioni_vere: tuple[ImpostazioniWhisper, Path],
+) -> None:
+    """Il giro vero: campo del form → servizio → riga di comando di whisper.cpp."""
+    impostazioni, registro = impostazioni_vere
+    with TestClient(crea_app(impostazioni)) as client:
+        risposta = client.post(
+            "/trascrivi",
+            files={"audio": ("v.ogg", b"audio", "audio/ogg")},
+            data={"contesto": "Meditazione, Bricoman."},
+        )
+
+    assert risposta.status_code == 200
+    assert risposta.json()["testo"] == "sono stato da Bricoman"
+    righe = registro.read_text(encoding="utf-8")
+    assert "--prompt Meditazione, Bricoman." in righe
+
+
+def test_il_contesto_resta_facoltativo(
+    impostazioni_vere: tuple[ImpostazioniWhisper, Path],
+) -> None:
+    """Chi non ha niente da suggerire manda solo l'audio, come prima."""
+    impostazioni, registro = impostazioni_vere
+    with TestClient(crea_app(impostazioni)) as client:
+        risposta = client.post("/trascrivi", files={"audio": ("v.ogg", b"audio", "audio/ogg")})
+
+    assert risposta.status_code == 200
+    assert "--prompt" not in registro.read_text(encoding="utf-8")

@@ -58,7 +58,15 @@ class Azione(StrEnum):
     NESSUNA = "nessuna"
 
 
-SCHEMA_INTENZIONE: dict[str, Any] = {
+# Un messaggio può chiedere **più cose insieme**: «giornata pesante in
+# laboratorio, devo ricordarmi di mandare la mail al prof» è insieme un racconto
+# e un promemoria. Finché lo schema ammetteva una sola `azione`, il modello era
+# costretto a sceglierne una e l'altra si perdeva in silenzio — non per un
+# errore suo, ma perché il contratto non gli lasciava modo di dirle entrambe.
+# Da qui una **lista**: i campi di ogni azione stanno dentro la sua voce, e
+# restano fuori solo i campi che riguardano il messaggio nel suo insieme (il
+# segnale per il profilo, che è uno solo per messaggio).
+SCHEMA_AZIONE: dict[str, Any] = {
     "type": "object",
     "properties": {
         "azione": {"type": "string", "enum": [a.value for a in Azione]},
@@ -142,10 +150,27 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
                 " fatto («ma non ho letto»), copiate dallo stesso elenco."
             ),
         },
+    },
+    "required": ["azione"],
+    "additionalProperties": False,
+}
+
+SCHEMA_INTENZIONE: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "azioni": {
+            "type": "array",
+            "items": SCHEMA_AZIONE,
+            "description": (
+                "Le azioni che il messaggio chiede, una per ogni cosa distinta"
+                " che dice. Quasi sempre ne basta una."
+            ),
+        },
         # Il canale passivo di §8.4 viaggia nella stessa risposta dell'azione:
         # sono due compiti distinti nella tabella §6, ma entrambi instradati a
         # DeepSeek, e farne due chiamate raddoppierebbe latenza e costo su ogni
-        # singolo messaggio.
+        # singolo messaggio. Sta **fuori** dalla lista perché descrive il
+        # proprietario, non una delle cose che ha chiesto: è uno per messaggio.
         "segnale": {
             "type": "string",
             "enum": ["nessuno", "chiaro", "ambiguo"],
@@ -171,13 +196,15 @@ SCHEMA_INTENZIONE: dict[str, Any] = {
             ),
         },
     },
-    "required": ["azione"],
+    "required": ["azioni"],
     "additionalProperties": False,
 }
 
 SISTEMA = """Sei l'interprete di Custode, un assistente personale.
-Ricevi un messaggio scritto o dettato dal proprietario e lo traduci in UNA sola
-azione fra quelle previste. Non inventare azioni diverse da quelle elencate.
+Ricevi un messaggio scritto o dettato dal proprietario e lo traduci nelle azioni
+che chiede, mettendole nella lista `azioni`. Quasi sempre ne basta UNA: metti più
+azioni solo quando il messaggio dice davvero più cose distinte. Non inventare
+azioni diverse da quelle elencate.
 
 Regole:
 - «ricordami di X», «devo X», «segnati X» → aggiungi_task.
@@ -216,11 +243,28 @@ Regole:
   giorno in `data`, come per le spese: ci finisce tutto il racconto, non solo
   la prima frase. Senza indicazioni è la giornata di oggi, e `data` resta vuota.
 - Se il messaggio non chiede nessuna di queste cose e non racconta niente (un
-  saluto, una domanda, un «ok»), rispondi con azione «nessuna»: è una risposta
-  corretta, non un fallimento.
-- Un messaggio che chiede un'azione pratica è quell'azione, non una nota di
-  diario: «ricordami di chiamare l'officina» è un task e basta. Il diario è per
-  ciò che nessuno degli altri moduli registrerebbe.
+  saluto, una domanda, un «ok»), rispondi con una sola azione «nessuna»: è una
+  risposta corretta, non un fallimento.
+- Un messaggio che chiede **solo** un'azione pratica è quell'azione e basta:
+  «ricordami di chiamare l'officina» è un task, non anche una nota di diario —
+  non c'è niente da raccontare. Il diario è per ciò che nessuno degli altri
+  moduli registrerebbe.
+- Ma un messaggio può fare **due cose insieme**, e allora vanno messe tutte e
+  due nella lista. «Oggi laboratorio pesante, tre ore sullo stesso bug. Devo
+  ricordarmi di mandare la mail al prof» è insieme un racconto e un promemoria:
+  → annota_diario con `titolo` = «Oggi laboratorio pesante, tre ore sullo stesso
+    bug», e aggiungi_task con `titolo` = «mandare la mail al prof».
+  **Dividi il testo fra le due azioni**: nel diario va solo la parte che
+  racconta, mai il promemoria; nel task solo la cosa da fare, mai il racconto
+  attorno. Vale per qualunque coppia: «ho speso 12 euro di benzina, giornata
+  storta» sono una registra_spesa e una annota_diario.
+- annota_diario e segna_abitudini compaiono al massimo UNA volta per messaggio:
+  se il messaggio racconta più cose, stanno tutte dentro lo stesso annota_diario,
+  e tutte le abitudini nominate stanno nelle liste di un solo segna_abitudini.
+  Le altre azioni possono ripetersi: «ricordami di chiamare l'officina e di
+  comprare il regalo» sono due aggiungi_task distinti.
+- Se il messaggio non chiede niente, la lista contiene una sola voce con azione
+  «nessuna». La lista non è mai vuota.
 - Non inventare mai un riferimento che non compare nell'elenco fornito.
 
 Oltre all'azione, in ogni messaggio guarda se c'è un **segnale sul profilo**:
@@ -234,8 +278,9 @@ mesi — preferenze, come lavora o studia, cosa lo stanca, opinioni che ripete.
 - «chiaro» se vale in generale e lo diresti anche fra sei mesi.
 - «ambiguo» se potrebbe essere solo la giornata storta: allora scrivi in
   `segnale_domanda` una riga per chiederglielo.
-- L'azione e il segnale sono indipendenti: un messaggio può essere insieme un
-  task e un segnale, oppure nessuno dei due."""
+- Le azioni e il segnale sono indipendenti: un messaggio può essere insieme un
+  task e un segnale, oppure nessuno dei due. Il segnale resta comunque uno solo
+  per messaggio, qualunque sia il numero di azioni."""
 
 
 @dataclass(frozen=True)
@@ -254,6 +299,32 @@ class Intenzione:
     categoria: str = ""
     abitudini_fatte: tuple[str, ...] = ()
     abitudini_non_fatte: tuple[str, ...] = ()
+
+
+# Quante azioni si accettano da un messaggio solo. Non è un limite di prodotto:
+# è il segnale che qualcosa è andato storto. Un messaggio che ne chiede davvero
+# più di quattro non esiste, mentre un modello che si inceppa e ripete la stessa
+# voce sì — e senza tetto riempirebbe la chat di conferme.
+MASSIMO_AZIONI = 4
+
+# Azioni che valgono al massimo una volta per messaggio, perché aggregano già
+# per conto loro: il diario raccoglie tutto il racconto in un frammento, e un
+# solo `segna_abitudini` porta due liste di nomi. Due voci di queste
+# spezzerebbero in due ciò che è una cosa sola, e produrrebbero due conferme
+# per un gesto solo.
+UNA_SOLA_VOLTA = frozenset({Azione.ANNOTA_DIARIO, Azione.SEGNA_ABITUDINI})
+
+
+@dataclass(frozen=True)
+class Lettura:
+    """Cosa il modello ha capito da UN messaggio.
+
+    Le **azioni** sono una lista perché un messaggio può chiedere più cose
+    insieme; il **segnale** per il profilo resta uno solo, perché descrive il
+    proprietario e non una delle cose che ha chiesto.
+    """
+
+    azioni: tuple[Intenzione, ...] = ()
     segnale: str = "nessuno"
     segnale_estratto: str = ""
     segnale_domanda: str = ""
@@ -351,8 +422,8 @@ def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
     return "\n".join(righe)
 
 
-def interpreta(conn: sqlite3.Connection, ora: datetime, testo: str, router: Router) -> Intenzione:
-    """Chiede al modello che azione corrisponde al messaggio."""
+def interpreta(conn: sqlite3.Connection, ora: datetime, testo: str, router: Router) -> Lettura:
+    """Chiede al modello quali azioni corrispondono al messaggio."""
     dati = router.chiedi_json(
         # §6: parsing della lista e CRUD dei task sono entrambi "task semplice,
         # alto volume" e vanno a DeepSeek. Si nomina il compito, non il modello.
@@ -361,7 +432,64 @@ def interpreta(conn: sqlite3.Connection, ora: datetime, testo: str, router: Rout
         utente=f"{_contesto(conn, ora)}\n\nMessaggio: {testo.strip()}",
         schema=SCHEMA_INTENZIONE,
     )
-    return _leggi_intenzione(dati)
+    return _leggi_lettura(dati)
+
+
+def _leggi_lettura(dati: dict[str, Any]) -> Lettura:
+    """Dalla risposta grezza del modello alle azioni da eseguire.
+
+    Accetta anche la vecchia forma a `azione` singola in cima all'oggetto:
+    `deepseek.py` lo dice chiaro, DeepSeek garantisce JSON valido ma **non**
+    che rispetti lo schema, e una risposta che ignora la lista non deve
+    diventare un messaggio perso. Costa tre righe e toglie un modo di fallire.
+    """
+    grezze = dati.get("azioni")
+    voci = [v for v in grezze if isinstance(v, dict)] if isinstance(grezze, list) else []
+    if not voci and "azione" in dati:
+        voci = [dati]
+
+    lette = [_leggi_intenzione(v) for v in voci]
+    return Lettura(
+        azioni=_ripulisci(lette),
+        segnale=_leggi_segnale(dati.get("segnale")),
+        segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
+        segnale_domanda=str(dati.get("segnale_domanda") or "").strip(),
+    )
+
+
+def _ripulisci(azioni: list[Intenzione]) -> tuple[Intenzione, ...]:
+    """Toglie ciò che non va eseguito e mette il diario in fondo.
+
+    Tre cose in un passaggio solo, tutte per non moltiplicare le conferme:
+    le «nessuna» spariscono se c'è dell'altro (un modello che aggiunge una voce
+    vuota accanto a un task non deve produrre due messaggi); di `annota_diario`
+    e `segna_abitudini` resta la prima, perché aggregano già per conto loro; e
+    un doppione esatto — stessa azione, stesso titolo — si conta una volta.
+
+    **Il diario va in fondo** perché è lo sfondo: si legge prima cosa Custode ha
+    fatto («Segnato: mandare la mail al prof») e poi che ha preso nota della
+    giornata, non il contrario. L'ordine è deciso qui e non dal modello, così la
+    stessa frase produce sempre la stessa sequenza di messaggi.
+    """
+    tenute: list[Intenzione] = []
+    viste: set[tuple[Azione, str]] = set()
+    for azione in azioni:
+        if azione.azione is Azione.NESSUNA:
+            continue
+        if azione.azione in UNA_SOLA_VOLTA and any(a.azione is azione.azione for a in tenute):
+            continue
+        impronta = (azione.azione, azione.titolo.casefold())
+        if impronta in viste:
+            continue
+        viste.add(impronta)
+        tenute.append(azione)
+        if len(tenute) == MASSIMO_AZIONI:
+            break
+
+    if not tenute:
+        return (Intenzione(azione=Azione.NESSUNA),)
+    tenute.sort(key=lambda a: a.azione is Azione.ANNOTA_DIARIO)
+    return tuple(tenute)
 
 
 def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
@@ -388,9 +516,6 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         categoria=str(dati.get("categoria") or "").strip(),
         abitudini_fatte=_leggi_nomi(dati.get("abitudini_fatte")),
         abitudini_non_fatte=_leggi_nomi(dati.get("abitudini_non_fatte")),
-        segnale=_leggi_segnale(dati.get("segnale")),
-        segnale_estratto=str(dati.get("segnale_estratto") or "").strip(),
-        segnale_domanda=str(dati.get("segnale_domanda") or "").strip(),
     )
 
 
@@ -789,18 +914,33 @@ def interpreta_ed_esegui(
     router: Router,
     *,
     da_vocale: bool = False,
-) -> Esito:
-    """Il giro completo, con gli errori del router tradotti in frasi leggibili."""
-    if not testo.strip():
-        return Esito(testo="Non ho ricevuto niente da interpretare.")
-    try:
-        intenzione = interpreta(conn, ora, testo, router)
-    except ErroreRouter as errore:
-        return Esito(testo=_messaggio_errore(errore))
+) -> list[Esito]:
+    """Il giro completo, con gli errori del router tradotti in frasi leggibili.
 
-    esito = esegui(conn, ora, intenzione, da_vocale=da_vocale)
-    esito = _completa_categoria(conn, ora, esito, router)
-    return _registra_segnale(conn, ora, intenzione, testo, esito)
+    Ritorna **un esito per azione**, nell'ordine in cui vanno mostrati: chi
+    chiama ne fa un messaggio ciascuno, così ogni cosa fatta tiene il suo
+    «Annulla» e si disfa quella sbagliata senza toccare l'altra. La lista non è
+    mai vuota — un messaggio che non chiede niente produce comunque un esito,
+    che è la frase da dire.
+    """
+    if not testo.strip():
+        return [Esito(testo="Non ho ricevuto niente da interpretare.")]
+    try:
+        lettura = interpreta(conn, ora, testo, router)
+    except ErroreRouter as errore:
+        return [Esito(testo=_messaggio_errore(errore))]
+
+    esiti = [
+        _completa_categoria(conn, ora, esegui(conn, ora, azione, da_vocale=da_vocale), router)
+        for azione in lettura.azioni
+    ]
+    if not esiti:
+        esiti = [Esito(testo="Non ho capito cosa vuoi che faccia.")]
+    # Il segnale si attacca all'**ultimo** esito: la domanda di chiarimento è
+    # una parentesi su tutto il messaggio, e in fondo si legge come tale invece
+    # di infilarsi fra due conferme.
+    esiti[-1] = _registra_segnale(conn, ora, lettura, testo, esiti[-1])
+    return esiti
 
 
 def _completa_categoria(
@@ -824,7 +964,7 @@ def _completa_categoria(
 def _registra_segnale(
     conn: sqlite3.Connection,
     ora: datetime,
-    intenzione: Intenzione,
+    lettura: Lettura,
     messaggio: str,
     esito: Esito,
 ) -> Esito:
@@ -834,10 +974,10 @@ def _registra_segnale(
     sul proprietario non deve cambiare cosa Custode fa, né far fallire l'azione
     se qualcosa qui va storto.
     """
-    if intenzione.segnale == "nessuno" or not intenzione.segnale_estratto:
+    if lettura.segnale == "nessuno" or not lettura.segnale_estratto:
         return esito
 
-    ambiguo = intenzione.segnale == "ambiguo" and bool(intenzione.segnale_domanda)
+    ambiguo = lettura.segnale == "ambiguo" and bool(lettura.segnale_domanda)
     # Una domanda alla volta: se ce n'è già una senza risposta, questo segnale
     # entra in coda in silenzio e finirà nella revisione settimanale. Meglio un
     # candidato da guardare fra qualche giorno che due domande sospese in chat.
@@ -847,14 +987,14 @@ def _registra_segnale(
     candidato = dom_profilo.aggiungi_candidato(
         conn,
         messaggio_origine=messaggio.strip(),
-        estratto=intenzione.segnale_estratto,
+        estratto=lettura.segnale_estratto,
         ora=ora,
-        domanda=intenzione.segnale_domanda if ambiguo else None,
+        domanda=lettura.segnale_domanda if ambiguo else None,
     )
     return replace(
         esito,
         candidato_id=candidato.id,
-        domanda_chiarimento=intenzione.segnale_domanda if ambiguo else "",
+        domanda_chiarimento=lettura.segnale_domanda if ambiguo else "",
     )
 
 

@@ -45,14 +45,20 @@ nessuna porta in ingresso né un tunnel già configurato (§2, §9).
 Oltre ai comandi il bot capisce il **linguaggio libero**, scritto o dettato:
 «ricordami di chiamare l'officina», «sto finendo il latte», «fatto la
 bolletta», «oggi palestra e lettura, ma niente meditazione». Il messaggio passa
-dal router (§6), che ne ricava un'intenzione
-strutturata; il bot esegue subito e dice cosa ha fatto, lasciando un bottone
+dal router (§6), che ne ricava una o più intenzioni
+strutturate; il bot esegue subito e dice cosa ha fatto, lasciando un bottone
 «Annulla» — l'interpretazione è automatica, quindi disfare deve costare un tap.
+
+Un messaggio che chiede **più cose** — «oggi laboratorio pesante, tre ore sullo
+stesso bug, devo ricordarmi di mandare la mail al prof» — riceve **un messaggio
+per cosa fatta**, ognuno col suo «Annulla»: così si toglie il task sbagliato
+senza perdere il racconto finito nel diario. Il diario è sempre l'ultimo.
 
 I **vocali** seguono esattamente lo stesso percorso: whisper.cpp locale li
 trascrive e da lì in poi non c'è differenza col testo (§8.1). Il bot rimanda
 anche la trascrizione, così se qualcosa esce storto si vede subito se la colpa
-è di Whisper o dell'interpretazione.
+è di Whisper o dell'interpretazione — sul **primo** messaggio soltanto, quando
+il vocale ne produce più d'uno.
 
 Una **foto** è uno scontrino: vedi §8.5 qui sotto.
 

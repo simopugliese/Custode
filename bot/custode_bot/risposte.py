@@ -239,22 +239,33 @@ def messaggio_libero(
     router: Router,
     *,
     da_vocale: bool = False,
-) -> Risposta:
-    """Testo (o vocale trascritto) in linguaggio libero → azione (§8.1, §6).
+) -> list[Risposta]:
+    """Testo (o vocale trascritto) in linguaggio libero → azioni (§8.1, §6).
 
-    L'azione viene eseguita subito e il bot dice cosa ha fatto, con un bottone
-    per tornare indietro: l'interpretazione è automatica, quindi disfare deve
-    costare un tap e non una caccia al task creato per sbaglio.
+    Le azioni vengono eseguite subito e il bot dice cosa ha fatto, con un
+    bottone per tornare indietro: l'interpretazione è automatica, quindi
+    disfare deve costare un tap e non una caccia al task creato per sbaglio.
+
+    Un messaggio che chiede **più cose** («giornata pesante, devo ricordarmi di
+    mandare la mail») produce **un messaggio per cosa fatta**, non una conferma
+    sola che le riassume: così ogni azione tiene il suo «Annulla» e si toglie
+    quella sbagliata senza perdere l'altra. È anche il motivo per cui il
+    `callback_data` resta com'è — un bottone parla sempre di una azione sola, e
+    i 64 byte di Telegram bastano ancora.
     """
     # Se una bozza di diario sta aspettando la tua riscrittura, questo messaggio
     # è la riscrittura: si prende alla lettera, senza passare dal modello (§8.4).
     # Il testo che entra nel diario resta così esattamente il tuo.
     attesa = dom_diario.in_modifica(conn)
     if attesa is not None:
-        return _riscrivi_diario(conn, ora, attesa, testo)
+        return [_riscrivi_diario(conn, ora, attesa, testo)]
 
-    esito = dom_assistente.interpreta_ed_esegui(conn, ora, testo, router, da_vocale=da_vocale)
+    esiti = dom_assistente.interpreta_ed_esegui(conn, ora, testo, router, da_vocale=da_vocale)
+    return [_risposta_a_esito(esito, ora) for esito in esiti]
 
+
+def _risposta_a_esito(esito: dom_assistente.Esito, ora: datetime) -> Risposta:
+    """Una cosa fatta → un messaggio, coi bottoni che la riguardano."""
     bottoni: list[list[Bottone]] = []
     if esito.ha_cambiato_qualcosa and esito.identificatore is not None:
         bottoni = [
