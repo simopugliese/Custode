@@ -33,6 +33,7 @@ from custode_bot.config import ImpostazioniBot
 from custode_bot.trascrizione import ClientWhisper, TrascrizioneNonRiuscita
 from custode_core.config import Settings
 from custode_core.db import connessione
+from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import spese as dom_spese
@@ -141,9 +142,11 @@ class WhisperFinto(ClientWhisper):
         self.testo = "sto finendo il latte"
         self.errore: Exception | None = None
         self.audio_ricevuto: list[bytes] = []
+        self.contesti_ricevuti: list[str] = []
 
-    def trascrivi(self, audio: bytes, nome_file: str = "vocale.ogg") -> str:
+    def trascrivi(self, audio: bytes, nome_file: str = "vocale.ogg", contesto: str = "") -> str:
         self.audio_ricevuto.append(audio)
+        self.contesti_ricevuti.append(contesto)
         if self.errore is not None:
             raise self.errore
         return self.testo
@@ -399,6 +402,38 @@ def test_un_vocale_passa_da_whisper_e_poi_dallo_stesso_percorso(
     assert "Aggiunto alla lista: latte" in finto.ultimo
     with connessione(db_path) as conn:
         assert [v.nome for v in dom_lista.elenco(conn)] == ["latte"]
+
+
+def test_il_vocabolario_arriva_a_whisper_prima_di_trascrivere(
+    app: Application,
+    finto: BotFinto,
+    modello: RouterFinto,
+    whisper: WhisperFinto,
+    db_path: Path,
+) -> None:
+    """I nomi che usi davvero viaggiano con l'audio (§8.1).
+
+    Whisper indovina dal suono, e proprio sui nomi propri sbaglia: sono però
+    quelli che servono per agganciare un'abitudine o una categoria che esiste
+    già, quindi lo sbaglio non resta nella trascrizione, si propaga.
+    """
+    with connessione(db_path) as conn:
+        dom_abitudini.crea(conn, nome="Meditazione", target_settimanale=3, ora=_adesso())
+        dom_spese.assicura_categoria(conn, "Bricoman", _adesso())
+
+    _manda_vocale(app, finto, b"OggS-finto")
+
+    (contesto,) = whisper.contesti_ricevuti
+    assert "Meditazione" in contesto
+    assert "Bricoman" in contesto
+
+
+def test_senza_niente_in_casa_non_si_suggerisce_niente(
+    app: Application, finto: BotFinto, whisper: WhisperFinto
+) -> None:
+    """Un'installazione appena avviata non deve promettere parole inesistenti."""
+    _manda_vocale(app, finto, b"OggS-finto")
+    assert whisper.contesti_ricevuti == [""]
 
 
 def test_un_vocale_che_non_si_capisce(

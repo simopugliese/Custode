@@ -8,8 +8,9 @@ container è già dentro casa (§2, §9).
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from custode_whisper.config import ImpostazioniWhisper, get_impostazioni_whisper
@@ -42,10 +43,19 @@ def crea_app(impostazioni: ImpostazioniWhisper | None = None) -> FastAPI:
         )
 
     @app.post("/trascrivi", response_model=Trascrizione)
-    async def trascrivi_audio(audio: UploadFile) -> Trascrizione:
+    async def trascrivi_audio(
+        audio: UploadFile, contesto: Annotated[str, Form()] = ""
+    ) -> Trascrizione:
+        """`contesto`: i nomi che il proprietario usa, per non farli sbagliare.
+
+        Facoltativo, e il servizio resta **senza stato**: quei nomi stanno nel
+        database, che è del bot, non di qui. Chi chiama li manda insieme
+        all'audio invece di far leggere il database a questo container — che
+        altrimenti dovrebbe montarselo solo per questo.
+        """
         contenuto = await audio.read()
         try:
-            return Trascrizione(testo=trascrivi(contenuto, conf))
+            return Trascrizione(testo=trascrivi(contenuto, conf, contesto))
         except ErroreTrascrizione as errore:
             # 422: l'audio è arrivato ma non se ne cava un testo. Chi chiama lo
             # distingue da un 500, che sarebbe un guasto del servizio.

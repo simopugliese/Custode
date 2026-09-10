@@ -38,6 +38,7 @@ from custode_bot.risposte import Risposta
 from custode_bot.trascrizione import ClientWhisper, TrascrizioneNonRiuscita
 from custode_core.config import Settings
 from custode_core.db import connect
+from custode_core.dominio import vocabolario
 from custode_core.formato import adesso
 from custode_core.migrazioni import migra
 from custode_router import Router
@@ -262,10 +263,19 @@ def crea_applicazione(
             )
             return
 
+        # I nomi che usi davvero — abitudini, categorie di spesa, task aperti —
+        # vanno a Whisper insieme all'audio: sono le parole che indovina peggio
+        # dal suono ed esattamente quelle che poi servono per agganciare
+        # qualcosa che esiste già. La lettura è breve e sta fuori dall'attesa
+        # di rete, così la connessione non resta aperta per tutta la
+        # trascrizione.
+        with connessione() as conn:
+            contesto = vocabolario.suggerimento(conn)
+
         try:
             file = await voce.get_file()
             audio = bytes(await file.download_as_bytearray())
-            testo = trascrittore.trascrivi(audio)
+            testo = trascrittore.trascrivi(audio, contesto=contesto)
         except TrascrizioneNonRiuscita as errore:
             log.warning("trascrizione fallita: %s", errore)
             await _rispondi(

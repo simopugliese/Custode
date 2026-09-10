@@ -167,6 +167,38 @@ Per cambiare modello (più accurato, più lento):
 docker compose build --build-arg WHISPER_MODEL=small-q5_1 whisper
 ```
 
+### Se una trascrizione esce storta
+
+Il bot manda a Whisper i **nomi che usi davvero** — abitudini, categorie di
+spesa, reparti, task aperti — come prompt iniziale: sono le parole che Whisper
+indovina peggio dal suono, ed esattamente quelle che poi servono per agganciare
+qualcosa che esiste già. Per vedere cosa gli è stato suggerito:
+
+```bash
+docker compose exec bot python -c "
+from custode_core.db import connessione
+from custode_core.dominio import vocabolario
+with connessione() as conn:
+    print(vocabolario.suggerimento(conn))
+"
+```
+
+Le leve, una alla volta — cambiarne due insieme non dice quale ha funzionato:
+
+1. **il prompt** (già attivo): se un nome ricorrente esce sempre sbagliato,
+   controlla che sia davvero fra i primi `WHISPER_` suggeriti — l'elenco è
+   tagliato a 400 caratteri e i titoli dei task stanno in fondo;
+2. **l'audio** (`WHISPER_FILTRI_AUDIO`): svuotalo e riprova lo stesso vocale
+   per capire se i filtri aiutano o disturbano il tuo modo di registrare;
+3. **il modello** (`WHISPER_MODEL` del build): `base` è addestrato in
+   larghissima parte su inglese, e sull'italiano è il gradino debole.
+   `small-q5_1` costa circa 1,5 GB di RAM invece di 1 e allunga la
+   trascrizione, ma è il salto di qualità vero.
+
+Quello che **non** serve toccare: il beam search è già attivo per impostazione
+predefinita in whisper-cli, e `--vad` non esiste in whisper.cpp v1.7.4 (il pin
+è nel Dockerfile) — per averla bisogna alzare quel pin.
+
 All'avvio il log dice qual è l'unico mittente ammesso. Se scrivi da un altro
 account non ricevi risposta — è il comportamento voluto (§9) — e nel log compare
 una riga `messaggio ignorato da un mittente non autorizzato`.

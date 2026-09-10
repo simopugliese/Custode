@@ -12,9 +12,17 @@ schema §7 in quattro servizi.
   c'è. Le usano sia l'API sia il bot.
 - `migrazioni/` — lo schema di §7, un file `NNN_nome.sql` per volta.
 - `dominio/` — i servizi che API, bot e worker usano identici: `task.py`,
-  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`.
+  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`, più
+  `vocabolario.py`.
 
 Da fare, con i moduli funzionali: calendario, corsi.
+
+`vocabolario.py` è l'unico che attraversa gli altri invece di stare su un
+modulo suo: raccoglie i **nomi in uso** — abitudini, categorie di spesa,
+reparti, task aperti — perché Whisper li riceva come prompt e smetta di
+sbagliarli (§8.1). Sta in `core` e non nel bot perché è conoscenza del dominio,
+non un modo di rispondere, ed è pura lettura: non sa niente né di Whisper né di
+Telegram, e chi la usa decide cosa farne.
 
 Una nota su `spese.py`: gli importi ci stanno dentro in **centesimi**, come
 interi, e diventano euro solo al confine con l'API e col bot. Sommare float per

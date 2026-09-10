@@ -28,6 +28,25 @@ class ImpostazioniWhisper(BaseSettings):
     ffmpeg: Path = Path("/usr/bin/ffmpeg")
     """I vocali di Telegram sono OGG/Opus: vanno portati a WAV 16 kHz mono."""
 
+    filtri_audio: str = "highpass=f=80,dynaudnorm"
+    """Filtri `-af` di ffmpeg applicati prima di trascrivere.
+
+    Un vocale registrato per strada o a mezzo metro dalla bocca è il caso
+    normale, non l'eccezione: togliere il rimbombo sotto gli 80 Hz e portare il
+    parlato a un volume costante costa qualche millisecondo e toglie una fetta
+    degli errori. Si svuota (`WHISPER_FILTRI_AUDIO=`) per tornare alla
+    conversione nuda e confrontare.
+    """
+
+    sopprimi_non_parlato: bool = True
+    """`--suppress-nst`: niente token che non sono parlato.
+
+    Su silenzio e rumore Whisper inventa, e in italiano tira fuori le frasi da
+    sottotitoli («Sottotitoli a cura di…»), che poi arrivano all'interprete
+    come se fossero state dette. In whisper.cpp v1.7.4 non c'è ancora la VAD,
+    che sarebbe il rimedio pulito: questa è la leva disponibile.
+    """
+
     timeout_secondi: float = 120.0
     max_byte_audio: int = 25 * 1024 * 1024
 
