@@ -27,6 +27,12 @@ router = [
 whisper = [
     "python-multipart==0.0.32",
 ]
+# Il calendario si legge con due chiamate HTTP (rinnovo del token ed elenco
+# eventi): httpx basta, e l'SDK di Google si porterebbe dietro un client
+# generato per tutte le sue API — su arm64, tempo di build per niente.
+calendario = [
+    "httpx==0.28.1",
+]
 # Il worker manda i suoi messaggi su Telegram con una sola chiamata HTTP
 # (`custode_worker.telegram`), quindi gli basta httpx: `python-telegram-bot`
 # resta fuori dalla sua immagine.
@@ -48,6 +54,11 @@ dev = [
     "ruff==0.8.6",
 ]
 
+# L'unico comando che una persona lancia a mano: chiede a Google il permesso di
+# leggere il calendario, una volta sola (§8.10).
+[project.scripts]
+custode-autorizza-calendario = "custode_calendario.autorizza:principale"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -63,6 +74,7 @@ packages = [
     "router/custode_router",
     "whisper/custode_whisper",
     "worker/custode_worker",
+    "calendario/custode_calendario",
 ]
 
 [tool.uv]
@@ -91,7 +103,7 @@ filterwarnings = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "bot", "router", "whisper", "worker", "tests"]
+files = ["core", "api", "bot", "router", "whisper", "worker", "calendario", "tests"]
 
 [tool.ruff.lint.isort]
 # Senza questo isort tratterebbe i pacchetti del repo come librerie di terze
@@ -103,6 +115,7 @@ known-first-party = [
     "custode_router",
     "custode_whisper",
     "custode_worker",
+    "custode_calendario",
 ]
 
 # `telegram.ext.Application` è generica su sei parametri che python-telegram-bot

@@ -73,6 +73,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
   /api            # FastAPI backend
   /router         # logica di scelta DeepSeek/Claude + interprete del testo libero
   /whisper        # trascrizione vocale locale (servizio a sé, §13)
+  /calendario     # lettura del calendario di Google, sola lettura (§8.10)
   /worker         # job schedulati (riepilogo settimanale, backup, reminder)
   /core           # codice condiviso: configurazione, accesso SQLite, dominio
   /dashboard      # frontend (build separata, deploy su Pages)
@@ -94,6 +95,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
 Tutto su GitHub tranne: file `.env` reale, il database, e qualunque credenziale. Il `.env.example` documenta ogni variabile richiesta senza esporre segreti.
 
 **Note di implementazione** (decisioni prese costruendo lo scheletro, non previste dalla bozza originale):
+- `/calendario` non era nell'elenco iniziale. È un pacchetto e non una cartella dentro `/core` perché è un **adattatore a un servizio esterno**, come `/router` lo è per i modelli: `core` tiene configurazione, SQLite e dominio, e non deve sapere che esiste una rete. Ha un extra suo in `pyproject.toml`, così l'immagine dell'API non si porta dietro il client del calendario.
 - `/core` non era nell'elenco iniziale. È stato aggiunto perché api, bot, router e worker hanno bisogno della stessa configurazione e dello stesso schema §7: l'alternativa era duplicarli in quattro punti destinati a divergere. Dentro ogni cartella vive un pacchetto Python con prefisso `custode_` (`core/custode_core`, `api/custode_api`, …) per avere import non ambigui.
 - Le dipendenze Python sono gestite con **uv** e un `uv.lock` unico per tutti i servizi: un lockfile vero serve alla riproducibilità richiesta in §1, e su Pi 5 arm64 le installazioni restano veloci.
 - L'API espone `GET /api/health`, che risponde 503 se SQLite non è raggiungibile: è il segnale su cui lo smoke test post-deploy di §10 fa scattare il rollback.
@@ -299,6 +301,22 @@ Aperto deliberatamente: prima di collegarla vanno decisi scope OAuth minimo (sol
 - **Tipi di trigger supportati**: `orario` (fisso), `prima_evento`, `dopo_evento`, `pattern` (generato dal motore stesso). Le regole già approvate vengono valutate/eseguite con logica pura (nessuna chiamata LLM, costo zero) — solo la *creazione* di nuove regole auto-proposte richiede ragionamento (Claude).
 - Le regole restano sempre visibili/modificabili/disattivabili da dashboard, e si possono correggere a parole ("no, dopo lezione ci metto un'ora, non 30 minuti") — il feedback aggiorna la regola invece di crearne una nuova.
 - **Inferenza "sei probabilmente a casa"**: fine dell'ultima lezione in calendario + un buffer configurabile (es. 30-45 min), usata ad esempio per non far partire il check-in universitario a lezione appena finita ma con un margine realistico.
+
+**Stato attuale.** È costruito il primo pezzo: **leggere il calendario di Google**. Niente database, niente regole, niente job — solo l'adattatore (`calendario/custode_calendario`) e il comando che chiede il permesso. Il resto di §8.10 arriva sopra questo.
+
+*Perché questo pezzo per primo.* È l'unico che non posso provare per intero senza credenziali vere e senza una persona che clicchi: quindi va messo per primo, perché una sorpresa nell'autorizzazione si scopra con poco codice attorno invece che con sei pezzi già costruiti sopra.
+
+*Google con OAuth invece del feed iCal dell'università.* Costa un consenso da dare a mano, che il feed non chiederebbe, ma è il calendario dove le cose stanno davvero. L'interfaccia `SorgenteCalendario` esiste proprio perché aggiungere un feed iCal un domani non tocchi niente del motore di contesto.
+
+*Il flusso scelto è il reindirizzamento su `localhost`, non quello per dispositivi senza tastiera.* Il secondo sarebbe più comodo su un Pi headless — stampa un codice, lo digiti dal telefono — ma Google lo consente solo per un sottoinsieme di permessi e non è stato possibile confermare che quello del calendario ci sia dentro. Un flusso che fallisce con `invalid_scope` al primo tentativo costerebbe più di quanto fa risparmiare. Il reindirizzamento su localhost funziona con credenziali «Desktop app» per qualunque permesso, e su un Pi headless si chiude con un tunnel SSH (DEPLOY.md).
+
+*Il refresh token sta nel `.env`*, come ogni altra credenziale del progetto, e non in un file dentro un volume: una sola convenzione per i segreti, e un backup del database che non si porta dietro un permesso — un ripristino di tre mesi fa rimetterebbe in circolo un token che nel frattempo hai revocato. Google non ruota i refresh token per le app installate, quindi non c'è niente da riscrivere; se un giorno cominciasse, quel campo diventerebbe un file scrivibile.
+
+*Due trappole di Google, entrambe scoperte prima di scriverci sopra.* Se la schermata di consenso resta in **«Testing»** con utenti esterni, il refresh token **scade dopo 7 giorni**: il calendario smetterebbe di aggiornarsi senza che nessuno se ne accorga, quindi `AutorizzazioneNonValida` nomina questa causa nel messaggio invece di dire genericamente che l'accesso è scaduto. E senza `prompt=consent` una **seconda** autorizzazione torna senza refresh token, il che sembra un guasto e non lo è.
+
+*Gli orari sono naive in ora locale*, come tutto il resto del progetto. Non è cosmetica: una regola di contesto confronta l'orario di un evento con «adesso», e mescolare un datetime con fuso e uno senza è un errore che Python solleva la prima volta che una regola deve scattare. La conversione, e la fine **esclusiva** che Google usa per gli eventi di giornata, sono spiegate nel README della cartella.
+
+*Le ricorrenze si chiedono già espanse* (`singleEvents=true`), perché «prima della prossima lezione» ha bisogno di un istante e non di una regola di ripetizione. Ogni occorrenza porta l'id della serie: non serve ancora, servirà a decidere il tipo di un evento **una volta per la serie** invece che ogni martedì da capo, e raccoglierlo dopo vorrebbe dire risincronizzare.
 
 ### 8.11 Corsi universitari
 - Un corso (`corsi`) ha nome, orario (collegato agli eventi calendario taggati "lezione"), data esame ed è collegato a un percorso `syllabus.md` nel tuo repo appunti su GitHub.

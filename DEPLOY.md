@@ -203,6 +203,99 @@ All'avvio il log dice qual è l'unico mittente ammesso. Se scrivi da un altro
 account non ricevi risposta — è il comportamento voluto (§9) — e nel log compare
 una riga `messaggio ignorato da un mittente non autorizzato`.
 
+## 3-bis. Collegare il calendario (§8.10)
+
+Si fa **una volta sola**. È l'unico passaggio di Custode che richiede un browser
+e una persona che clicca: da lì in poi il calendario si aggiorna da solo.
+
+Custode **legge e basta**. Il permesso che chiede è `calendar.readonly`: una
+scrittura la rifiuterebbe Google, non solo il codice.
+
+### a. Le credenziali, su Google Cloud
+
+1. Su [console.cloud.google.com](https://console.cloud.google.com) crea un
+   progetto (un nome qualsiasi, è tuo e solo tuo).
+2. **API e servizi → Libreria →** abilita **Google Calendar API**.
+3. **Schermata di consenso OAuth**: tipo utente «Esterno», aggiungi te stesso
+   come utente di test, e aggiungi l'ambito
+   `https://www.googleapis.com/auth/calendar.readonly`.
+4. **Credenziali → Crea credenziali → ID client OAuth → Applicazione desktop.**
+   Fra gli URI di reindirizzamento autorizzati metti `http://localhost:8765`.
+5. Copia le due stringhe nel `.env` del Pi:
+
+```
+CALENDARIO_CLIENT_ID=...
+CALENDARIO_CLIENT_SECRET=...
+```
+
+> **Il passaggio che costa una settimana a chi lo salta.** Finché la schermata
+> di consenso resta in **«Testing»**, Google fa scadere il permesso dopo **7
+> giorni**, e il calendario smette di aggiornarsi senza dirlo a nessuno. Vai su
+> **Schermata di consenso OAuth → Pubblica app** e mettila **«In production»**.
+> Alla prima autorizzazione vedrai una schermata «app non verificata»: è
+> normale per un'app personale, si passa da «Avanzate → Vai all'app».
+
+### b. Il permesso
+
+Il Pi è headless, quindi il browser sta sul tuo computer e il comando sul Pi.
+Il modo più semplice è un tunnel SSH, che porta la porta del Pi sul tuo computer
+per il tempo di un clic:
+
+```bash
+# dal tuo computer
+ssh -L 8765:localhost:8765 pi@custode.local
+
+# e lì dentro, nella cartella del repo
+uv run custode-autorizza-calendario
+```
+
+Il comando stampa un indirizzo. Aprilo **nel browser del tuo computer**, dai il
+permesso, e la pagina dirà «Fatto». Il terminale stampa la riga da incollare:
+
+```
+CALENDARIO_REFRESH_TOKEN=1//0g...
+```
+
+Mettila nel `.env` e riavvia i servizi (`docker compose up -d`).
+
+<details>
+<summary>Se preferisci lanciarlo dentro un container</summary>
+
+Dentro un container `127.0.0.1` è l'interno del container, e il browser non lo
+raggiungerebbe: va detto al comando di ascoltare su tutte le interfacce e va
+pubblicata la porta.
+
+```bash
+ssh -L 8765:localhost:8765 pi@custode.local
+docker compose run --rm -p 8765:8765 -e CALENDARIO_ASCOLTA_SU=0.0.0.0 \
+  worker custode-autorizza-calendario
+```
+
+</details>
+
+<details>
+<summary>Se preferisci non usare SSH</summary>
+
+Il comando si può lanciare sul **tuo** computer, dove il browser c'è già: serve
+il repo e `uv`. Il token che stampa lo incolli nel `.env` del Pi. Il permesso
+non è legato alla macchina che lo ha chiesto.
+
+</details>
+
+### c. Se un giorno smette di funzionare
+
+Nei log comparirà `l'autorizzazione al calendario non vale più`. Le cause sono
+tre, in ordine di probabilità:
+
+1. la schermata di consenso è rimasta in **«Testing»** (i 7 giorni di sopra);
+2. hai revocato l'accesso da
+   [myaccount.google.com/permissions](https://myaccount.google.com/permissions);
+3. hai cambiato la password dell'account Google.
+
+In tutti e tre i casi si rifà il punto **b**. Custode non riprova da solo su
+questo errore, apposta: un permesso morto non torna buono aspettando, e
+riprovarci ogni cinque minuti per giorni servirebbe solo a riempire i log.
+
 ## 4. Cloudflare Tunnel + Access **[da fare — fase 8]**
 
 In sintesi, quando ci arriviamo:
