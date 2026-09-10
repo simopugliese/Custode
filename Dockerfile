@@ -30,6 +30,7 @@ COPY README.md .
 COPY router/ router/
 COPY whisper/ whisper/
 COPY worker/ worker/
+COPY calendario/ calendario/
 RUN uv sync --frozen --no-dev
 
 # Utente non-root (§9), proprietario di /data così può scrivere sul volume.
@@ -73,7 +74,7 @@ CMD ["python", "-m", "custode_bot.main"]
 # resta fuori, perché qui si spedisce e basta — i tap sui bottoni li riceve il bot.
 FROM base AS worker
 
-RUN uv sync --frozen --no-dev --extra router --extra worker
+RUN uv sync --frozen --no-dev --extra router --extra worker --extra calendario
 RUN chown -R custode:custode /opt/venv
 USER custode
 

@@ -173,6 +173,9 @@ dependencies = [
 bot = [
     { name = "python-telegram-bot" },
 ]
+calendario = [
+    { name = "httpx" },
+]
 router = [
     { name = "anthropic" },
     { name = "httpx" },
@@ -199,6 +202,7 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'router'", specifier = "==1.2.0" },
     { name = "cryptography", marker = "extra == 'worker'", specifier = "==46.0.3" },
     { name = "fastapi", specifier = "==0.115.6" },
+    { name = "httpx", marker = "extra == 'calendario'", specifier = "==0.28.1" },
     { name = "httpx", marker = "extra == 'router'", specifier = "==0.28.1" },
     { name = "httpx", marker = "extra == 'worker'", specifier = "==0.28.1" },
     { name = "pydantic", specifier = "==2.10.4" },
@@ -208,7 +212,7 @@ requires-dist = [
     { name = "tzdata", specifier = "==2024.2" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.34.0" },
 ]
-provides-extras = ["bot", "router", "whisper", "worker"]
+provides-extras = ["bot", "router", "whisper", "calendario", "worker"]
 
 [package.metadata.requires-dev]
 dev = [
