@@ -61,7 +61,13 @@ zero; raccoglierlo dopo vorrebbe dire risincronizzare tutto.
 
 Il permesso si chiede **una volta sola**, con `custode-autorizza-calendario`.
 È l'unico pezzo di Custode che ha bisogno di un browser e di una persona che
-clicchi. Il runbook completo è in DEPLOY.md.
+clicchi. Il runbook completo è in DEPLOY.md § 3-bis.
+
+Sul Pi non c'è Python: il comando vive dentro l'immagine del **worker** (che è
+anche chi sincronizzerà), e si lancia con `docker compose run`. Dentro un
+container `127.0.0.1` è l'interno del container, quindi lì va messo
+`CALENDARIO_ASCOLTA_SU=0.0.0.0` e va pubblicata la porta, o il browser non
+raggiungerebbe il reindirizzamento.
 
 Due cose che costano tempo a chi non le sa:
 

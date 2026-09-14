@@ -9,6 +9,7 @@ rifiutato, e che lo scambio finale produca il token.
 
 from __future__ import annotations
 
+import socket
 import urllib.parse
 import urllib.request
 from collections.abc import Iterator
@@ -191,3 +192,25 @@ def test_senza_credenziali_dice_cosa_creare(monkeypatch: pytest.MonkeyPatch) -> 
 
 def _parametri(indirizzo: str) -> dict[str, list[str]]:
     return urllib.parse.parse_qs(urllib.parse.urlparse(indirizzo).query)
+
+
+def test_una_porta_occupata_lo_dice_invece_di_esplodere(
+    impostazioni: ImpostazioniCalendario, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Il comando aspetta cinque minuti, e chi lo rilancia trovava un traceback.
+
+    Succede sul serio: sembra che non stia succedendo niente, si rilancia, e il
+    primo è ancora lì in ascolto.
+    """
+    monkeypatch.setattr(
+        "custode_calendario.autorizza.get_impostazioni_calendario", lambda: impostazioni
+    )
+    occupata = socket.socket()
+    occupata.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    occupata.bind((impostazioni.ascolta_su, impostazioni.porta_autorizzazione))
+    occupata.listen(1)
+    try:
+        with pytest.raises(CalendarioNonRaggiungibile, match="occupata"):
+            principale()
+    finally:
+        occupata.close()

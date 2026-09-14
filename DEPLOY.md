@@ -237,17 +237,35 @@ CALENDARIO_CLIENT_SECRET=...
 
 ### b. Il permesso
 
-Il Pi è headless, quindi il browser sta sul tuo computer e il comando sul Pi.
-Il modo più semplice è un tunnel SSH, che porta la porta del Pi sul tuo computer
-per il tempo di un clic:
+Sul Pi non c'è Python né `uv`: c'è **Docker** (§1 qui sopra), e il comando vive
+dentro l'immagine del worker. Dopo aver aggiornato il repo va ricostruita, perché
+il `Dockerfile` è cambiato:
+
+```bash
+cd ~/custode
+git pull
+docker compose build worker
+```
+
+Il Pi è headless, quindi il browser sta sul tuo computer e il comando sul Pi. Un
+tunnel SSH porta la porta del Pi sul tuo computer per il tempo di un clic:
 
 ```bash
 # dal tuo computer
 ssh -L 8765:localhost:8765 pi@custode.local
-
-# e lì dentro, nella cartella del repo
-uv run custode-autorizza-calendario
 ```
+
+e in quella sessione SSH:
+
+```bash
+cd ~/custode
+docker compose run --rm -p 8765:8765 -e CALENDARIO_ASCOLTA_SU=0.0.0.0 \
+  worker custode-autorizza-calendario
+```
+
+`CALENDARIO_ASCOLTA_SU=0.0.0.0` serve perché dentro un container `127.0.0.1` è
+l'interno del container: il browser non lo raggiungerebbe. Vale solo per questo
+comando, che vive il tempo di un'autorizzazione.
 
 Il comando stampa un indirizzo. Aprilo **nel browser del tuo computer**, dai il
 permesso, e la pagina dirà «Fatto». Il terminale stampa la riga da incollare:
@@ -258,27 +276,23 @@ CALENDARIO_REFRESH_TOKEN=1//0g...
 
 Mettila nel `.env` e riavvia i servizi (`docker compose up -d`).
 
-<details>
-<summary>Se preferisci lanciarlo dentro un container</summary>
+> Il comando aspetta il clic per **cinque minuti**. Se sembra che non succeda
+> niente, non rilanciarlo in un'altra finestra: la porta è ancora sua, e te lo
+> dirà. Chiudi il primo con Ctrl-C.
 
-Dentro un container `127.0.0.1` è l'interno del container, e il browser non lo
-raggiungerebbe: va detto al comando di ascoltare su tutte le interfacce e va
-pubblicata la porta.
+<details>
+<summary>Se preferisci lanciarlo dal tuo computer, senza tunnel</summary>
+
+Serve il repo e [uv](https://docs.astral.sh/uv/) sul **tuo** computer, dove il
+browser c'è già:
 
 ```bash
-ssh -L 8765:localhost:8765 pi@custode.local
-docker compose run --rm -p 8765:8765 -e CALENDARIO_ASCOLTA_SU=0.0.0.0 \
-  worker custode-autorizza-calendario
+CALENDARIO_CLIENT_ID=... CALENDARIO_CLIENT_SECRET=... \
+  uv run custode-autorizza-calendario
 ```
 
-</details>
-
-<details>
-<summary>Se preferisci non usare SSH</summary>
-
-Il comando si può lanciare sul **tuo** computer, dove il browser c'è già: serve
-il repo e `uv`. Il token che stampa lo incolli nel `.env` del Pi. Il permesso
-non è legato alla macchina che lo ha chiesto.
+Il token che stampa lo incolli nel `.env` del Pi. Il permesso non è legato alla
+macchina che lo ha chiesto.
 
 </details>
 
