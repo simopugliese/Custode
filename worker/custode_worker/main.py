@@ -42,6 +42,7 @@ from custode_core.registro_job import (
     segna_eseguito,
 )
 from custode_router import Router
+from custode_router.compiti import Compito
 from custode_worker import abitudini as worker_abitudini
 from custode_worker import backup, settimanale
 from custode_worker import calendario as worker_calendario
@@ -78,7 +79,14 @@ def giro(
     """Un singolo passaggio: guarda cosa è dovuto e, se c'è, lo fa."""
     ora = adesso(impostazioni.timezone)
     _giro_backup(impostazioni, worker, ora)
-    _giro_calendario(impostazioni, calendario, ora, sorgente=sorgente_calendario, telegram=telegram)
+    _giro_calendario(
+        impostazioni,
+        calendario,
+        ora,
+        sorgente=sorgente_calendario,
+        telegram=telegram,
+        router=router,
+    )
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
 
@@ -126,14 +134,20 @@ def _giro_calendario(
     *,
     sorgente: SorgenteCalendario,
     telegram: ClientTelegram,
+    router: Router,
 ) -> None:
-    """La sincronizzazione del calendario (§8.10), ogni quarto d'ora.
+    """La sincronizzazione del calendario (§8.10), ogni cinque minuti.
 
     È l'unico job del worker che non ha un'ora del giorno: il suo periodo è la
-    fascia di quindici minuti in cui cade adesso. Il worker si sveglia ogni
-    cinque, quindi la stessa fascia viene interrogata tre volte e coperta una —
-    che è anche il margine su cui si appoggia il tentativo dopo un guasto di
-    rete.
+    fascia in cui cade adesso, larga quanto il risveglio del worker — quindi in
+    pratica ogni giro tenta un sync nuovo. La fascia resta comunque un
+    registro, non un «se ne occupa il ciclo»: se il worker si svegliasse due
+    volte a distanza ravvicinata (un riavvio) o `WORKER_INTERVALLO_SECONDI`
+    fosse configurato più stretto di cinque minuti, evita una seconda chiamata
+    a Google per lo stesso periodo.
+
+    Finisce col tagging degli eventi nuovi: è l'unico momento in cui ce ne
+    possono essere, e la coda da guardare si legge dalla stessa connessione.
     """
     fascia = fascia_dovuta(ora, ogni_minuti=MINUTI_SYNC_CALENDARIO)
 
@@ -151,8 +165,8 @@ def _giro_calendario(
 
         if esito.spento:
             # Nessuna credenziale: il modulo è spento, non rotto. Non si segna
-            # la fascia, così il giorno che le metti il job parte da solo senza
-            # aspettare il quarto d'ora successivo.
+            # la fascia, così il giorno che le metti il job parte al giro
+            # successivo invece di aspettare che questa fascia scada da sola.
             return
 
         if esito.autorizzazione_scaduta:
@@ -161,9 +175,9 @@ def _giro_calendario(
                 # L'avviso non è partito: non si segna la fascia, così al giro
                 # dopo si riprova invece di restare zitti per sempre.
                 return
-            # La fascia sì: riprovare fra cinque minuti un permesso morto non
-            # serve a niente, e fra un quarto d'ora basta ad accorgersi che nel
-            # frattempo hai rifatto l'autorizzazione.
+            # La fascia sì: un permesso morto non torna buono aspettando, e la
+            # fascia dopo basta comunque ad accorgersi che nel frattempo hai
+            # rifatto l'autorizzazione.
             segna_eseguito(conn, SYNC_CALENDARIO, fascia, ora)
             return
 
@@ -187,6 +201,39 @@ def _giro_calendario(
                 cambiato.aggiornati,
                 cambiato.rimossi,
             )
+
+        _giro_tag_calendario(conn, ora, router=router)
+
+
+def _giro_tag_calendario(conn: sqlite3.Connection, ora: datetime, *, router: Router) -> None:
+    """Il tipo degli eventi nuovi, proposto dal modello (§8.10, pezzo 5).
+
+    Dopo il sync e **dopo** che la fascia è stata segnata: la fascia dice che
+    Google è stato interrogato, e un modello che non risponde non deve far
+    richiamare Google al risveglio dopo per qualcosa che era andato bene. La
+    coda resta piena da sola, ed è quella a far riprovare il tag.
+    """
+    esito = worker_calendario.tagga(conn, ora, router=router)
+    if esito.spento or (esito.gruppi == 0 and esito.errore is None):
+        # Niente chiave, o niente da guardare: il caso normale di quasi tutti i
+        # giri, e non c'è niente da dire.
+        return
+
+    if esito.errore is not None:
+        log.warning(
+            "tag del calendario non riuscito su %d serie, riproverò: %s",
+            esito.rimasti,
+            esito.errore,
+        )
+        return
+
+    log.info(
+        "calendario: tag proposto su %d serie (%d eventi)%s%s",
+        esito.gruppi,
+        esito.righe,
+        f", {esito.non_letti} senza risposta leggibile" if esito.non_letti else "",
+        f", {esito.rimasti} al prossimo giro" if esito.rimasti else "",
+    )
 
 
 def _avvisa_calendario_fermo(
@@ -358,6 +405,14 @@ def main() -> int:
             calendario.giorni_avanti,
             MINUTI_SYNC_CALENDARIO,
         )
+        if not router.configurato_per(Compito.TAG_CALENDARIO):
+            # Come per il calendario spento: detto una volta all'avvio e non ad
+            # ogni giro. Senza questa riga, il tipo resterebbe «da guardare» su
+            # ogni evento senza che niente dica perché.
+            log.info(
+                "tag degli eventi spento: senza ROUTER_DEEPSEEK_API_KEY nessuno"
+                " propone il tipo degli impegni nuovi"
+            )
     else:
         # Detto all'avvio e non ad ogni giro: un modulo spento non è un guasto,
         # ma scoprire dopo un mese che il calendario non si è mai sincronizzato

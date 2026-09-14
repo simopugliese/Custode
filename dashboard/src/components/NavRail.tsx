@@ -11,6 +11,7 @@ interface NavItem {
 const PRIMARY: NavItem[] = [
   { to: '/', icon: 'house', label: 'Home', end: true },
   { to: '/diario', icon: 'book-open', label: 'Diario' },
+  { to: '/calendario', icon: 'calendar-days', label: 'Calendario' },
   { to: '/lezioni', icon: 'graduation-cap', label: 'Lezioni e corsi' },
 ];
 

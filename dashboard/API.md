@@ -42,7 +42,7 @@ file ne descrive solo la forma a endpoint per endpoint.
 ## Stato di implementazione
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
-**Diario**, **Spese**, il **calendario** della Home e la barra **«A Custode»**.
+**Diario**, **Spese**, **Calendario** e la barra **«A Custode»**.
 Tutti gli altri endpoint qui sotto rispondono `501` finché non arriva il loro
 modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
 
@@ -78,11 +78,12 @@ giornata davvero libera e un calendario che non ha ancora sincronizzato danno
 entrambi una lista vuota, ma non vogliono dire la stessa cosa: la prima è
 `"Nessun evento oggi."`, la seconda `"Non ho ancora sincronizzato gli eventi di
 oggi."` — dirla sbagliata a calendario appena collegato sarebbe semplicemente
-falso, visto che il worker sincronizza ogni quarto d'ora.
+falso, visto che il worker sincronizza ogni cinque minuti.
 
-`meta` non porta ancora il tipo dell'evento (lezione, palestra, viaggio): il
-tagging di §8.10 è il pezzo successivo, e finché non c'è il campo resta assente
-invece di dire `"altro"` per tutto.
+`meta` non porta il tipo dell'evento (lezione, palestra, viaggio) nemmeno ora
+che il tagging esiste: in Home la riga dice *quando* e *dove*, e il tipo si
+vede — e si corregge — nella pagina Calendario. `CalendarEventItem` resta
+quindi il blocco comune, e `EventoCalendario` è la stessa riga più il tag.
 
 ## Diario
 
@@ -123,6 +124,67 @@ non lo prevede — campo assente ≠ campo vuoto.
 
 Approvare una giornata la cui raccolta è ancora aperta (nessuna bozza) risponde
 `409`.
+
+## Calendario
+
+`GET /api/calendario?vista=settimana|mese|da_rivedere` → `CalendarioData`
+`PATCH /api/calendario/:id` body `{ tipo: "lezione"|"palestra"|"viaggio"|"altro" }` → `CorrezioneTag`
+
+La pagina risponde a due domande diverse, ed è la ragione delle tre viste:
+*«cosa ho questa settimana»* (`settimana`, `mese`) e *«cosa ha capito Custode»*
+(`da_rivedere`).
+
+- `vista=settimana` → la settimana **corrente**, lunedì–domenica, con tutti e
+  sette i giorni anche vuoti: sette righe si leggono, e un giorno libero è
+  un'informazione. Un giorno vuoto porta la sua `notaVuoto`.
+- `vista=mese` → il mese corrente, e **solo** i giorni che hanno qualcosa:
+  trenta righe «niente in programma» non direbbero niente.
+- `vista=da_rivedere` → non eventi ma **serie**: le proposte dell'IA che non
+  hai mai confermato, dalla prossima in poi. Una riga per ricorrenza, perché
+  correggere un'occorrenza le corregge tutte — dodici righe sarebbero dodici
+  volte la stessa correzione. Solo ciò che deve ancora succedere: un tag
+  sbagliato su una lezione di marzo non produce più niente di sbagliato.
+
+Un evento compare in **ogni giorno che tocca**, non solo in quello in cui
+comincia; `ora` e `meta` seguono le stesse regole del blocco della Home
+(`"—"` e `"tutto il giorno"` / `"in corso"` per chi un'ora non ce l'ha).
+
+`statoTag` è la ragione d'essere della pagina, e vale `"da_guardare"` |
+`"proposto"` | `"corretto"` — con `statoTagLabel` già in italiano. `tipo` da
+solo non basterebbe: `"altro"` è sia il default di un evento appena
+sincronizzato sia un esito legittimo del modello (§8.10), quindi senza un
+secondo segnale «l'IA ha detto altro» e «nessuno l'ha ancora guardato»
+sarebbero la stessa cosa.
+
+`tipi` porta le quattro caselle con le loro etichette: il menu di correzione le
+riceve dal backend invece di scriverle nella pagina, com'è per ogni altra
+etichetta del contratto.
+
+La `PATCH` è il «tu correggi se serve» di §8.10 e tocca **tutta la serie**
+dell'evento indicato, non la sola occorrenza: la risposta dice quante
+occorrenze ha cambiato (`occorrenze`) e come dirlo (`label`). Mandare lo stesso
+tipo che c'era è comunque una conferma — «ha indovinato» è una risposta, e
+senza di essa l'unico modo di togliere dalla coda una proposta giusta sarebbe
+cambiarla in una sbagliata e poi rimetterla a posto. Un tipo fuori dalle
+quattro caselle risponde `422`, un id inesistente `404`.
+
+`stats.daRivedere` e `stats.daGuardare` parlano sempre di tutto l'archivio da
+oggi in poi, **non** della vista: se «due da rivedere» sparisse guardando una
+settimana che non ne contiene, alla terza vista non ci si arriverebbe mai.
+`daGuardare` conta le serie che il tagging non ha ancora guardato — se non cala
+mai, il worker è fermo o manca `ROUTER_DEEPSEEK_API_KEY`.
+
+`notaVuoto` dice *perché* la lista è vuota, come in Home: calendario non
+collegato, collegato ma mai sincronizzato, o periodo davvero libero — sono tre
+vuoti che si somigliano e non vogliono dire la stessa cosa. Senza credenziali
+la pagina non mostra né eventi né numeri, nemmeno se in archivio è rimasto
+qualcosa da quando era collegato: mostrarli direbbe che il calendario sta
+funzionando, mentre è fermo.
+
+`orizzonteLabel` dice fin dove arriva la finestra sincronizzata (§8.10: sette
+giorni indietro, quattordici avanti). Serve al mese: quello che c'è dopo è
+vuoto perché nessuno ha ancora guardato là, non perché quei giorni siano
+liberi.
 
 ## Lezioni e corsi
 

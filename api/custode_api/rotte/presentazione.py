@@ -72,3 +72,44 @@ def evento_calendario(evento: dom_calendario.Evento, oggi: date) -> schemi.Calen
         luogo=evento.luogo or None,
         meta=meta,
     )
+
+
+TIPO_LABEL = {
+    dom_calendario.Tipo.LEZIONE: "Lezione",
+    dom_calendario.Tipo.PALESTRA: "Palestra",
+    dom_calendario.Tipo.VIAGGIO: "Viaggio",
+    dom_calendario.Tipo.ALTRO: "Altro",
+}
+
+# I tre stati del tag (§8.10), e come si dicono. «Da guardare» non è un difetto:
+# è il minuto fra la sincronizzazione e il giro di tagging — o tutto il tempo in
+# cui manca la chiave del modello.
+STATO_DA_GUARDARE = ("da_guardare", "da guardare")
+STATO_PROPOSTO = ("proposto", "proposto dall'IA")
+STATO_CORRETTO = ("corretto", "corretto da te")
+
+
+def stato_tag(evento: dom_calendario.Evento) -> tuple[str, str]:
+    """Chi ha deciso il tipo di questo evento, se qualcuno l'ha deciso.
+
+    `tipo` da solo non basta: `'altro'` è sia il default di un evento appena
+    sincronizzato sia un esito legittimo del modello, e distinguerli è proprio
+    la domanda «cosa ha capito» a cui la pagina risponde.
+    """
+    if evento.tag_proposto_il is None:
+        return STATO_DA_GUARDARE
+    return STATO_CORRETTO if evento.tag_confermato_da_te else STATO_PROPOSTO
+
+
+def evento_calendario_taggato(evento: dom_calendario.Evento, oggi: date) -> schemi.EventoCalendario:
+    """La riga della pagina Calendario: quella di Home, più il tag e il suo stato."""
+    base = evento_calendario(evento, oggi)
+    stato, stato_label = stato_tag(evento)
+    return schemi.EventoCalendario(
+        **base.model_dump(),
+        tipo=evento.tipo.value,
+        tipoLabel=TIPO_LABEL[evento.tipo],
+        statoTag=stato,
+        statoTagLabel=stato_label,
+        serie=bool(evento.serie_id),
+    )

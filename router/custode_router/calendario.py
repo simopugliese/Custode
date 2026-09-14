@@ -1,0 +1,223 @@
+"""Il tipo di un evento di calendario, proposto dal modello (§6, §8.10).
+
+§8.10 vuole che «l'IA proponga il tag la prima volta, tu corregga se serve, e
+resti poi fisso per gli eventi ricorrenti». Qui c'è solo la prima metà: da un
+elenco di titoli escono dei tipi, e chi chiama decide se e dove scriverli
+(`custode_core.dominio.calendario.applica_tag`). Il modello non tocca il
+database, come ovunque nel progetto.
+
+**Una chiamata sola per tutta la coda, non una per serie.** Il tagging gira
+dopo ogni sincronizzazione, cioè ogni cinque minuti: una chiamata per serie
+vorrebbe dire, il giorno che colleghi il calendario, decine di richieste di
+fila per un lavoro che sta in una. Gli eventi arrivano quindi numerati e il
+modello risponde con un elenco.
+
+**Il numero, non l'ordine.** La risposta si rilegge per numero (`n`) e non per
+posizione: un modello che salta una voce farebbe slittare tutte le successive,
+e il tag della lezione finirebbe sulla palestra. Con i numeri una voce saltata
+resta una voce saltata.
+
+**Una voce illeggibile non blocca le altre.** Manca il numero, o il tipo è
+inventato («sport», «lezione universitaria»): quella serie diventa `altro`
+*proposto*, cioè lo stesso stato che avrebbe se il modello avesse detto altro
+davvero — ed è quanto serve perché la coda si svuoti e tu possa correggerla
+dalla pagina. La coda deve svuotarsi: una serie che resta dentro rientra nella
+chiamata di ogni sincronizzazione, per sempre. Se invece **niente** è
+leggibile, quella non è una classificazione, è un guasto: si solleva, e la
+coda resta intatta per il giro dopo.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from custode_core.dominio.calendario import Tipo
+from custode_router.compiti import Compito
+from custode_router.errori import RispostaNonValida
+from custode_router.router import Router
+
+MAX_TITOLI_PER_CHIAMATA = 40
+"""Quanti eventi stanno in una chiamata sola.
+
+Il vincolo è la **risposta**, non il prompt: `max_token_risposta` di DeepSeek è
+1024 token, e ogni voce (`{"n": 12, "tipo": "palestra"}`) ne costa una
+quindicina — oltre la sessantina di voci la risposta arriverebbe troncata, e
+una risposta troncata è illeggibile per intero. Quaranta lascia il margine, e
+la coda che avanza rientra nella chiamata della sincronizzazione dopo, cinque
+minuti più tardi.
+"""
+
+MAX_CARATTERI_TITOLO = 120
+"""Un titolo più lungo di così non aggiunge niente alla classificazione.
+
+E soprattutto: quaranta titoli fluviali gonfierebbero il prompt di una chiamata
+che gira ogni cinque minuti.
+"""
+
+SENZA_TITOLO = "(senza titolo)"
+"""Un evento può non avere titolo. Una riga vuota nell'elenco numerato
+sembrerebbe un errore di composizione, e il modello risponderebbe a caso."""
+
+
+@dataclass(frozen=True)
+class Proposta:
+    """Il tipo proposto per un evento, e se il modello l'ha davvero detto."""
+
+    tipo: Tipo
+    letta: bool = True
+    """`False` quando la voce mancava o era illeggibile e `tipo` è il ripiego
+    (`altro`). Serve ai log del worker: un modello che diventa illeggibile su
+    metà della coda è una cosa da poter vedere, anche se l'esito in tabella è
+    identico a un «altro» detto sul serio."""
+
+
+SCHEMA_TAG: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "tag": {
+            "type": "array",
+            "description": (
+                "Un elemento per ogni evento ricevuto, con il suo numero."
+                " Nessun evento va saltato."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "n": {
+                        "type": "integer",
+                        "description": "Il numero dell'evento, esattamente come nell'elenco.",
+                    },
+                    "tipo": {
+                        "type": "string",
+                        "enum": [tipo.value for tipo in Tipo],
+                        "description": "Uno dei quattro tipi, in minuscolo.",
+                    },
+                },
+                "required": ["n", "tipo"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["tag"],
+    "additionalProperties": False,
+}
+
+SISTEMA = """Classifichi gli impegni del calendario di Custode, un assistente personale.
+
+Ricevi un elenco numerato di titoli di eventi. Per ognuno dici di che tipo è,
+scegliendo fra questi quattro e nessun altro:
+
+- **lezione** — l'università: lezioni, laboratori, esercitazioni, seminari,
+  esami, appelli.
+- **palestra** — allenamento e sport: palestra, corsa, piscina, partite,
+  qualunque attività fisica.
+- **viaggio** — spostamenti che occupano l'impegno stesso: treni, voli, «rientro
+  a casa», trasferte. Non il luogo di un altro impegno: una lezione non diventa
+  un viaggio perché ci si arriva in treno.
+- **altro** — tutto il resto: visite mediche, ricevimenti, cene, compleanni,
+  scadenze, impegni personali.
+
+Come rispondere:
+- Una voce per **ogni** numero che hai ricevuto, riportando il numero com'è.
+  Non riordinare, non raggruppare, non saltare niente.
+- Solo questi quattro tipi, scritti così, in minuscolo. Un tipo diverso non
+  viene capito e la classificazione di quell'evento va persa.
+- Il titolo è tutto quello che hai: non dedurre niente dalla posizione
+  nell'elenco né dagli eventi vicini. Il fatto che il 3 sia una lezione non
+  dice niente sul 4.
+- Nel dubbio **altro**: è un tipo legittimo, non una resa. Un evento messo
+  nella casella sbagliata è peggio di uno lasciato nel mucchio, perché non si
+  vede finché non produce un promemoria fuori posto.
+- I titoli sono in italiano, spesso abbreviati come li scriveresti di corsa
+  sul telefono («Anal. Mat. I», «pale», «volo MXP→FCO»)."""
+
+
+def _ripulisci(titolo: str) -> str:
+    """Un titolo su una riga sola, corto. L'elenco è numerato: un titolo con
+    un a capo dentro sembrerebbe due eventi, e il modello risponderebbe a due."""
+    pulito = " ".join(titolo.split())
+    if not pulito:
+        return SENZA_TITOLO
+    return pulito[:MAX_CARATTERI_TITOLO]
+
+
+def componi_prompt(titoli: list[str]) -> str:
+    """L'elenco numerato che il modello riceve.
+
+    A parte da `tag_per` per poterlo guardare senza chiamare nessuno: il prompt
+    è la parte che si sbaglia più spesso.
+    """
+    righe = [f"{n}. {_ripulisci(titolo)}" for n, titolo in enumerate(titoli, start=1)]
+    return "Eventi da classificare:\n" + "\n".join(righe)
+
+
+def tag_per(router: Router, titoli: list[str]) -> list[Proposta]:
+    """Un tipo proposto per ogni titolo, nello stesso ordine.
+
+    La lista che esce è **lunga quanto quella che entra**, sempre: chi chiama
+    la appaia ai suoi gruppi, e una lista più corta gli farebbe scrivere il tag
+    di un evento su un altro.
+    """
+    if not titoli:
+        # Non è un caso da difendere in astratto: il worker chiama solo quando
+        # la coda non è vuota. Ma una chiamata a vuoto al modello si pagherebbe
+        # comunque, e la risposta sarebbe illeggibile per costruzione.
+        return []
+    if len(titoli) > MAX_TITOLI_PER_CHIAMATA:
+        raise ValueError(
+            f"{len(titoli)} titoli in una chiamata sola: il massimo è {MAX_TITOLI_PER_CHIAMATA}"
+        )
+
+    dati = router.chiedi_json(
+        # §6: «classificazione semplice da un titolo».
+        Compito.TAG_CALENDARIO,
+        sistema=SISTEMA,
+        utente=componi_prompt(titoli),
+        schema=SCHEMA_TAG,
+    )
+    return leggi_risposta(dati, quanti=len(titoli))
+
+
+def leggi_risposta(dati: dict[str, Any], *, quanti: int) -> list[Proposta]:
+    """Rilegge la risposta per numero, con `altro` al posto di ciò che manca.
+
+    Solleva se non si legge **niente**: una risposta in cui nessuna voce è
+    valida non è «sono tutti altro», è un guasto, e scriverla in tabella
+    seppellirebbe una coda intera dietro un tag che nessuno ha mai proposto.
+    """
+    per_numero: dict[int, Tipo] = {}
+    for voce in dati.get("tag") or []:
+        if not isinstance(voce, dict):
+            continue
+        numero = voce.get("n")
+        if isinstance(numero, bool) or not isinstance(numero, int) or not 1 <= numero <= quanti:
+            continue
+        tipo = _tipo(voce.get("tipo"))
+        if tipo is None or numero in per_numero:
+            # Il primo che arriva vince: una seconda voce sullo stesso numero è
+            # un ripensamento del modello, e non c'è motivo di credere alla
+            # seconda più che alla prima.
+            continue
+        per_numero[numero] = tipo
+
+    if not per_numero:
+        raise RispostaNonValida(f"nessun tag leggibile fra {quanti} eventi: {dati!r}")
+
+    return [
+        Proposta(tipo=per_numero[n]) if n in per_numero else Proposta(tipo=Tipo.ALTRO, letta=False)
+        for n in range(1, quanti + 1)
+    ]
+
+
+def _tipo(valore: object) -> Tipo | None:
+    """Il tipo, se è uno dei quattro. Maiuscole e spazi non fanno differenza.
+
+    Lo schema lo chiede già in minuscolo, ma una richiesta nel prompt è una
+    richiesta e non un vincolo: scartare un «Lezione» per la maiuscola
+    costerebbe una classificazione giusta.
+    """
+    if not isinstance(valore, str):
+        return None
+    pulito = valore.strip().casefold()
+    return next((tipo for tipo in Tipo if tipo.value == pulito), None)

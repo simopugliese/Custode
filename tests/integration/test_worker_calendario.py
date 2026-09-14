@@ -42,11 +42,11 @@ from tests.integration.finto_google import FintoGoogle
 
 pytestmark = pytest.mark.integration
 
-# Lunedì 14 settembre 2026, 10:03: dentro la fascia delle 10:00.
+# Lunedì 14 settembre 2026, 10:03: dentro la fascia delle 10:00-10:05.
 ADESSO = datetime(2026, 9, 14, 10, 3)
 OGGI = ADESSO.date()
 FASCIA = datetime(2026, 9, 14, 10, 0)
-FASCIA_DOPO = datetime(2026, 9, 14, 10, 15)
+FASCIA_DOPO = datetime(2026, 9, 14, 10, 5)
 
 
 class _CalendarioDiTest(ImpostazioniCalendario):
@@ -69,6 +69,15 @@ class TelegramFinto:
 
 
 class RouterFinto:
+    def configurato_per(self, compito: Any) -> bool:
+        """Tagging spento: qui il soggetto è il sync, non il tag.
+
+        Il tagging gira nello stesso giro ma è un'altra cosa, e ha i suoi test
+        in `test_worker_tag_calendario.py`. Spegnerlo qui tiene questi test su
+        una cosa sola.
+        """
+        return False
+
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         return {"riepilogo": "Andata così."}
 
@@ -232,8 +241,12 @@ def test_dentro_la_stessa_fascia_google_si_interroga_una_volta_sola(
     google: FintoGoogle,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Il worker si sveglia ogni cinque minuti, la fascia è di quindici."""
-    for minuto in (3, 8, 13):
+    """La fascia è larga quanto il risveglio: in pratica ogni giro ne apre una
+    nuova, ma resta un registro esplicito e non «se ne occupa il ciclo» — due
+    risvegli ravvicinati nello stesso minuto arrotondato (un riavvio) non
+    devono interrogare Google due volte.
+    """
+    for minuto in (0, 2, 4):
         _giro(
             impostazioni,
             calendario,
@@ -252,7 +265,7 @@ def test_la_fascia_dopo_risincronizza(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _giro(impostazioni, calendario, monkeypatch=monkeypatch)
-    _giro(impostazioni, calendario, adesso=datetime(2026, 9, 14, 10, 16), monkeypatch=monkeypatch)
+    _giro(impostazioni, calendario, adesso=datetime(2026, 9, 14, 10, 6), monkeypatch=monkeypatch)
 
     assert len(google.stato.richieste_eventi) == 2
     assert gia_eseguito(conn, SYNC_CALENDARIO, FASCIA_DOPO)
@@ -282,7 +295,7 @@ def test_un_guasto_di_rete_non_segna_la_fascia(
     conn: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Si riprova al risveglio dopo — cinque minuti — non al quarto d'ora."""
+    """Si riprova al prossimo risveglio, senza aspettare oltre."""
     google.stato.stato_eventi = 503
 
     posta = _giro(impostazioni, calendario, monkeypatch=monkeypatch)

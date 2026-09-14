@@ -33,12 +33,20 @@ from typing import Protocol
 FONTE_GOOGLE = "google"
 
 
-class Tipo(StrEnum):
-    """Il tag di §8.10. Oggi ogni evento nasce `ALTRO`.
+class EventoInesistente(LookupError):
+    """Sollevata quando l'id richiesto non corrisponde a nessun evento."""
 
-    A deciderlo sarà il pezzo successivo — l'IA propone, tu correggi, e per una
-    serie ricorrente la scelta vale una volta sola. Qui il tipo si **conserva**:
-    è la ragione per cui risincronizzare aggiorna la riga invece di rifarla.
+
+class Tipo(StrEnum):
+    """Il tag di §8.10.
+
+    Un evento nuovo nasce `ALTRO` finché il job di tagging non l'ha guardato —
+    ma `ALTRO` è anche un esito legittimo (un ricevimento non è nessuno degli
+    altri tre): a distinguere "mai guardato" da "guardato e detto altro" è
+    `Evento.tag_proposto_il`, non il tipo. La scelta vale una volta per l'intera
+    serie ricorrente (`serie_id`), mai per la singola occorrenza. Qui il tipo si
+    **conserva**: è la ragione per cui risincronizzare aggiorna la riga invece
+    di rifarla.
     """
 
     LEZIONE = "lezione"
@@ -86,6 +94,12 @@ class Evento:
     serie_id: str
     tipo: Tipo
     sincronizzato_il: datetime
+    tag_proposto_il: datetime | None
+    """Quando un tag è stato scritto l'ultima volta, dall'IA o da te. `None`
+    finché nessuno l'ha ancora guardato — vedi `Tipo`."""
+    tag_confermato_da_te: bool
+    """Vero se l'ultima scrittura del tag è stata una tua correzione, non una
+    proposta dell'IA. Serve solo alla pagina Calendario per mostrarlo."""
 
     @property
     def giorno(self) -> date:
@@ -136,6 +150,12 @@ def _da_riga(riga: sqlite3.Row) -> Evento:
         serie_id=riga["serie_id"],
         tipo=Tipo(riga["tipo"]),
         sincronizzato_il=datetime.fromisoformat(riga["sincronizzato_il"]),
+        tag_proposto_il=(
+            datetime.fromisoformat(riga["tag_proposto_il"])
+            if riga["tag_proposto_il"] is not None
+            else None
+        ),
+        tag_confermato_da_te=bool(riga["tag_confermato_da_te"]),
     )
 
 
@@ -172,6 +192,19 @@ def del_giorno(conn: sqlite3.Connection, giorno: date, *, fonte: str | None = No
     return fra(conn, giorno, giorno, fonte=fonte)
 
 
+def per_id(conn: sqlite3.Connection, evento_id: int) -> Evento:
+    """Un evento solo. Solleva `EventoInesistente` se l'id non esiste.
+
+    Serve a chi ha appena corretto un tag e deve restituire la riga com'è
+    diventata: rileggerla è l'unico modo di dire cosa c'è scritto davvero,
+    invece di ricostruirlo da quello che si è chiesto di scrivere.
+    """
+    riga = conn.execute("SELECT * FROM calendar_events WHERE id = ?", (evento_id,)).fetchone()
+    if riga is None:
+        raise EventoInesistente(evento_id)
+    return _da_riga(riga)
+
+
 # — scrittura —
 
 
@@ -203,14 +236,20 @@ def sincronizza(
         raise ValueError(f"intervallo rovesciato: da {da} a {a}")
 
     # Tutto l'archivio di questa fonte in un colpo solo. Sono qualche centinaio
-    # di righe all'anno: leggerle ogni quarto d'ora costa meno della ginnastica
-    # di clausole IN che servirebbe a leggerne un sottoinsieme, e serve
-    # comunque l'intero archivio — la sorgente può restituire un evento che
-    # comincia *prima* della finestra e la attraversa.
-    esistenti = {
-        riga["id_esterno"]: riga
-        for riga in conn.execute("SELECT * FROM calendar_events WHERE fonte = ?", (fonte,))
-    }
+    # di righe all'anno: leggerle ogni sincronizzazione costa meno della
+    # ginnastica di clausole IN che servirebbe a leggerne un sottoinsieme, e
+    # serve comunque l'intero archivio — la sorgente può restituire un evento
+    # che comincia *prima* della finestra e la attraversa.
+    tutte = list(conn.execute("SELECT * FROM calendar_events WHERE fonte = ?", (fonte,)))
+    esistenti = {riga["id_esterno"]: riga for riga in tutte}
+
+    # Una serie già taggata non deve tornare 'altro' alla prima occorrenza
+    # nuova: senza questo, ogni settimana la lezione di martedì rinascerebbe
+    # senza tag, e il job di tagging la riproporrebbe da capo — il duplicato
+    # che il tagging deve evitare. Basta una riga qualunque della serie: per
+    # costruzione tutte condividono lo stesso tag (`applica_tag` scrive sempre
+    # l'intera serie insieme).
+    per_serie = {riga["serie_id"]: riga for riga in tutte if riga["serie_id"]}
 
     timbro = _iso(ora)
     nuovi = aggiornati = invariati = 0
@@ -235,12 +274,21 @@ def sincronizza(
         riga = esistenti.get(evento.id)
 
         if riga is None:
+            eredita = per_serie.get(evento.serie_id) if evento.serie_id else None
             conn.execute(
                 "INSERT INTO calendar_events"
                 " (fonte, id_esterno, titolo, inizio, fine, tutto_il_giorno, luogo,"
-                "  serie_id, sincronizzato_il)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (fonte, evento.id, *campi, timbro),
+                "  serie_id, sincronizzato_il, tipo, tag_proposto_il, tag_confermato_da_te)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    fonte,
+                    evento.id,
+                    *campi,
+                    timbro,
+                    eredita["tipo"] if eredita is not None else Tipo.ALTRO.value,
+                    eredita["tag_proposto_il"] if eredita is not None else None,
+                    eredita["tag_confermato_da_te"] if eredita is not None else 0,
+                ),
             )
             nuovi += 1
             continue
@@ -299,3 +347,178 @@ def _riconcilia(conn: sqlite3.Connection, visti: set[str], *, da: date, a: date,
     for evento_id in da_togliere:
         conn.execute("DELETE FROM calendar_events WHERE id = ?", (evento_id,))
     return len(da_togliere)
+
+
+# — il tag (§8.10, pezzo 5) —
+
+
+@dataclass(frozen=True)
+class GruppoDaTaggare:
+    """Una serie ricorrente, o un evento singolo, che nessuno ha ancora guardato.
+
+    È l'unità su cui si decide un tag: tutte le occorrenze con lo stesso
+    `serie_id` lo condividono (§8.10, "resta fisso per gli eventi ricorrenti"),
+    quindi un evento senza serie è un gruppo fatto di una riga sola.
+    """
+
+    fonte: str
+    serie_id: str
+    """Vuoto per un evento singolo."""
+    evento_id: int | None
+    """Valorizzato solo per un evento singolo: è la riga su cui scrivere."""
+    titolo: str
+    """Un titolo rappresentativo del gruppo, per chi deve proporre il tag."""
+
+
+def gruppi_senza_tag(
+    conn: sqlite3.Connection, *, fonte: str = FONTE_GOOGLE
+) -> list[GruppoDaTaggare]:
+    """Le serie e gli eventi singoli che il tagging non ha ancora guardato.
+
+    Un gruppo per serie, non una riga per occorrenza: grazie all'eredità del
+    tag in `sincronizza`, dentro una stessa serie o tutte le righe hanno
+    `tag_proposto_il` valorizzato o nessuna — non serve interrogare più di una
+    riga a serie per sapere se è da proporre.
+    """
+    righe = conn.execute(
+        "SELECT id, serie_id, titolo FROM calendar_events"
+        " WHERE fonte = ? AND tag_proposto_il IS NULL"
+        " ORDER BY inizio ASC",
+        (fonte,),
+    )
+
+    visti: set[str] = set()
+    gruppi: list[GruppoDaTaggare] = []
+    for riga in righe:
+        serie = riga["serie_id"]
+        chiave = serie or f"#{riga['id']}"
+        if chiave in visti:
+            continue
+        visti.add(chiave)
+        gruppi.append(
+            GruppoDaTaggare(
+                fonte=fonte,
+                serie_id=serie,
+                evento_id=None if serie else riga["id"],
+                titolo=riga["titolo"],
+            )
+        )
+    return gruppi
+
+
+def applica_tag(
+    conn: sqlite3.Connection,
+    gruppo: GruppoDaTaggare,
+    tipo: Tipo,
+    ora: datetime,
+    *,
+    confermato_da_te: bool = False,
+) -> int:
+    """Scrive il tag su tutte le righe del gruppo. Ritorna quante ne ha toccate.
+
+    Una serie si scrive tutta insieme: scriverla riga per riga lascerebbe le
+    occorrenze non toccate — passate o non ancora sincronizzate — senza tag, e
+    la prossima sincronizzazione le riproporrebbe da capo.
+    """
+    timbro = _iso(ora)
+    if gruppo.serie_id:
+        cursore = conn.execute(
+            "UPDATE calendar_events"
+            " SET tipo = ?, tag_proposto_il = ?, tag_confermato_da_te = ?"
+            " WHERE fonte = ? AND serie_id = ?",
+            (tipo.value, timbro, int(confermato_da_te), gruppo.fonte, gruppo.serie_id),
+        )
+    else:
+        assert gruppo.evento_id is not None  # un gruppo o ha una serie, o un id
+        cursore = conn.execute(
+            "UPDATE calendar_events SET tipo = ?, tag_proposto_il = ?, tag_confermato_da_te = ?"
+            " WHERE id = ?",
+            (tipo.value, timbro, int(confermato_da_te), gruppo.evento_id),
+        )
+    return cursore.rowcount
+
+
+def correggi_tag(conn: sqlite3.Connection, evento_id: int, tipo: Tipo, ora: datetime) -> int:
+    """La correzione a mano di §8.10 ("tu correggi se serve").
+
+    Parte da un evento che vedi — nella pagina Calendario, per esempio — e
+    tocca tutta la sua serie se ne ha una: è la stessa regola di `applica_tag`,
+    letta dal verso di chi corregge invece che di chi propone.
+    """
+    riga = conn.execute(
+        "SELECT fonte, serie_id FROM calendar_events WHERE id = ?", (evento_id,)
+    ).fetchone()
+    if riga is None:
+        raise EventoInesistente(evento_id)
+
+    gruppo = GruppoDaTaggare(
+        fonte=riga["fonte"],
+        serie_id=riga["serie_id"],
+        evento_id=None if riga["serie_id"] else evento_id,
+        titolo="",
+    )
+    return applica_tag(conn, gruppo, tipo, ora, confermato_da_te=True)
+
+
+@dataclass(frozen=True)
+class SerieDaRivedere:
+    """Una serie taggata dall'IA che tu non hai mai confermato né corretto.
+
+    È la risposta a «cosa ha capito» di §8.10: ciò che il modello ha deciso da
+    solo e che nessuno ha ancora guardato. Un gruppo per serie, come per la
+    proposta — correggere un'occorrenza corregge tutta la serie, quindi
+    mostrarne dodici sarebbe mostrare dodici volte la stessa correzione.
+    """
+
+    evento_id: int
+    """La prossima occorrenza: è la riga su cui chiamare `correggi_tag`."""
+    serie_id: str
+    """Vuoto per un evento singolo."""
+    titolo: str
+    tipo: Tipo
+    prossima: datetime
+    """Quando torna la prima volta da oggi in poi."""
+    occorrenze: int
+    """Quante ne restano da oggi in poi, questa compresa."""
+    proposto_il: datetime
+
+
+def da_rivedere(
+    conn: sqlite3.Connection, oggi: date, *, fonte: str = FONTE_GOOGLE
+) -> list[SerieDaRivedere]:
+    """Le serie proposte dall'IA e mai confermate, dalla prossima in poi.
+
+    **Solo ciò che deve ancora succedere.** Un tag sbagliato su una lezione di
+    marzo non produce più niente di sbagliato: le regole di contesto scattano
+    su quello che viene, e una coda che cresce per sempre smette di essere una
+    cosa da sbrigare. Il filtro è `fine >= oggi`, lo stesso di `fra`: un evento
+    cominciato ieri e ancora in corso è di oggi.
+    """
+    righe = conn.execute(
+        "SELECT id, serie_id, titolo, tipo, inizio, tag_proposto_il"
+        " FROM calendar_events"
+        " WHERE fonte = ? AND tag_proposto_il IS NOT NULL AND tag_confermato_da_te = 0"
+        "   AND fine >= ?"
+        " ORDER BY inizio ASC",
+        (fonte, oggi.isoformat()),
+    )
+
+    per_serie: dict[str, list[sqlite3.Row]] = {}
+    for riga in righe:
+        chiave = riga["serie_id"] or f"#{riga['id']}"
+        per_serie.setdefault(chiave, []).append(riga)
+
+    # Le righe arrivano già in ordine di inizio, quindi la prima di ogni gruppo
+    # è la prossima occorrenza — e l'ordine dei gruppi è quello delle prime.
+    return [
+        SerieDaRivedere(
+            evento_id=gruppo[0]["id"],
+            serie_id=gruppo[0]["serie_id"],
+            titolo=gruppo[0]["titolo"],
+            tipo=Tipo(gruppo[0]["tipo"]),
+            prossima=datetime.fromisoformat(gruppo[0]["inizio"]),
+            occorrenze=len(gruppo),
+            proposto_il=datetime.fromisoformat(gruppo[0]["tag_proposto_il"]),
+        )
+        for gruppo in per_serie.values()
+    ]

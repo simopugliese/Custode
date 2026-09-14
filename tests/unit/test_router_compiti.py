@@ -24,6 +24,7 @@ def test_ogni_riga_ha_un_motivo() -> None:
         Compito.CRUD_TASK,
         Compito.LOG_ABITUDINI,
         Compito.CATEGORIZZAZIONE_SPESA,
+        Compito.TAG_CALENDARIO,
         Compito.SEGNALE_PROFILO,
         Compito.CHIARIMENTO_SEGNALE,
         Compito.DIGEST_MATTUTINO,

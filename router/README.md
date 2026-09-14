@@ -22,6 +22,10 @@ richiedono qualità, visione o ragionamento a Claude.
 - `spese.py` — la categoria di una spesa e la **lettura degli scontrini**
   (§8.5): l'unica riga *vision* di §6, e l'unica che manda un'immagine al
   modello. Da qui escono numeri e nomi, non righe di database.
+- `calendario.py` — il **tipo** di un evento (lezione, palestra, viaggio,
+  altro) proposto dal titolo (§8.10). Una chiamata sola per l'intera coda di
+  serie da guardare, non una per serie: gira dopo ogni sincronizzazione, cioè
+  ogni cinque minuti.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
 condiviso non deve sapere che esistono dei modelli.

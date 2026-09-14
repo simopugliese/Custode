@@ -271,3 +271,296 @@ def test_un_intervallo_rovesciato_e_un_errore_subito(conn: sqlite3.Connection) -
         dom.fra(conn, OGGI, OGGI - timedelta(days=1))
     with pytest.raises(ValueError, match="rovesciato"):
         _sincronizza(conn, [], da=OGGI, a=OGGI - timedelta(days=1))
+
+
+# — il tag (§8.10, pezzo 5) —————————————————————————————
+
+
+def test_un_evento_nuovo_non_ha_ancora_un_tag_proposto(conn: sqlite3.Connection) -> None:
+    _sincronizza(conn, [_evento()])
+    (salvato,) = dom.del_giorno(conn, OGGI)
+    assert salvato.tag_proposto_il is None
+    assert salvato.tag_confermato_da_te is False
+
+
+def test_una_nuova_occorrenza_di_una_serie_taggata_eredita_il_tag(
+    conn: sqlite3.Connection,
+) -> None:
+    # È il duplicato da evitare: senza eredità, ogni settimana la lezione
+    # rinascerebbe 'altro' e il job di tagging la riproporrebbe da capo.
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    (prima,) = dom.del_giorno(conn, OGGI)
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(
+            fonte=dom.FONTE_GOOGLE, serie_id="serie-analisi", evento_id=None, titolo=""
+        ),
+        dom.Tipo.LEZIONE,
+        ORA,
+    )
+
+    domani = OGGI + timedelta(days=1)
+    _sincronizza(
+        conn,
+        [_evento("ev-2", serie_id="serie-analisi", inizio=datetime.combine(domani, time(9, 0)))],
+        da=DA,
+        a=domani,
+    )
+
+    (seconda,) = dom.del_giorno(conn, domani)
+    assert seconda.tipo is dom.Tipo.LEZIONE
+    assert seconda.tag_proposto_il == ORA
+    assert seconda.id != prima.id  # occorrenza diversa, non la stessa riga
+
+
+def test_una_nuova_occorrenza_di_una_serie_non_ancora_taggata_resta_senza_tag(
+    conn: sqlite3.Connection,
+) -> None:
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+
+    domani = OGGI + timedelta(days=1)
+    _sincronizza(
+        conn,
+        [_evento("ev-2", serie_id="serie-analisi", inizio=datetime.combine(domani, time(9, 0)))],
+        da=DA,
+        a=domani,
+    )
+
+    (seconda,) = dom.del_giorno(conn, domani)
+    assert seconda.tag_proposto_il is None
+
+
+def test_un_evento_singolo_non_eredita_niente(conn: sqlite3.Connection) -> None:
+    # Senza serie non c'è niente da cui ereditare: ogni evento singolo è un
+    # gruppo di una riga sola, anche se per caso condivide il titolo con un
+    # altro già taggato.
+    _sincronizza(conn, [_evento("ev-1", titolo="Ricevimento")])
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(fonte=dom.FONTE_GOOGLE, serie_id="", evento_id=1, titolo=""),
+        dom.Tipo.ALTRO,
+        ORA,
+    )
+
+    _sincronizza(conn, [_evento("ev-2", titolo="Ricevimento")])
+
+    (nuovo,) = [e for e in dom.del_giorno(conn, OGGI) if e.id_esterno == "ev-2"]
+    assert nuovo.tag_proposto_il is None
+
+
+def test_gruppi_senza_tag_conta_una_serie_una_volta_sola(conn: sqlite3.Connection) -> None:
+    domani = OGGI + timedelta(days=1)
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-1", serie_id="serie-analisi"),
+            _evento("ev-2", serie_id="serie-analisi", inizio=datetime.combine(domani, time(9, 0))),
+            _evento("ev-3", titolo="Ricevimento", serie_id=""),
+        ],
+    )
+
+    gruppi = dom.gruppi_senza_tag(conn)
+
+    # La lunghezza conta quanto le chiavi: due gruppi, non tre — se le due
+    # occorrenze della serie finissero due volte in lista, un confronto per
+    # insieme di chiavi non se ne accorgerebbe, essendo la stessa chiave.
+    assert len(gruppi) == 2
+    chiavi = {(g.serie_id, g.evento_id) for g in gruppi}
+    assert chiavi == {("serie-analisi", None), ("", 3)}
+
+
+def test_gruppi_senza_tag_non_ripropone_una_serie_gia_taggata(conn: sqlite3.Connection) -> None:
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(
+            fonte=dom.FONTE_GOOGLE, serie_id="serie-analisi", evento_id=None, titolo=""
+        ),
+        dom.Tipo.LEZIONE,
+        ORA,
+    )
+    assert dom.gruppi_senza_tag(conn) == []
+
+
+def test_applica_tag_scrive_tutta_la_serie_insieme(conn: sqlite3.Connection) -> None:
+    domani = OGGI + timedelta(days=1)
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-1", serie_id="serie-analisi"),
+            _evento("ev-2", serie_id="serie-analisi", inizio=datetime.combine(domani, time(9, 0))),
+        ],
+    )
+
+    toccate = dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(
+            fonte=dom.FONTE_GOOGLE, serie_id="serie-analisi", evento_id=None, titolo=""
+        ),
+        dom.Tipo.LEZIONE,
+        ORA,
+    )
+
+    assert toccate == 2
+    for evento in [*dom.del_giorno(conn, OGGI), *dom.del_giorno(conn, domani)]:
+        assert evento.tipo is dom.Tipo.LEZIONE
+        assert evento.tag_confermato_da_te is False
+
+
+def test_applica_tag_su_un_evento_singolo_tocca_solo_quella_riga(conn: sqlite3.Connection) -> None:
+    _sincronizza(conn, [_evento("ev-1", titolo="Ricevimento"), _evento("ev-2", titolo="Palestra")])
+    ((riga_1,), (riga_2,)) = (
+        [e for e in dom.del_giorno(conn, OGGI) if e.id_esterno == "ev-1"],
+        [e for e in dom.del_giorno(conn, OGGI) if e.id_esterno == "ev-2"],
+    )
+
+    toccate = dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(fonte=dom.FONTE_GOOGLE, serie_id="", evento_id=riga_1.id, titolo=""),
+        dom.Tipo.ALTRO,
+        ORA,
+    )
+
+    assert toccate == 1
+    del_giorno = {e.id: e for e in dom.del_giorno(conn, OGGI)}
+    assert del_giorno[riga_1.id].tag_proposto_il is not None
+    assert del_giorno[riga_2.id].tag_proposto_il is None
+
+
+def test_correggi_tag_segna_la_conferma_e_tocca_tutta_la_serie(conn: sqlite3.Connection) -> None:
+    domani = OGGI + timedelta(days=1)
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-1", serie_id="serie-analisi"),
+            _evento("ev-2", serie_id="serie-analisi", inizio=datetime.combine(domani, time(9, 0))),
+        ],
+    )
+    (proposta,) = dom.del_giorno(conn, OGGI)
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(
+            fonte=dom.FONTE_GOOGLE, serie_id="serie-analisi", evento_id=None, titolo=""
+        ),
+        dom.Tipo.PALESTRA,
+        ORA,
+    )
+
+    dom.correggi_tag(conn, proposta.id, dom.Tipo.LEZIONE, ORA)
+
+    for evento in [*dom.del_giorno(conn, OGGI), *dom.del_giorno(conn, domani)]:
+        assert evento.tipo is dom.Tipo.LEZIONE
+        assert evento.tag_confermato_da_te is True
+
+
+def test_correggi_tag_su_id_inesistente_solleva(conn: sqlite3.Connection) -> None:
+    with pytest.raises(dom.EventoInesistente):
+        dom.correggi_tag(conn, 999, dom.Tipo.LEZIONE, ORA)
+
+
+# — cosa resta da rivedere (§8.10, la pagina) ————————————
+
+
+def _tagga(
+    conn: sqlite3.Connection, serie: str, tipo: dom.Tipo, *, evento_id: int | None = None
+) -> None:
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(fonte=dom.FONTE_GOOGLE, serie_id=serie, evento_id=evento_id, titolo=""),
+        tipo,
+        ORA,
+    )
+
+
+def test_da_rivedere_porta_le_proposte_che_non_hai_mai_toccato(
+    conn: sqlite3.Connection,
+) -> None:
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+
+    assert serie.titolo == "Analisi II"
+    assert serie.tipo is dom.Tipo.LEZIONE
+    assert serie.occorrenze == 1
+    assert serie.proposto_il == ORA
+
+
+def test_da_rivedere_tace_su_quello_che_hai_gia_corretto(conn: sqlite3.Connection) -> None:
+    """Correggere è confermare: una serie corretta non torna nella coda."""
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+    evento = dom.del_giorno(conn, OGGI)[0]
+
+    dom.correggi_tag(conn, evento.id, dom.Tipo.PALESTRA, ORA)
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_non_mostra_quello_che_nessuno_ha_ancora_guardato(
+    conn: sqlite3.Connection,
+) -> None:
+    """Senza un tag proposto non c'è niente da rivedere: c'è da aspettare."""
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_conta_una_serie_una_volta_e_guarda_alla_prossima(
+    conn: sqlite3.Connection,
+) -> None:
+    """Dodici righe per una lezione sarebbero dodici volte la stessa correzione."""
+    giorni = [OGGI, OGGI + timedelta(days=7), OGGI + timedelta(days=14)]
+    _sincronizza(
+        conn,
+        [
+            _evento(f"ev-{n}", serie_id="serie-analisi", inizio=datetime.combine(g, time(9, 0)))
+            for n, g in enumerate(giorni)
+        ],
+    )
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+
+    assert serie.occorrenze == 3
+    assert serie.prossima == datetime.combine(OGGI, time(9, 0))
+    assert serie.serie_id == "serie-analisi"
+
+
+def test_da_rivedere_lascia_fuori_quello_che_e_gia_passato(conn: sqlite3.Connection) -> None:
+    """Un tag sbagliato su una lezione di marzo non produce più niente di sbagliato.
+
+    E una coda che cresce per sempre smette di essere una cosa da sbrigare.
+    """
+    ieri = datetime.combine(OGGI - timedelta(days=1), time(9, 0))
+    _sincronizza(conn, [_evento("ev-vecchio", titolo="Lezione di ieri", inizio=ieri)])
+    _tagga(conn, "", dom.Tipo.LEZIONE, evento_id=1)
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_tiene_un_evento_cominciato_ieri_e_ancora_in_corso(
+    conn: sqlite3.Connection,
+) -> None:
+    """Stesso confine di `fra`: un viaggio partito ieri è un impegno di oggi."""
+    ieri = datetime.combine(OGGI - timedelta(days=1), time(9, 0))
+    _sincronizza(conn, [_evento("ev-viaggio", titolo="Viaggio", inizio=ieri, durata_ore=48)])
+    _tagga(conn, "", dom.Tipo.VIAGGIO, evento_id=1)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+    assert serie.titolo == "Viaggio"
+
+
+def test_da_rivedere_mette_davanti_quello_che_torna_prima(conn: sqlite3.Connection) -> None:
+    dopodomani = datetime.combine(OGGI + timedelta(days=2), time(9, 0))
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-tardi", titolo="Palestra", inizio=dopodomani, serie_id="serie-pa"),
+            _evento("ev-presto", titolo="Analisi II", serie_id="serie-an"),
+        ],
+    )
+    _tagga(conn, "serie-pa", dom.Tipo.PALESTRA)
+    _tagga(conn, "serie-an", dom.Tipo.LEZIONE)
+
+    assert [s.titolo for s in dom.da_rivedere(conn, OGGI)] == ["Analisi II", "Palestra"]

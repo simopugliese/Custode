@@ -12,11 +12,10 @@ distinzione fra i modi di fallire, che è l'unica cosa che riguarda il job.
 - *non configurato* — non è un guasto, è un modulo spento. Non si tenta e non
   si segna niente: il giorno che metti le credenziali il job parte da solo.
 - *non raggiungibile* — Google non risponde adesso. La fascia **non** si segna,
-  così si riprova al risveglio dopo (cinque minuti) invece di aspettare il
-  quarto d'ora successivo.
+  così si riprova al prossimo risveglio del worker.
 - *autorizzazione non valida* — nessun tentativo la farà tornare: va rifatta a
-  mano. La fascia **si segna**, perché riprovare tre volte in un quarto d'ora
-  non serve a niente; si riprova alla fascia dopo, che è quanto basta ad
+  mano. La fascia **si segna**, perché un permesso morto non torna buono
+  aspettando; si riprova alla fascia dopo comunque, che è quanto basta ad
   accorgersi che nel frattempo hai riautorizzato. E si chiede di avvisarti,
   perché un calendario fermo in silenzio è esattamente la trappola che §8.10
   descrive: in «Testing» il refresh token scade dopo sette giorni.
@@ -25,6 +24,14 @@ distinzione fra i modi di fallire, che è l'unica cosa che riguarda il job.
 segue tutte le pagine e solleva se una non arriva: quando ritorna, quello che
 ha in mano è tutto ciò che la sorgente ha da dire sulla finestra, ed è l'unica
 condizione in cui l'assenza di un evento significa «disdetto».
+
+**Il tagging (`tagga`) sta qui accanto perché segue il sync**, ma è un giro
+suo: chiede al modello il tipo delle serie che nessuno ha ancora guardato e le
+scrive. Non ha un registro in `job_runs` — la coda `gruppi_senza_tag` *è* il
+suo stato, e una coda che resta piena è già il «riprova al giro dopo». E non è
+legato al fatto che il sync abbia trovato qualcosa di nuovo: una coda avanzata
+da un giro precedente va svuotata anche in una giornata in cui il calendario
+non cambia.
 """
 
 from __future__ import annotations
@@ -41,6 +48,10 @@ from custode_calendario.errori import (
 )
 from custode_calendario.evento import SorgenteCalendario
 from custode_core.dominio import calendario as dom
+from custode_router import Router
+from custode_router import calendario as router_calendario
+from custode_router.compiti import Compito
+from custode_router.errori import ErroreRouter
 
 AVVISO_FERMO = (
     "⚠️ <b>Il calendario non si aggiorna più.</b>\n"
@@ -130,3 +141,79 @@ def esegui(
         return Esito(errore=str(errore))
 
     return Esito(sincronizzato=dom.sincronizza(conn, letti, da=da, a=a, ora=ora))
+
+
+# — il tag proposto dal modello (§8.10, pezzo 5) —
+
+
+@dataclass(frozen=True)
+class EsitoTag:
+    """Com'è andato il giro di tagging, per i log e per i test."""
+
+    spento: bool = False
+    """Il provider del compito non ha una chiave: non si è nemmeno provato."""
+
+    gruppi: int = 0
+    """Quante serie (o eventi singoli) sono state guardate in questo giro."""
+
+    righe: int = 0
+    """Quante righe di `calendar_events` hanno ricevuto un tag: una serie ne
+    tocca tutte le occorrenze insieme, quindi è quasi sempre più di `gruppi`."""
+
+    non_letti: int = 0
+    """Quanti gruppi hanno avuto `altro` di ripiego invece di una risposta."""
+
+    rimasti: int = 0
+    """Quanti gruppi restano in coda per il giro dopo, oltre il tetto della
+    chiamata."""
+
+    errore: str | None = None
+    """Perché il modello non ha risposto. `None` se è andata."""
+
+
+def tagga(
+    conn: sqlite3.Connection,
+    ora: datetime,
+    *,
+    router: Router,
+    fonte: str = dom.FONTE_GOOGLE,
+) -> EsitoTag:
+    """Propone il tipo delle serie che nessuno ha ancora guardato (§8.10).
+
+    Gira dopo ogni sincronizzazione riuscita, e la coda è `gruppi_senza_tag`:
+    non serve un registro suo in `job_runs`, perché la coda **è** lo stato. Una
+    chiamata sola per l'intera coda — una per serie vorrebbe dire, il giorno
+    che colleghi il calendario, decine di richieste di fila.
+
+    Non solleva: un modello che non risponde non deve portarsi via il resto del
+    giro del worker, e la coda intatta è già il «riprova» — al sync dopo si
+    rifà, cinque minuti più tardi.
+    """
+    if not router.configurato_per(Compito.TAG_CALENDARIO):
+        # Come il calendario senza credenziali: non è un guasto, è un modulo
+        # spento. Dirlo ad ogni giro sarebbe una riga di log ogni cinque minuti
+        # per una cosa che non cambia.
+        return EsitoTag(spento=True)
+
+    coda = dom.gruppi_senza_tag(conn, fonte=fonte)
+    if not coda:
+        return EsitoTag()
+
+    gruppi = coda[: router_calendario.MAX_TITOLI_PER_CHIAMATA]
+    try:
+        proposte = router_calendario.tag_per(router, [gruppo.titolo for gruppo in gruppi])
+    except ErroreRouter as guasto:
+        return EsitoTag(errore=str(guasto), rimasti=len(coda))
+
+    righe = 0
+    for gruppo, proposta in zip(gruppi, proposte, strict=True):
+        # `confermato_da_te` resta falso: questa è una proposta, e la pagina
+        # Calendario deve poter distinguerla da una tua correzione.
+        righe += dom.applica_tag(conn, gruppo, proposta.tipo, ora)
+
+    return EsitoTag(
+        gruppi=len(gruppi),
+        righe=righe,
+        non_letti=sum(1 for proposta in proposte if not proposta.letta),
+        rimasti=len(coda) - len(gruppi),
+    )

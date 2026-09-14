@@ -13,6 +13,8 @@ niente da dire" — es. la lista della spesa davvero vuota.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -288,6 +290,93 @@ class SpeseData(BaseModel):
     categorie: list[CategoriaSpesa]
     categoriaNota: str | None = None
     confronto: list[ConfrontoSpese]
+
+
+# — Calendario (§8.10) —
+
+
+class TipoEvento(BaseModel):
+    """Una delle quattro caselle di §8.10, col nome da mostrare.
+
+    Il menu di correzione le riceve dal backend invece di scriverle nella
+    pagina: le etichette le compone chi le sa comporre, e una casella in più un
+    domani non richiederebbe di ricompilare la dashboard.
+    """
+
+    valore: str
+    label: str
+
+
+class EventoCalendario(CalendarEventItem):
+    """Un evento nella pagina Calendario: come in Home, più cosa se n'è capito."""
+
+    tipo: str
+    tipoLabel: str
+    statoTag: str
+    """'da_guardare' | 'proposto' | 'corretto' — vedi `statoTagLabel`."""
+    statoTagLabel: str
+    serie: bool
+    """Vero se l'evento fa parte di una ricorrenza: correggerlo le tocca tutte."""
+
+
+class GiornoCalendario(BaseModel):
+    label: str
+    isOggi: bool | None = None
+    eventi: list[EventoCalendario]
+    notaVuoto: str | None = None
+    """Cosa scrivere quando la giornata è vuota. Solo nella vista settimana,
+    che mostra i sette giorni tutti: nella vista mese i giorni vuoti non
+    vengono mandati affatto."""
+
+
+class SerieDaRivedere(BaseModel):
+    """Una proposta dell'IA che non hai mai toccato, nella vista omonima."""
+
+    id: str
+    """L'id dell'evento su cui mandare la correzione: la prossima occorrenza."""
+    titolo: str
+    tipo: str
+    tipoLabel: str
+    quandoLabel: str
+    occorrenzeLabel: str | None = None
+    propostoLabel: str
+    serie: bool
+
+
+class StatsCalendario(BaseModel):
+    eventiPeriodo: int
+    daRivedere: int
+    daGuardare: int
+    """Serie che il tagging non ha ancora guardato: se non cala mai, il worker
+    è fermo o manca la chiave del modello."""
+
+
+class CalendarioData(BaseModel):
+    periodoLabel: str
+    titolo: str
+    stats: StatsCalendario
+    tipi: list[TipoEvento]
+    giorni: list[GiornoCalendario] = []
+    daRivedere: list[SerieDaRivedere] = []
+    notaVuoto: str | None = None
+    orizzonteLabel: str | None = None
+    """Fin dove arriva il calendario: il worker sincronizza una finestra, e un
+    mese che finisce oltre quella finestra è vuoto perché nessuno ha ancora
+    guardato, non perché non hai impegni."""
+
+
+class CorrezioneTag(BaseModel):
+    """La risposta a una correzione: l'evento aggiornato, e cos'altro è cambiato."""
+
+    evento: EventoCalendario
+    occorrenze: int
+    label: str
+
+
+class CorreggiTag(BaseModel):
+    """Corpo di `PATCH /api/calendario/{id}`."""
+
+    tipo: Literal["lezione", "palestra", "viaggio", "altro"]
 
 
 # — corpi delle richieste —

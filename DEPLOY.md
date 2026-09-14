@@ -277,9 +277,10 @@ CALENDARIO_REFRESH_TOKEN=1//0g...
 Mettila nel `.env` e riavvia i servizi (`docker compose up -d`).
 
 Da lì in poi non c'è altro da fare: il worker sincronizza il calendario **ogni
-quarto d'ora** da solo, e all'avvio scrive nei log su quale calendario e con
-quale finestra (`CALENDARIO_GIORNI_INDIETRO` / `_AVANTI`, sette e quattordici
-per impostazione predefinita). Se le credenziali mancano, la riga dice invece
+cinque minuti** da solo — praticamente in tempo reale, tanto quanto ci mette a
+svegliarsi — e all'avvio scrive nei log su quale calendario e con quale
+finestra (`CALENDARIO_GIORNI_INDIETRO` / `_AVANTI`, sette e quattordici per
+impostazione predefinita). Se le credenziali mancano, la riga dice invece
 `calendario spento` e nessun altro servizio si lamenta: il modulo è spento, non
 rotto.
 
@@ -319,12 +320,9 @@ Le cause sono tre, in ordine di probabilità:
 3. hai cambiato la password dell'account Google.
 
 In tutti e tre i casi si rifà il punto **b**. Non serve riavviare niente dopo:
-il worker ci riprova ad ogni quarto d'ora, quindi riparte da solo entro quindici
-minuti dal momento in cui il nuovo token è nel `.env` — a patto che il `.env`
-riletto sia quello dei container, cioè dopo un `docker compose up -d`. Ci
-riprova ogni quarto d'ora e non ad ogni giro, apposta: un permesso morto non
-torna buono aspettando, e ritentarlo ogni cinque minuti per giorni riempirebbe
-i log senza cambiare niente.
+il worker ci riprova ad ogni giro, quindi riparte da solo entro cinque minuti
+dal momento in cui il nuovo token è nel `.env` — a patto che il `.env` riletto
+sia quello dei container, cioè dopo un `docker compose up -d`.
 
 > Il guasto si scopre quando scade l'**access token**, che vive un'ora: fra il
 > momento in cui il permesso muore e il messaggio su Telegram può passare fino a

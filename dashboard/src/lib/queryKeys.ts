@@ -1,6 +1,7 @@
 export const queryKeys = {
   home: ['home'] as const,
   diario: (vista: string) => ['diario', vista] as const,
+  calendario: (vista: string) => ['calendario', vista] as const,
   lezioni: (vista: string) => ['lezioni', vista] as const,
   task: (vista: string) => ['task', vista] as const,
   listaSpesa: (ordina: string) => ['lista-spesa', ordina] as const,
