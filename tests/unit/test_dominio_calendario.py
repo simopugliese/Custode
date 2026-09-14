@@ -456,3 +456,111 @@ def test_correggi_tag_segna_la_conferma_e_tocca_tutta_la_serie(conn: sqlite3.Con
 def test_correggi_tag_su_id_inesistente_solleva(conn: sqlite3.Connection) -> None:
     with pytest.raises(dom.EventoInesistente):
         dom.correggi_tag(conn, 999, dom.Tipo.LEZIONE, ORA)
+
+
+# — cosa resta da rivedere (§8.10, la pagina) ————————————
+
+
+def _tagga(
+    conn: sqlite3.Connection, serie: str, tipo: dom.Tipo, *, evento_id: int | None = None
+) -> None:
+    dom.applica_tag(
+        conn,
+        dom.GruppoDaTaggare(fonte=dom.FONTE_GOOGLE, serie_id=serie, evento_id=evento_id, titolo=""),
+        tipo,
+        ORA,
+    )
+
+
+def test_da_rivedere_porta_le_proposte_che_non_hai_mai_toccato(
+    conn: sqlite3.Connection,
+) -> None:
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+
+    assert serie.titolo == "Analisi II"
+    assert serie.tipo is dom.Tipo.LEZIONE
+    assert serie.occorrenze == 1
+    assert serie.proposto_il == ORA
+
+
+def test_da_rivedere_tace_su_quello_che_hai_gia_corretto(conn: sqlite3.Connection) -> None:
+    """Correggere è confermare: una serie corretta non torna nella coda."""
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+    evento = dom.del_giorno(conn, OGGI)[0]
+
+    dom.correggi_tag(conn, evento.id, dom.Tipo.PALESTRA, ORA)
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_non_mostra_quello_che_nessuno_ha_ancora_guardato(
+    conn: sqlite3.Connection,
+) -> None:
+    """Senza un tag proposto non c'è niente da rivedere: c'è da aspettare."""
+    _sincronizza(conn, [_evento("ev-1", serie_id="serie-analisi")])
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_conta_una_serie_una_volta_e_guarda_alla_prossima(
+    conn: sqlite3.Connection,
+) -> None:
+    """Dodici righe per una lezione sarebbero dodici volte la stessa correzione."""
+    giorni = [OGGI, OGGI + timedelta(days=7), OGGI + timedelta(days=14)]
+    _sincronizza(
+        conn,
+        [
+            _evento(f"ev-{n}", serie_id="serie-analisi", inizio=datetime.combine(g, time(9, 0)))
+            for n, g in enumerate(giorni)
+        ],
+    )
+    _tagga(conn, "serie-analisi", dom.Tipo.LEZIONE)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+
+    assert serie.occorrenze == 3
+    assert serie.prossima == datetime.combine(OGGI, time(9, 0))
+    assert serie.serie_id == "serie-analisi"
+
+
+def test_da_rivedere_lascia_fuori_quello_che_e_gia_passato(conn: sqlite3.Connection) -> None:
+    """Un tag sbagliato su una lezione di marzo non produce più niente di sbagliato.
+
+    E una coda che cresce per sempre smette di essere una cosa da sbrigare.
+    """
+    ieri = datetime.combine(OGGI - timedelta(days=1), time(9, 0))
+    _sincronizza(conn, [_evento("ev-vecchio", titolo="Lezione di ieri", inizio=ieri)])
+    _tagga(conn, "", dom.Tipo.LEZIONE, evento_id=1)
+
+    assert dom.da_rivedere(conn, OGGI) == []
+
+
+def test_da_rivedere_tiene_un_evento_cominciato_ieri_e_ancora_in_corso(
+    conn: sqlite3.Connection,
+) -> None:
+    """Stesso confine di `fra`: un viaggio partito ieri è un impegno di oggi."""
+    ieri = datetime.combine(OGGI - timedelta(days=1), time(9, 0))
+    _sincronizza(conn, [_evento("ev-viaggio", titolo="Viaggio", inizio=ieri, durata_ore=48)])
+    _tagga(conn, "", dom.Tipo.VIAGGIO, evento_id=1)
+
+    (serie,) = dom.da_rivedere(conn, OGGI)
+    assert serie.titolo == "Viaggio"
+
+
+def test_da_rivedere_mette_davanti_quello_che_torna_prima(conn: sqlite3.Connection) -> None:
+    dopodomani = datetime.combine(OGGI + timedelta(days=2), time(9, 0))
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-tardi", titolo="Palestra", inizio=dopodomani, serie_id="serie-pa"),
+            _evento("ev-presto", titolo="Analisi II", serie_id="serie-an"),
+        ],
+    )
+    _tagga(conn, "serie-pa", dom.Tipo.PALESTRA)
+    _tagga(conn, "serie-an", dom.Tipo.LEZIONE)
+
+    assert [s.titolo for s in dom.da_rivedere(conn, OGGI)] == ["Analisi II", "Palestra"]

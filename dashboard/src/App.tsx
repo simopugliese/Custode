@@ -4,6 +4,7 @@ import { ThemeProvider } from './theme/ThemeContext';
 import { Layout } from './components/Layout';
 import Home from './pages/Home';
 import Diario from './pages/Diario';
+import Calendario from './pages/Calendario';
 import Lezioni from './pages/Lezioni';
 import Task from './pages/Task';
 import ListaSpesa from './pages/ListaSpesa';
@@ -25,6 +26,7 @@ export default function App() {
             <Route element={<Layout />}>
               <Route index element={<Home />} />
               <Route path="diario" element={<Diario />} />
+              <Route path="calendario" element={<Calendario />} />
               <Route path="lezioni" element={<Lezioni />} />
               <Route path="task" element={<Task />} />
               <Route path="lista-spesa" element={<ListaSpesa />} />

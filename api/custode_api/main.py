@@ -28,6 +28,7 @@ from custode_api.rotte import (
     spese,
     task,
 )
+from custode_api.rotte import calendario as rotta_calendario
 from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
@@ -123,6 +124,7 @@ def crea_app(
         return JSONResponse(status_code=200 if sano else 503, content=corpo.model_dump())
 
     app.include_router(assistente.router)
+    app.include_router(rotta_calendario.router)
     app.include_router(diario.router)
     app.include_router(home.router)
     app.include_router(task.router)

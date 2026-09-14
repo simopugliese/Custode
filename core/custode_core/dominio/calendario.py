@@ -192,6 +192,19 @@ def del_giorno(conn: sqlite3.Connection, giorno: date, *, fonte: str | None = No
     return fra(conn, giorno, giorno, fonte=fonte)
 
 
+def per_id(conn: sqlite3.Connection, evento_id: int) -> Evento:
+    """Un evento solo. Solleva `EventoInesistente` se l'id non esiste.
+
+    Serve a chi ha appena corretto un tag e deve restituire la riga com'è
+    diventata: rileggerla è l'unico modo di dire cosa c'è scritto davvero,
+    invece di ricostruirlo da quello che si è chiesto di scrivere.
+    """
+    riga = conn.execute("SELECT * FROM calendar_events WHERE id = ?", (evento_id,)).fetchone()
+    if riga is None:
+        raise EventoInesistente(evento_id)
+    return _da_riga(riga)
+
+
 # — scrittura —
 
 
@@ -445,3 +458,67 @@ def correggi_tag(conn: sqlite3.Connection, evento_id: int, tipo: Tipo, ora: date
         titolo="",
     )
     return applica_tag(conn, gruppo, tipo, ora, confermato_da_te=True)
+
+
+@dataclass(frozen=True)
+class SerieDaRivedere:
+    """Una serie taggata dall'IA che tu non hai mai confermato né corretto.
+
+    È la risposta a «cosa ha capito» di §8.10: ciò che il modello ha deciso da
+    solo e che nessuno ha ancora guardato. Un gruppo per serie, come per la
+    proposta — correggere un'occorrenza corregge tutta la serie, quindi
+    mostrarne dodici sarebbe mostrare dodici volte la stessa correzione.
+    """
+
+    evento_id: int
+    """La prossima occorrenza: è la riga su cui chiamare `correggi_tag`."""
+    serie_id: str
+    """Vuoto per un evento singolo."""
+    titolo: str
+    tipo: Tipo
+    prossima: datetime
+    """Quando torna la prima volta da oggi in poi."""
+    occorrenze: int
+    """Quante ne restano da oggi in poi, questa compresa."""
+    proposto_il: datetime
+
+
+def da_rivedere(
+    conn: sqlite3.Connection, oggi: date, *, fonte: str = FONTE_GOOGLE
+) -> list[SerieDaRivedere]:
+    """Le serie proposte dall'IA e mai confermate, dalla prossima in poi.
+
+    **Solo ciò che deve ancora succedere.** Un tag sbagliato su una lezione di
+    marzo non produce più niente di sbagliato: le regole di contesto scattano
+    su quello che viene, e una coda che cresce per sempre smette di essere una
+    cosa da sbrigare. Il filtro è `fine >= oggi`, lo stesso di `fra`: un evento
+    cominciato ieri e ancora in corso è di oggi.
+    """
+    righe = conn.execute(
+        "SELECT id, serie_id, titolo, tipo, inizio, tag_proposto_il"
+        " FROM calendar_events"
+        " WHERE fonte = ? AND tag_proposto_il IS NOT NULL AND tag_confermato_da_te = 0"
+        "   AND fine >= ?"
+        " ORDER BY inizio ASC",
+        (fonte, oggi.isoformat()),
+    )
+
+    per_serie: dict[str, list[sqlite3.Row]] = {}
+    for riga in righe:
+        chiave = riga["serie_id"] or f"#{riga['id']}"
+        per_serie.setdefault(chiave, []).append(riga)
+
+    # Le righe arrivano già in ordine di inizio, quindi la prima di ogni gruppo
+    # è la prossima occorrenza — e l'ordine dei gruppi è quello delle prime.
+    return [
+        SerieDaRivedere(
+            evento_id=gruppo[0]["id"],
+            serie_id=gruppo[0]["serie_id"],
+            titolo=gruppo[0]["titolo"],
+            tipo=Tipo(gruppo[0]["tipo"]),
+            prossima=datetime.fromisoformat(gruppo[0]["inizio"]),
+            occorrenze=len(gruppo),
+            proposto_il=datetime.fromisoformat(gruppo[0]["tag_proposto_il"]),
+        )
+        for gruppo in per_serie.values()
+    ]

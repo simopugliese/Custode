@@ -122,6 +122,69 @@ export interface DiarioData {
   coperturaNota: string;
 }
 
+// — Calendario (§8.10) —
+
+/** Uno dei quattro tipi di §8.10. Le etichette arrivano dal backend. */
+export interface TipoEvento {
+  valore: string; // 'lezione' | 'palestra' | 'viaggio' | 'altro'
+  label: string;
+}
+
+/**
+ * Un evento nella pagina Calendario: la riga della Home più ciò che Custode
+ * ne ha capito. `statoTag` distingue i tre casi che `tipo` da solo confonde —
+ * 'altro' è sia il default di un evento appena sincronizzato sia un esito
+ * legittimo del modello.
+ */
+export interface EventoCalendario extends CalendarEventItem {
+  tipo: string;
+  tipoLabel: string;
+  statoTag: 'da_guardare' | 'proposto' | 'corretto';
+  statoTagLabel: string;
+  serie: boolean; // se vero, correggerlo tocca tutta la ricorrenza
+}
+
+export interface GiornoCalendario {
+  label: string;
+  isOggi?: boolean;
+  eventi: EventoCalendario[];
+  notaVuoto?: string; // solo nella vista settimana, che manda i sette giorni
+}
+
+/** Una proposta dell'IA mai confermata: una riga per serie, non per occorrenza. */
+export interface SerieDaRivedere {
+  id: string; // l'evento su cui mandare la correzione: la prossima occorrenza
+  titolo: string;
+  tipo: string;
+  tipoLabel: string;
+  quandoLabel: string; // "giovedì alle 11:00"
+  occorrenzeLabel?: string; // assente per un evento singolo
+  propostoLabel: string; // "proposto oggi"
+  serie: boolean;
+}
+
+export interface CalendarioData {
+  periodoLabel: string;
+  titolo: string;
+  stats: {
+    eventiPeriodo: number;
+    daRivedere: number;
+    daGuardare: number;
+  };
+  tipi: TipoEvento[];
+  giorni: GiornoCalendario[];
+  daRivedere: SerieDaRivedere[];
+  notaVuoto?: string;
+  orizzonteLabel?: string; // fin dove arriva la finestra sincronizzata
+}
+
+/** La risposta a una correzione: l'evento aggiornato e cos'altro è cambiato. */
+export interface CorrezioneTag {
+  evento: EventoCalendario;
+  occorrenze: number;
+  label: string;
+}
+
 // — Lezioni e corsi —
 
 export interface LezioneSettimana {
