@@ -2,6 +2,17 @@
 # la base (Python, uv, dipendenze comuni) è pinnata in un posto solo.
 # Immagini pinnate per versione, mai `:latest` (ARCHITECTURE.md §9).
 # Il tag `slim-bookworm` copre sia x86_64 (sviluppo) sia arm64 (Raspberry Pi 5).
+#
+# **Tre strati, dal più stabile al più volatile**, ed è la ragione per cui
+# `base` non contiene il codice: `docker compose up --build` ricostruisce ogni
+# layer che sta *sotto* a qualcosa di cambiato, quindi tutto ciò che sta dopo
+# la copia del codice si rifà ad ogni modifica. Con whisper.cpp — che si
+# compila da sorgente — quello voleva dire quattro minuti per cambiare una
+# riga di Python. Qui il codice entra il più tardi possibile:
+#
+#   base        python + uv + utente        cambia quasi mai
+#   dipendenze  pyproject.toml + uv.lock    cambia quando cambiano le librerie
+#   progetto    il codice                   cambia ogni volta
 FROM python:3.12.8-slim-bookworm AS base
 
 # uv installato copiando il binario dall'immagine ufficiale, anch'essa pinnata.
@@ -16,12 +27,28 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Prima solo i file di dipendenze: finché non cambiano, il layer pesante resta
-# in cache anche quando cambia il codice. Qui vanno solo le dipendenze comuni;
-# ogni servizio aggiunge il proprio extra nel suo target, così l'immagine
-# dell'API non si porta dietro python-telegram-bot e viceversa.
+# Utente non-root (§9) e la cartella del volume. Stanno qui, e non dopo il
+# codice, perché non dipendono da niente del progetto: creare un utente non è
+# un'operazione da rifare ogni volta che cambia una riga.
+RUN useradd --create-home --uid 10001 custode \
+    && mkdir -p /data \
+    && chown custode:custode /data
+
+ENV CUSTODE_DB_PATH=/data/custode.db
+
+
+# — dipendenze: il layer pesante, che cambia solo con uv.lock ————
+# Qui vanno solo le dipendenze comuni; ogni servizio aggiunge il proprio extra
+# nel suo target, così l'immagine dell'API non si porta dietro
+# python-telegram-bot e viceversa.
+FROM base AS dipendenze
+
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project --no-dev
+
+
+# — progetto: il codice, e l'installazione del pacchetto ————————
+FROM dipendenze AS progetto
 
 COPY core/ core/
 COPY api/ api/
@@ -32,17 +59,11 @@ COPY whisper/ whisper/
 COPY worker/ worker/
 COPY calendario/ calendario/
 RUN uv sync --frozen --no-dev
-
-# Utente non-root (§9), proprietario di /data così può scrivere sul volume.
-RUN useradd --create-home --uid 10001 custode \
-    && mkdir -p /data \
-    && chown -R custode:custode /data /app
-
-ENV CUSTODE_DB_PATH=/data/custode.db
+RUN chown -R custode:custode /app
 
 
 # — api: il backend che serve la dashboard ————————————————
-FROM base AS api
+FROM progetto AS api
 
 RUN uv sync --frozen --no-dev --extra router
 RUN chown -R custode:custode /opt/venv
@@ -58,7 +79,7 @@ CMD ["uvicorn", "custode_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 # — bot: il canale Telegram, in long polling —————————————
 # Nessuna porta esposta: è il bot a chiamare Telegram, mai il contrario (§9).
-FROM base AS bot
+FROM progetto AS bot
 
 RUN uv sync --frozen --no-dev --extra bot --extra router
 RUN chown -R custode:custode /opt/venv
@@ -72,7 +93,7 @@ CMD ["python", "-m", "custode_bot.main"]
 # Telegram è lui a chiamare. Gli basta l'extra `router` (Claude per il riepilogo
 # settimanale) più `worker` (httpx per mandare il messaggio): `python-telegram-bot`
 # resta fuori, perché qui si spedisce e basta — i tap sui bottoni li riceve il bot.
-FROM base AS worker
+FROM progetto AS worker
 
 RUN uv sync --frozen --no-dev --extra router --extra worker --extra calendario
 RUN chown -R custode:custode /opt/venv
@@ -84,6 +105,12 @@ CMD ["python", "-m", "custode_worker.main"]
 # — whisper: trascrizione locale (§4, §13) ————————————————
 # whisper.cpp si compila qui: il binario finisce nell'immagine finale senza
 # portarsi dietro il compilatore.
+#
+# **`FROM base` e non `FROM progetto`**: questo stage non usa una riga del
+# progetto, e farlo dipendere dal codice vorrebbe dire ricompilare whisper.cpp
+# da sorgente ad ogni modifica — quattro minuti per niente, ad ogni
+# `docker compose up --build`. Da qui in giù si ricostruisce solo quando
+# cambiano `WHISPER_VERSION` o `WHISPER_MODEL`.
 FROM base AS whisper-build
 
 ARG WHISPER_VERSION=v1.7.4
@@ -103,7 +130,11 @@ RUN git clone --depth 1 --branch "${WHISPER_VERSION}" \
     && rm -rf /tmp/whisper.cpp
 
 
-FROM base AS whisper
+# Parte da `dipendenze` e non da `progetto` per la stessa ragione: così
+# l'installazione di ffmpeg — una cinquantina di megabyte di pacchetti — e la
+# copia del binario di whisper restano in cache quando cambia il codice. Il
+# codice arriva dopo, dallo stage che l'ha già installato una volta.
+FROM dipendenze AS whisper
 
 # ffmpeg converte i vocali OGG/Opus di Telegram in WAV 16 kHz mono.
 RUN apt-get update \
@@ -111,9 +142,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=whisper-build /opt/whisper /opt/whisper
+COPY --from=progetto /app /app
 
 RUN uv sync --frozen --no-dev --extra whisper
-RUN chown -R custode:custode /opt/venv /opt/whisper
+RUN chown -R custode:custode /opt/venv /opt/whisper /app
 USER custode
 EXPOSE 8100
 
@@ -125,7 +157,7 @@ CMD ["uvicorn", "custode_whisper.main:app", "--host", "0.0.0.0", "--port", "8100
 
 # — test: stessa base, più le dipendenze di sviluppo e i test —————
 # Usato da docker-compose.test.yml (§10).
-FROM base AS test
+FROM progetto AS test
 
 RUN uv sync --frozen --all-extras
 COPY tests/ tests/
