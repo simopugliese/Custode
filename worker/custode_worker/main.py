@@ -127,13 +127,15 @@ def _giro_calendario(
     sorgente: SorgenteCalendario,
     telegram: ClientTelegram,
 ) -> None:
-    """La sincronizzazione del calendario (§8.10), ogni quarto d'ora.
+    """La sincronizzazione del calendario (§8.10), ogni cinque minuti.
 
     È l'unico job del worker che non ha un'ora del giorno: il suo periodo è la
-    fascia di quindici minuti in cui cade adesso. Il worker si sveglia ogni
-    cinque, quindi la stessa fascia viene interrogata tre volte e coperta una —
-    che è anche il margine su cui si appoggia il tentativo dopo un guasto di
-    rete.
+    fascia in cui cade adesso, larga quanto il risveglio del worker — quindi in
+    pratica ogni giro tenta un sync nuovo. La fascia resta comunque un
+    registro, non un «se ne occupa il ciclo»: se il worker si svegliasse due
+    volte a distanza ravvicinata (un riavvio) o `WORKER_INTERVALLO_SECONDI`
+    fosse configurato più stretto di cinque minuti, evita una seconda chiamata
+    a Google per lo stesso periodo.
     """
     fascia = fascia_dovuta(ora, ogni_minuti=MINUTI_SYNC_CALENDARIO)
 
@@ -151,8 +153,8 @@ def _giro_calendario(
 
         if esito.spento:
             # Nessuna credenziale: il modulo è spento, non rotto. Non si segna
-            # la fascia, così il giorno che le metti il job parte da solo senza
-            # aspettare il quarto d'ora successivo.
+            # la fascia, così il giorno che le metti il job parte al giro
+            # successivo invece di aspettare che questa fascia scada da sola.
             return
 
         if esito.autorizzazione_scaduta:
@@ -161,9 +163,9 @@ def _giro_calendario(
                 # L'avviso non è partito: non si segna la fascia, così al giro
                 # dopo si riprova invece di restare zitti per sempre.
                 return
-            # La fascia sì: riprovare fra cinque minuti un permesso morto non
-            # serve a niente, e fra un quarto d'ora basta ad accorgersi che nel
-            # frattempo hai rifatto l'autorizzazione.
+            # La fascia sì: un permesso morto non torna buono aspettando, e la
+            # fascia dopo basta comunque ad accorgersi che nel frattempo hai
+            # rifatto l'autorizzazione.
             segna_eseguito(conn, SYNC_CALENDARIO, fascia, ora)
             return
 

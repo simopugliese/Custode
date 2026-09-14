@@ -78,7 +78,7 @@ giornata davvero libera e un calendario che non ha ancora sincronizzato danno
 entrambi una lista vuota, ma non vogliono dire la stessa cosa: la prima è
 `"Nessun evento oggi."`, la seconda `"Non ho ancora sincronizzato gli eventi di
 oggi."` — dirla sbagliata a calendario appena collegato sarebbe semplicemente
-falso, visto che il worker sincronizza ogni quarto d'ora.
+falso, visto che il worker sincronizza ogni cinque minuti.
 
 `meta` non porta ancora il tipo dell'evento (lezione, palestra, viaggio): il
 tagging di §8.10 è il pezzo successivo, e finché non c'è il campo resta assente

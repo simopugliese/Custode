@@ -14,13 +14,21 @@ from datetime import date, datetime, time, timedelta
 
 from custode_core.formato import inizio_settimana
 
-MINUTI_SYNC_CALENDARIO = 15
+MINUTI_SYNC_CALENDARIO = 5
 """Ogni quanto risincronizzare il calendario (§8.10).
 
-Un quarto d'ora perché la granularità più fine che §8.10 prevede è «dimmelo
-trenta minuti prima dell'evento»: un impegno aggiunto adesso arriva comunque
-in tempo per la sua stessa regola. Più stretto sarebbero chiamate a Google per
-niente, più largo un evento aggiunto all'ultimo perderebbe il suo promemoria.
+Uguale a `WORKER_INTERVALLO_SECONDI` di default (300 secondi): con la fascia
+alla stessa misura del risveglio, ogni giro del worker prova a sincronizzare —
+il calendario si aggiorna in tempo quasi reale invece che a scatti di un
+quarto d'ora. Il costo resta trascurabile: `events.list` non è a pagamento, e
+288 chiamate al giorno sono lo 0,03% del tetto di quota di Google (1.000.000
+al giorno per progetto).
+
+Resta comunque una **fascia**, non «sincronizza ad ogni giro» scritto a mano:
+se `WORKER_INTERVALLO_SECONDI` fosse configurato più stretto di cinque minuti,
+o il worker si svegliasse due volte a distanza ravvicinata (un riavvio), la
+fascia evita comunque una seconda chiamata a Google per lo stesso minuto —
+`job_runs` resta l'unico posto che decide «l'ho già fatto per questo periodo».
 
 Non è configurabile: è una costante che discende da una scelta di progetto, non
 un gusto della macchina su cui gira.

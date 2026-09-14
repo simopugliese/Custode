@@ -12,11 +12,10 @@ distinzione fra i modi di fallire, che è l'unica cosa che riguarda il job.
 - *non configurato* — non è un guasto, è un modulo spento. Non si tenta e non
   si segna niente: il giorno che metti le credenziali il job parte da solo.
 - *non raggiungibile* — Google non risponde adesso. La fascia **non** si segna,
-  così si riprova al risveglio dopo (cinque minuti) invece di aspettare il
-  quarto d'ora successivo.
+  così si riprova al prossimo risveglio del worker.
 - *autorizzazione non valida* — nessun tentativo la farà tornare: va rifatta a
-  mano. La fascia **si segna**, perché riprovare tre volte in un quarto d'ora
-  non serve a niente; si riprova alla fascia dopo, che è quanto basta ad
+  mano. La fascia **si segna**, perché un permesso morto non torna buono
+  aspettando; si riprova alla fascia dopo comunque, che è quanto basta ad
   accorgersi che nel frattempo hai riautorizzato. E si chiede di avvisarti,
   perché un calendario fermo in silenzio è esattamente la trappola che §8.10
   descrive: in «Testing» il refresh token scade dopo sette giorni.
