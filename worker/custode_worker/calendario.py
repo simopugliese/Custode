@@ -129,4 +129,4 @@ def esegui(
     except CalendarioNonRaggiungibile as errore:
         return Esito(errore=str(errore))
 
-    return Esito(sincronizzato=dom.sincronizza(conn, list(letti), da=da, a=a, ora=ora))
+    return Esito(sincronizzato=dom.sincronizza(conn, letti, da=da, a=a, ora=ora))

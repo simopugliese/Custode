@@ -28,6 +28,7 @@ from custode_api.rotte import (
     spese,
     task,
 )
+from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.migrazioni import migra
@@ -51,10 +52,15 @@ class StatoSalute(BaseModel):
     migrazioni: Literal["ok", "fallite"]
 
 
-def crea_app(settings: Settings | None = None, router: Router | None = None) -> FastAPI:
+def crea_app(
+    settings: Settings | None = None,
+    router: Router | None = None,
+    calendario: ImpostazioniCalendario | None = None,
+) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
     instradatore = router or Router()
+    calendario_impostazioni = calendario or get_impostazioni_calendario()
     logging.basicConfig(level=impostazioni.log_level.upper())
     log = logging.getLogger("custode.api")
 
@@ -130,6 +136,7 @@ def crea_app(settings: Settings | None = None, router: Router | None = None) -> 
     # test possono costruire l'app puntandola a un database temporaneo.
     app.state.settings = impostazioni
     app.state.router = instradatore
+    app.state.calendario = calendario_impostazioni
 
     return app
 

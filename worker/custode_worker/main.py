@@ -29,26 +29,28 @@ from custode_core.db import connessione
 from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.formato import adesso
 from custode_core.migrazioni import migra
-from custode_router import Router
-from custode_worker import abitudini as worker_abitudini
-from custode_worker import backup, settimanale
-from custode_worker import calendario as worker_calendario
-from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
-from custode_worker.pianificazione import (
+from custode_core.registro_job import (
     AVVISO_CALENDARIO_FERMO,
     BACKUP,
-    MINUTI_SYNC_CALENDARIO,
     REPORT_MENSILE_ABITUDINI,
     RIEPILOGO_SETTIMANALE,
     SENZA_PERIODO,
     SYNC_CALENDARIO,
     dimentica,
     dimentica_prima_di,
-    fascia_dovuta,
     gia_eseguito,
+    segna_eseguito,
+)
+from custode_router import Router
+from custode_worker import abitudini as worker_abitudini
+from custode_worker import backup, settimanale
+from custode_worker import calendario as worker_calendario
+from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
+from custode_worker.pianificazione import (
+    MINUTI_SYNC_CALENDARIO,
+    fascia_dovuta,
     giorno_dovuto,
     mese_dovuto,
-    segna_eseguito,
     settimana_dovuta,
 )
 from custode_worker.telegram import ClientTelegram, InvioNonRiuscito

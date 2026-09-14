@@ -24,6 +24,7 @@ pagine di una risposta riuscita.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
@@ -176,7 +177,7 @@ def del_giorno(conn: sqlite3.Connection, giorno: date, *, fonte: str | None = No
 
 def sincronizza(
     conn: sqlite3.Connection,
-    eventi: list[EventoEsterno],
+    eventi: Sequence[EventoEsterno],
     *,
     da: date,
     a: date,
@@ -193,6 +194,10 @@ def sincronizza(
     Va chiamata **solo dopo una lettura riuscita e completa** (tutte le pagine):
     su una risposta parziale, l'assenza di un evento non significa che è stato
     disdetto.
+
+    `Sequence` e non `list` perché `list` è invariante: una `list[Evento]` di
+    una sorgente concreta non è una `list[EventoEsterno]`, e chiamare questa
+    funzione costringerebbe ogni sorgente a ricopiare la sua lista.
     """
     if da > a:
         raise ValueError(f"intervallo rovesciato: da {da} a {a}")

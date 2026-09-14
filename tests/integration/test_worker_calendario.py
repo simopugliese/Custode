@@ -29,14 +29,14 @@ from custode_calendario.evento import Evento
 from custode_calendario.google import ClientGoogle
 from custode_core.config import Settings
 from custode_core.dominio import calendario as dom
-from custode_worker import main as worker_main
-from custode_worker.config import ImpostazioniWorker
-from custode_worker.pianificazione import (
+from custode_core.registro_job import (
     AVVISO_CALENDARIO_FERMO,
     SENZA_PERIODO,
     SYNC_CALENDARIO,
     gia_eseguito,
 )
+from custode_worker import main as worker_main
+from custode_worker.config import ImpostazioniWorker
 from custode_worker.telegram import InvioNonRiuscito
 from tests.integration.finto_google import FintoGoogle
 

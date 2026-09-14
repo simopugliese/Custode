@@ -21,14 +21,14 @@ from custode_calendario.evento import Evento
 from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import profilo as dom_profilo
-from custode_worker import main as worker_main
-from custode_worker.config import ImpostazioniWorker
-from custode_worker.pianificazione import (
+from custode_core.registro_job import (
     BACKUP,
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     segna_eseguito,
 )
+from custode_worker import main as worker_main
+from custode_worker.config import ImpostazioniWorker
 from custode_worker.telegram import InvioNonRiuscito
 
 pytestmark = pytest.mark.integration

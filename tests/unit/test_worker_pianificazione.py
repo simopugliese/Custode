@@ -6,7 +6,6 @@ sera: `settimana_dovuta` prende `adesso` come parametro apposta.
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -73,30 +72,6 @@ def test_col_riepilogo_al_lunedi_si_chiude_la_settimana_appena_finita() -> None:
 )
 def test_momento_previsto(giorno: str, atteso: datetime) -> None:
     assert pianificazione.momento_previsto(LUNEDI, giorno, 21, 0) == atteso
-
-
-# — il registro delle esecuzioni —
-
-
-def test_un_job_fatto_non_si_rifa(conn: sqlite3.Connection, ora: datetime) -> None:
-    nome = pianificazione.RIEPILOGO_SETTIMANALE
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI) is False
-
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI) is True
-    # Un'altra settimana è un'altra cosa.
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI - timedelta(days=7)) is False
-
-
-def test_segnarlo_due_volte_non_esplode(conn: sqlite3.Connection, ora: datetime) -> None:
-    """Capita se il worker riparte nel mezzo: la chiave è unica, non deve alzare."""
-    nome = pianificazione.RIEPILOGO_SETTIMANALE
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-
-    quante = conn.execute("SELECT count(*) AS n FROM job_runs").fetchone()["n"]
-    assert quante == 1
 
 
 # — configurazione —
@@ -188,75 +163,3 @@ def test_una_fascia_non_guarda_indietro() -> None:
 def test_una_fascia_fuori_misura_e_un_errore_subito(minuti: int) -> None:
     with pytest.raises(ValueError):
         pianificazione.fascia_dovuta(datetime(2026, 9, 14, 10, 3), ogni_minuti=minuti)
-
-
-def test_una_fascia_e_un_giorno_non_si_confondono_nel_registro(
-    conn: sqlite3.Connection, ora: datetime
-) -> None:
-    """Chiavi di forma diversa nella stessa tabella, senza pestarsi."""
-    fascia = datetime(2026, 9, 14, 10, 15)
-    pianificazione.segna_eseguito(conn, "un_job", fascia, ora)
-
-    assert pianificazione.gia_eseguito(conn, "un_job", fascia) is True
-    assert pianificazione.gia_eseguito(conn, "un_job", fascia.date()) is False
-    assert pianificazione.gia_eseguito(conn, "un_job", datetime(2026, 9, 14, 10, 30)) is False
-
-
-def test_i_secondi_non_fanno_una_fascia_nuova(conn: sqlite3.Connection, ora: datetime) -> None:
-    """La chiave si scrive al minuto: altrimenti sarebbe diversa ad ogni giro."""
-    pianificazione.segna_eseguito(conn, "un_job", datetime(2026, 9, 14, 10, 15), ora)
-    assert pianificazione.gia_eseguito(conn, "un_job", datetime(2026, 9, 14, 10, 15, 42)) is True
-
-
-# — le cose senza periodo, e la potatura —
-
-
-def test_una_segnalazione_senza_periodo_si_mette_e_si_toglie(
-    conn: sqlite3.Connection, ora: datetime
-) -> None:
-    """«Ti ho già avvisato» vale finché non si ripara, non per un periodo."""
-    nome = "avviso_qualcosa"
-    assert pianificazione.gia_eseguito(conn, nome, pianificazione.SENZA_PERIODO) is False
-
-    pianificazione.segna_eseguito(conn, nome, pianificazione.SENZA_PERIODO, ora)
-    assert pianificazione.gia_eseguito(conn, nome, pianificazione.SENZA_PERIODO) is True
-
-    pianificazione.dimentica(conn, nome, pianificazione.SENZA_PERIODO)
-    assert pianificazione.gia_eseguito(conn, nome, pianificazione.SENZA_PERIODO) is False
-
-
-def test_la_potatura_tiene_la_finestra_e_butta_il_resto(
-    conn: sqlite3.Connection, ora: datetime
-) -> None:
-    """Senza, un job a fascia lascerebbe trentacinquemila righe all'anno."""
-    base = datetime(2026, 9, 14, 12, 0)
-    for scarto in range(0, 60 * 48, 15):  # due giorni di fasce da un quarto d'ora
-        pianificazione.segna_eseguito(conn, "a_fascia", base - timedelta(minutes=scarto), ora)
-    prima = conn.execute("SELECT count(*) AS n FROM job_runs").fetchone()["n"]
-
-    tolte = pianificazione.dimentica_prima_di(conn, "a_fascia", base - timedelta(days=1))
-
-    rimaste = conn.execute("SELECT count(*) AS n FROM job_runs").fetchone()["n"]
-    assert prima == 192
-    # «Prima di» è stretto: la fascia esattamente sul limite resta, quindi il
-    # giorno tenuto è di novantasette fasce e non di novantasei.
-    assert tolte == 95
-    assert rimaste == 97
-    # La fascia corrente non si pota mai: sarebbe il modo di rifare subito il
-    # lavoro appena fatto.
-    assert pianificazione.gia_eseguito(conn, "a_fascia", base) is True
-
-
-def test_la_potatura_non_tocca_gli_altri_job(conn: sqlite3.Connection, ora: datetime) -> None:
-    """Il riepilogo settimanale deve restare per sempre: cinquantadue righe all'anno."""
-    vecchio_lunedi = date(2020, 1, 6)
-    pianificazione.segna_eseguito(conn, pianificazione.RIEPILOGO_SETTIMANALE, vecchio_lunedi, ora)
-
-    pianificazione.dimentica_prima_di(
-        conn, pianificazione.SYNC_CALENDARIO, datetime(2026, 9, 14, 12, 0)
-    )
-
-    assert (
-        pianificazione.gia_eseguito(conn, pianificazione.RIEPILOGO_SETTIMANALE, vecchio_lunedi)
-        is True
-    )

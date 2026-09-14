@@ -22,6 +22,9 @@ def test_home_vuota(client: TestClient) -> None:
 def test_i_moduli_non_attivi_sono_assenti_non_a_zero(client: TestClient) -> None:
     # È la differenza fra "non lo so ancora" e "non hai speso niente".
     corpo = client.get("/api/home").json()
+    # `calendarioOggi` è assente perché il calendario non è collegato (nessuna
+    # credenziale): quando lo è, compare anche a giornata libera — vedi
+    # `test_home_calendario.py`.
     for campo in ("calendarioOggi", "abitudini", "proposteAutomazioni"):
         assert campo not in corpo
     assert "streakPiuLunga" not in corpo["stats"]

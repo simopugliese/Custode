@@ -48,7 +48,7 @@ def _sincronizza(
     ora: datetime = ORA,
     fonte: str = dom.FONTE_GOOGLE,
 ) -> dom.Esito:
-    return dom.sincronizza(conn, list(eventi), da=da, a=a, ora=ora, fonte=fonte)
+    return dom.sincronizza(conn, eventi, da=da, a=a, ora=ora, fonte=fonte)
 
 
 # — cosa entra —————————————————————————————————————————
