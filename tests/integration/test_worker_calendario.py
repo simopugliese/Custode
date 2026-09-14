@@ -69,6 +69,15 @@ class TelegramFinto:
 
 
 class RouterFinto:
+    def configurato_per(self, compito: Any) -> bool:
+        """Tagging spento: qui il soggetto è il sync, non il tag.
+
+        Il tagging gira nello stesso giro ma è un'altra cosa, e ha i suoi test
+        in `test_worker_tag_calendario.py`. Spegnerlo qui tiene questi test su
+        una cosa sola.
+        """
+        return False
+
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         return {"riepilogo": "Andata così."}
 

@@ -12,6 +12,10 @@ regole di contesto approvate (§8.10), backup cifrato del DB (§9).
 - `settimanale.py` — il job di §8.4 punto 7: legge le voci di diario approvate
   della settimana, ne fa scrivere il riepilogo a Claude, e prepara il messaggio
   con la revisione dei candidati per il profilo.
+- `calendario.py` — il sync del calendario di Google, ogni cinque minuti, e il
+  **tag** degli eventi nuovi: dopo ogni sync chiede a DeepSeek il tipo delle
+  serie che nessuno ha ancora guardato, in una chiamata sola per tutta la coda
+  (§8.10). La coda è lo stato del job: non ha una riga sua in `job_runs`.
 - `backup.py` — il backup giornaliero del database e il suo ripristino (§9).
 - `ripristino.py` — il comando del runbook: `python -m custode_worker.ripristino`.
 - `telegram.py` — mandare un messaggio, una chiamata HTTP e basta.
@@ -82,7 +86,8 @@ scrive. Il runbook completo è in [DEPLOY.md §7](../DEPLOY.md).
 Fatti: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
 dei candidati per il profilo e la rifusione che ne segue; il **backup
 giornaliero** del database (§9); i **resoconti delle abitudini** settimanale e
-mensile (§8.6).
+mensile (§8.6); la **sincronizzazione del calendario** col tag degli eventi
+nuovi (§8.10).
 
 Il resoconto settimanale delle abitudini viaggia **dentro** il messaggio del
 riepilogo del diario invece che in uno suo: arriverebbe lo stesso giorno alla

@@ -22,6 +22,7 @@ class Compito(StrEnum):
     CRUD_TASK = "crud_task"
     LOG_ABITUDINI = "log_abitudini"
     CATEGORIZZAZIONE_SPESA = "categorizzazione_spesa"
+    TAG_CALENDARIO = "tag_calendario"
     SEGNALE_PROFILO = "segnale_profilo"
     CHIARIMENTO_SEGNALE = "chiarimento_segnale"
     DIGEST_MATTUTINO = "digest_mattutino"
@@ -43,6 +44,7 @@ TABELLA: dict[Compito, tuple[Provider, str]] = {
     Compito.CRUD_TASK: (Provider.DEEPSEEK, "task semplice"),
     Compito.LOG_ABITUDINI: (Provider.DEEPSEEK, "matching contro una lista esistente"),
     Compito.CATEGORIZZAZIONE_SPESA: (Provider.DEEPSEEK, "classificazione semplice"),
+    Compito.TAG_CALENDARIO: (Provider.DEEPSEEK, "classificazione semplice da un titolo"),
     Compito.SEGNALE_PROFILO: (Provider.DEEPSEEK, "classificazione leggera, alto volume"),
     Compito.CHIARIMENTO_SEGNALE: (Provider.DEEPSEEK, "interazione semplice"),
     Compito.DIGEST_MATTUTINO: (Provider.DEEPSEEK, "composizione da template"),
