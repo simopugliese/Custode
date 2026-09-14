@@ -41,14 +41,22 @@ class ImpostazioniCalendario(BaseSettings):
     calendario_id: str = "primary"
     """Quale calendario leggere. «primary» è quello principale dell'account."""
 
-    giorni_indietro: int = 1
+    giorni_indietro: int = 7
     giorni_avanti: int = 14
     """Quanta finestra sincronizzare.
 
-    Indietro serve poco — un giorno, per il «dopo_evento» di ieri sera che
-    deve ancora scattare. Avanti bastano due settimane: le regole guardano al
-    massimo qualche ora avanti, e una finestra più larga sarebbe solo roba da
-    tenere aggiornata.
+    Avanti bastano due settimane: le regole guardano al massimo qualche ora
+    avanti, e una finestra più larga sarebbe solo roba da tenere aggiornata.
+
+    Indietro erano uno — quanto basta al «dopo_evento» di ieri sera che deve
+    ancora scattare — finché gli eventi si leggevano e basta. Da quando si
+    conservano, la finestra ha cambiato significato: non è più «cosa leggo»,
+    è «cosa tengo in pari». Con un giorno solo, un Pi spento per tre giorni
+    lascerebbe in archivio un buco che non si richiude più, perché quei giorni
+    non rientrano mai più in nessuna finestra. Sette giorni fanno sì che
+    l'archivio si ripari da solo dopo fino a una settimana di spegnimento, e
+    costano quanto uno: è sempre una sola chiamata, con qualche riga in più da
+    riconciliare.
     """
 
     timeout_secondi: float = 20.0

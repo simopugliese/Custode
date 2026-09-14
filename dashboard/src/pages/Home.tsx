@@ -109,7 +109,7 @@ export default function Home() {
                         )}
                       </div>
                     ))}
-                    {data.calendarioOggi.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '10px 0' }}>Nessun evento oggi.</div>}
+                    {data.calendarioOggi.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '10px 0' }}>{data.calendarioNotaVuoto}</div>}
                   </div>
                 </div>
                 )}

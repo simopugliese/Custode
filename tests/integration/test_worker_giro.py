@@ -16,17 +16,19 @@ import pytest
 from pydantic_settings import SettingsConfigDict
 
 from custode_bot.risposte import Risposta
+from custode_calendario.config import ImpostazioniCalendario
+from custode_calendario.evento import Evento
 from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import profilo as dom_profilo
-from custode_worker import main as worker_main
-from custode_worker.config import ImpostazioniWorker
-from custode_worker.pianificazione import (
+from custode_core.registro_job import (
     BACKUP,
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     segna_eseguito,
 )
+from custode_worker import main as worker_main
+from custode_worker.config import ImpostazioniWorker
 from custode_worker.telegram import InvioNonRiuscito
 
 pytestmark = pytest.mark.integration
@@ -50,6 +52,24 @@ class TelegramFinto:
         if self.errore is not None:
             raise self.errore
         self.mandati.append(risposta)
+
+
+class CalendarioSpento:
+    """Nessuna credenziale: il modulo è spento, e questi test non lo riguardano.
+
+    Lo stato «spento» è quello in cui il worker gira sul Pi finché non
+    autorizzi, quindi è anche il default giusto qui.
+    """
+
+    def configurata(self) -> bool:
+        return False
+
+    def eventi(self, da: date, a: date) -> list[Evento]:
+        raise AssertionError("un calendario spento non va interrogato")
+
+
+class _CalendarioDiTest(ImpostazioniCalendario):
+    model_config = SettingsConfigDict(env_prefix="CALENDARIO_", env_file=None, extra="ignore")
 
 
 class RouterFinto:
@@ -96,6 +116,8 @@ def _giro(
         ),
         router=RouterFinto(),  # type: ignore[arg-type]
         telegram=telegram,  # type: ignore[arg-type]
+        calendario=_CalendarioDiTest(),
+        sorgente_calendario=CalendarioSpento(),
     )
 
 

@@ -3,18 +3,28 @@
 Tutto ciò che decide *se* è il momento sta qui e prende `adesso` come
 parametro: la differenza fra un test che gira in un millesimo di secondo e uno
 che aspetterebbe fino a domenica sera.
+
+Cosa un job ha *già fatto* sta invece in `custode_core.registro_job`, perché
+quella tabella ormai la leggono in due — il worker e l'API.
 """
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import date, datetime, time, timedelta
 
 from custode_core.formato import inizio_settimana
 
-RIEPILOGO_SETTIMANALE = "riepilogo_settimanale"
-BACKUP = "backup"
-REPORT_MENSILE_ABITUDINI = "report_mensile_abitudini"
+MINUTI_SYNC_CALENDARIO = 15
+"""Ogni quanto risincronizzare il calendario (§8.10).
+
+Un quarto d'ora perché la granularità più fine che §8.10 prevede è «dimmelo
+trenta minuti prima dell'evento»: un impegno aggiunto adesso arriva comunque
+in tempo per la sua stessa regola. Più stretto sarebbero chiamate a Google per
+niente, più largo un evento aggiunto all'ultimo perderebbe il suo promemoria.
+
+Non è configurabile: è una costante che discende da una scelta di progetto, non
+un gusto della macchina su cui gira.
+"""
 
 
 def momento_previsto(lunedi: date, giorno: str, ore: int, minuti: int) -> datetime:
@@ -57,6 +67,33 @@ def giorno_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date:
     return adesso.date() - timedelta(days=1)
 
 
+def fascia_dovuta(adesso: datetime, *, ogni_minuti: int) -> datetime:
+    """L'inizio della fascia di `ogni_minuti` in cui cade `adesso`.
+
+    È la forma che prende «cosa è dovuto adesso?» per un job che gira più volte
+    al giorno: la fascia fa da periodo, esattamente come il lunedì per il
+    riepilogo settimanale, e il registro dice se quella è già stata coperta. Il
+    worker si sveglia più spesso di così, quindi una fascia può essere
+    interrogata più volte e coperta una sola.
+
+    **Non si guarda indietro**, al contrario del settimanale e del giornaliero.
+    Se il Pi era spento non c'è niente da recuperare: le fasce perse non
+    contengono lavoro arretrato, contengono lo stesso lavoro di adesso. Rifarle
+    una per una vorrebbe dire risincronizzare novantasei volte di fila per
+    ottenere ciò che un solo giro ottiene subito.
+
+    Le fasce sono ancorate all'ora, non al momento dell'avvio: con quindici
+    minuti sono :00, :15, :30, :45, uguali dopo ogni riavvio. Se `ogni_minuti`
+    non divide 60 l'ultima fascia dell'ora resta più corta — accettabile, e la
+    ragione per cui i divisori di 60 sono gli unici valori sensati.
+    """
+    if not 1 <= ogni_minuti <= 60:
+        raise ValueError(f"la fascia dev'essere fra 1 e 60 minuti, non {ogni_minuti}")
+    return adesso.replace(
+        minute=(adesso.minute // ogni_minuti) * ogni_minuti, second=0, microsecond=0
+    )
+
+
 def mese_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date | None:
     """Il primo giorno del mese da raccontare adesso, o None se non è ora.
 
@@ -77,25 +114,3 @@ def mese_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date | None:
 
 def _primo_del_mese_dopo(primo: date) -> date:
     return (primo.replace(day=28) + timedelta(days=4)).replace(day=1)
-
-
-# — registro delle esecuzioni —
-
-
-def gia_eseguito(conn: sqlite3.Connection, nome: str, chiave: date) -> bool:
-    riga = conn.execute(
-        "SELECT 1 FROM job_runs WHERE nome = ? AND chiave = ?", (nome, chiave.isoformat())
-    ).fetchone()
-    return riga is not None
-
-
-def segna_eseguito(conn: sqlite3.Connection, nome: str, chiave: date, ora: datetime) -> None:
-    """Registra che il job è stato fatto per quel periodo.
-
-    Si segna anche quando il job non ha prodotto niente (una settimana senza
-    voci approvate): senza, il worker ci riproverebbe ad ogni giro per sempre.
-    """
-    conn.execute(
-        "INSERT OR IGNORE INTO job_runs (nome, chiave, eseguito_il) VALUES (?, ?, ?)",
-        (nome, chiave.isoformat(), ora.isoformat(timespec="seconds")),
-    )

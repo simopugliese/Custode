@@ -173,6 +173,14 @@ class HomeData(BaseModel):
     # Ognuno di questi blocchi appare solo quando il suo modulo è attivo.
     proposteAutomazioni: int | None = None
     calendarioOggi: list[CalendarEventItem] | None = None
+    calendarioNotaVuoto: str | None = None
+    """Cosa scrivere al posto della lista quando è vuota — e *perché* è vuota.
+
+    Una giornata senza impegni e un calendario che non ha ancora sincronizzato
+    danno la stessa lista vuota, ma non vogliono dire la stessa cosa: «Nessun
+    evento oggi» a calendario appena collegato sarebbe semplicemente falso.
+    Assente quando c'è almeno un evento.
+    """
     abitudini: list[HabitRow] | None = None
     speseSettimana: SpeseSettimanaHome | None = None
 

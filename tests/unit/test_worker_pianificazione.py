@@ -6,7 +6,6 @@ sera: `settimana_dovuta` prende `adesso` come parametro apposta.
 
 from __future__ import annotations
 
-import sqlite3
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -75,30 +74,6 @@ def test_momento_previsto(giorno: str, atteso: datetime) -> None:
     assert pianificazione.momento_previsto(LUNEDI, giorno, 21, 0) == atteso
 
 
-# — il registro delle esecuzioni —
-
-
-def test_un_job_fatto_non_si_rifa(conn: sqlite3.Connection, ora: datetime) -> None:
-    nome = pianificazione.RIEPILOGO_SETTIMANALE
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI) is False
-
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI) is True
-    # Un'altra settimana è un'altra cosa.
-    assert pianificazione.gia_eseguito(conn, nome, LUNEDI - timedelta(days=7)) is False
-
-
-def test_segnarlo_due_volte_non_esplode(conn: sqlite3.Connection, ora: datetime) -> None:
-    """Capita se il worker riparte nel mezzo: la chiave è unica, non deve alzare."""
-    nome = pianificazione.RIEPILOGO_SETTIMANALE
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-    pianificazione.segna_eseguito(conn, nome, LUNEDI, ora)
-
-    quante = conn.execute("SELECT count(*) AS n FROM job_runs").fetchone()["n"]
-    assert quante == 1
-
-
 # — configurazione —
 
 
@@ -142,3 +117,49 @@ def test_a_gennaio_si_guarda_a_dicembre_dell_anno_prima() -> None:
     assert pianificazione.mese_dovuto(datetime(2027, 1, 1, 21, 0), ore=21, minuti=0) == date(
         2026, 12, 1
     )
+
+
+# — le fasce, per i job che girano più volte al giorno (§8.10) —
+
+
+@pytest.mark.parametrize(
+    ("adesso", "atteso"),
+    [
+        # Le fasce sono ancorate all'ora, non al momento dell'avvio.
+        (datetime(2026, 9, 14, 10, 0, 0), datetime(2026, 9, 14, 10, 0)),
+        (datetime(2026, 9, 14, 10, 7, 30), datetime(2026, 9, 14, 10, 0)),
+        (datetime(2026, 9, 14, 10, 14, 59), datetime(2026, 9, 14, 10, 0)),
+        (datetime(2026, 9, 14, 10, 15, 0), datetime(2026, 9, 14, 10, 15)),
+        (datetime(2026, 9, 14, 10, 59, 59), datetime(2026, 9, 14, 10, 45)),
+        (datetime(2026, 9, 14, 23, 50), datetime(2026, 9, 14, 23, 45)),
+    ],
+)
+def test_fascia_dovuta(adesso: datetime, atteso: datetime) -> None:
+    assert pianificazione.fascia_dovuta(adesso, ogni_minuti=15) == atteso
+
+
+def test_tre_risvegli_dentro_la_stessa_fascia_danno_lo_stesso_periodo() -> None:
+    """Il worker si sveglia ogni cinque minuti: la fascia va coperta una volta sola."""
+    fasce = {
+        pianificazione.fascia_dovuta(datetime(2026, 9, 14, 10, m), ogni_minuti=15)
+        for m in (0, 5, 10, 14)
+    }
+    assert len(fasce) == 1
+
+
+def test_una_fascia_non_guarda_indietro() -> None:
+    """Un Pi spento non ha fasce arretrate da recuperare.
+
+    Le fasce perse non contengono lavoro diverso da quello di adesso: rifarle
+    una per una vorrebbe dire risincronizzare novantasei volte per ottenere ciò
+    che un giro solo ottiene subito. Quindi c'è sempre e solo la fascia corrente.
+    """
+    assert pianificazione.fascia_dovuta(datetime(2026, 9, 14, 10, 3), ogni_minuti=15) == datetime(
+        2026, 9, 14, 10, 0
+    )
+
+
+@pytest.mark.parametrize("minuti", [0, -5, 61, 1440])
+def test_una_fascia_fuori_misura_e_un_errore_subito(minuti: int) -> None:
+    with pytest.raises(ValueError):
+        pianificazione.fascia_dovuta(datetime(2026, 9, 14, 10, 3), ogni_minuti=minuti)

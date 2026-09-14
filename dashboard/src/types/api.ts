@@ -35,10 +35,10 @@ export interface HabitRow {
 
 export interface CalendarEventItem {
   id: string;
-  ora: string;
+  ora: string; // "09:00", oppure "—" per chi un'ora non ce l'ha
   titolo: string;
   luogo?: string;
-  meta?: string; // es. "automatico"
+  meta?: string; // es. "tutto il giorno", "in corso"
 }
 
 export interface CategoriaSpesa {
@@ -68,6 +68,10 @@ export interface HomeData {
   taskOggi: TaskItem[];
   listaSpesa: ShoppingItem[];
   calendarioOggi?: CalendarEventItem[];
+  // Cosa scrivere quando `calendarioOggi` è una lista vuota: una giornata
+  // libera e un calendario non ancora sincronizzato danno la stessa lista, e
+  // non vogliono dire la stessa cosa. Assente quando c'è almeno un evento.
+  calendarioNotaVuoto?: string;
   abitudini?: HabitRow[];
   speseSettimana?: {
     categorie: CategoriaSpesa[];

@@ -14,6 +14,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 from custode_core.db import connect
 from custode_core.formato import adesso
@@ -26,6 +27,20 @@ def prendi_settings(request: Request) -> Settings:
 
 
 ImpostazioniDip = Annotated[Settings, Depends(prendi_settings)]
+
+
+def prendi_calendario(request: Request) -> ImpostazioniCalendario:
+    """Le impostazioni del calendario, per sapere se il modulo è acceso.
+
+    L'API non legge mai il calendario — quello è mestiere del worker — ma deve
+    sapere se le credenziali ci sono: senza, il blocco della Home non si
+    disegna affatto (§5 del contratto, campo omesso ≠ campo vuoto).
+    """
+    calendario: ImpostazioniCalendario = request.app.state.calendario
+    return calendario
+
+
+CalendarioDip = Annotated[ImpostazioniCalendario, Depends(prendi_calendario)]
 
 
 def prendi_conn(settings: ImpostazioniDip) -> Iterator[sqlite3.Connection]:

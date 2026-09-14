@@ -15,13 +15,13 @@ import pytest
 
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import profilo as dom_profilo
-from custode_router.errori import ProviderNonRaggiungibile
-from custode_worker import settimanale
-from custode_worker.pianificazione import (
+from custode_core.registro_job import (
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     segna_eseguito,
 )
+from custode_router.errori import ProviderNonRaggiungibile
+from custode_worker import settimanale
 
 pytestmark = pytest.mark.integration
 

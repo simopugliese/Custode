@@ -42,9 +42,9 @@ file ne descrive solo la forma a endpoint per endpoint.
 ## Stato di implementazione
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
-**Diario**, **Spese** e la barra **«A Custode»**. Tutti gli altri endpoint qui sotto
-rispondono `501` finché non arriva il loro modulo — vedi la roadmap in
-`../ARCHITECTURE.md` §12.
+**Diario**, **Spese**, il **calendario** della Home e la barra **«A Custode»**.
+Tutti gli altri endpoint qui sotto rispondono `501` finché non arriva il loro
+modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
 
 C'è inoltre `GET /api/health`, non consumato dalla dashboard: serve allo smoke
 test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
@@ -61,6 +61,28 @@ lista della spesa, conteggio automazioni proposte.
 `CUSTODE_BUDGET_SETTIMANALE`: la sua barra si riempie rispetto al budget, e
 senza un tetto non ci sarebbe niente rispetto a cui riempirla. `scontriniInAttesa`
 conta le foto lette che aspettano una conferma, che non sono ancora in `speso`.
+
+`calendarioOggi` compare **solo** se il calendario è collegato, cioè se ci sono
+`CALENDARIO_CLIENT_ID`, `CALENDARIO_CLIENT_SECRET` e `CALENDARIO_REFRESH_TOKEN`
+(§8.10). Contiene gli eventi che **toccano** oggi, non solo quelli che
+cominciano oggi: un viaggio partito venerdì è un impegno anche di sabato.
+
+`ora` è `"09:00"` per un evento con un orario che comincia oggi. Per chi un'ora
+non ce l'ha è `"—"`, e `meta` dice perché: `"tutto il giorno"` per un evento di
+giornata, `"in corso"` per uno cominciato prima di oggi e non ancora finito —
+lì l'ora d'inizio è di un altro giorno e mostrarla direbbe una cosa falsa.
+
+`calendarioNotaVuoto` è la frase da scrivere al posto della lista quando la
+lista è **vuota**, ed è omessa quando c'è almeno un evento. Esiste perché una
+giornata davvero libera e un calendario che non ha ancora sincronizzato danno
+entrambi una lista vuota, ma non vogliono dire la stessa cosa: la prima è
+`"Nessun evento oggi."`, la seconda `"Non ho ancora sincronizzato gli eventi di
+oggi."` — dirla sbagliata a calendario appena collegato sarebbe semplicemente
+falso, visto che il worker sincronizza ogni quarto d'ora.
+
+`meta` non porta ancora il tipo dell'evento (lezione, palestra, viaggio): il
+tagging di §8.10 è il pezzo successivo, e finché non c'è il campo resta assente
+invece di dire `"altro"` per tutto.
 
 ## Diario
 

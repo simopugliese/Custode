@@ -9,9 +9,11 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic_settings import SettingsConfigDict
 
 from custode_api.dipendenze import prendi_ora
 from custode_api.main import crea_app
+from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 
 CAMPI_MESSAGGIO = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
@@ -60,6 +62,26 @@ def budget() -> float | None:
     return None
 
 
+class _CalendarioDiTest(ImpostazioniCalendario):
+    """Ignora il `.env` dello sviluppatore, come `_SettingsDiTest`.
+
+    Senza, un `.env` locale con le credenziali vere farebbe comparire il blocco
+    calendario della Home in macchina e sparire in CI — cioè un test che dipende
+    da cosa c'è sul computer di chi lo lancia.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="CALENDARIO_", env_file=None, extra="ignore")
+
+
+@pytest.fixture
+def calendario() -> ImpostazioniCalendario:
+    """Calendario non collegato: è come nasce un'installazione (§8.10).
+
+    Un test che vuole il blocco calendario della Home ridefinisce questa fixture.
+    """
+    return _CalendarioDiTest()
+
+
 @pytest.fixture
 def client(
     fai_settings: Callable[..., Settings],
@@ -67,6 +89,7 @@ def client(
     ora: datetime,
     modello: RouterFinto,
     budget: float | None,
+    calendario: ImpostazioniCalendario,
 ) -> Iterator[TestClient]:
     """API completa su un DB temporaneo, con "adesso" fissato.
 
@@ -76,6 +99,7 @@ def client(
     app = crea_app(
         fai_settings(ambiente="test", db_path=db_path, budget_settimanale=budget),
         router=modello,  # type: ignore[arg-type]
+        calendario=calendario,
     )
     # L'ora è iniettata: senza, le etichette ("oggi", "giovedì") e la sezione
     # in cui finisce un task dipenderebbero da quando girano i test.
