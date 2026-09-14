@@ -28,6 +28,7 @@ from custode_core.config import Settings, get_settings
 from custode_core.db import connessione
 from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.formato import adesso
+from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
 from custode_core.registro_job import (
     AVVISO_CALENDARIO_FERMO,
@@ -357,7 +358,7 @@ def main() -> int:
     impostazioni = get_settings()
     worker = get_impostazioni_worker()
     bot: ImpostazioniBot = get_impostazioni_bot()
-    logging.basicConfig(level=impostazioni.log_level.upper())
+    configura_log(impostazioni.log_level)
 
     try:
         worker.ora_e_minuto()

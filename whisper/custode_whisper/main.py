@@ -7,12 +7,12 @@ container è già dentro casa (§2, §9).
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from custode_core.log import configura as configura_log
 from custode_whisper.config import ImpostazioniWhisper, get_impostazioni_whisper
 from custode_whisper.trascrizione import ErroreTrascrizione, trascrivi
 
@@ -29,7 +29,7 @@ class StatoWhisper(BaseModel):
 
 def crea_app(impostazioni: ImpostazioniWhisper | None = None) -> FastAPI:
     conf = impostazioni or get_impostazioni_whisper()
-    logging.basicConfig(level=conf.log_level.upper())
+    configura_log(conf.log_level)
 
     app = FastAPI(title="Custode Whisper", docs_url=None, redoc_url=None, openapi_url=None)
 
