@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { AvvisoRow } from '../components/AvvisoRow';
 import { StatsBar } from '../components/StatsBar';
@@ -6,6 +7,7 @@ import { AsyncState } from '../components/AsyncState';
 import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { ShoppingRow } from '../components/ShoppingRow';
+import { CampoAggiunta } from '../components/CampoAggiunta';
 import { Bar } from '../components/Bar';
 import { Money } from '../components/Money';
 import { Icon } from '../lib/icons';
@@ -18,7 +20,9 @@ const VISTE = [
 ] as const;
 
 export default function ListaSpesa() {
+  const navigate = useNavigate();
   const [ordina, setOrdina] = useState<'reparto' | 'aggiunta'>('reparto');
+  const [aggiuntaAperta, setAggiuntaAperta] = useState(false);
   const { data, isLoading, error, refetch } = useListaSpesaPage(ordina);
   const toggle = useToggleShoppingItem();
   const svuota = useSvuotaPresi();
@@ -71,11 +75,27 @@ export default function ListaSpesa() {
                   <div style={{ marginLeft: 6 }}>
                     <SegmentedControl name="vSpesa" options={[...VISTE]} value={ordina} onChange={(v) => setOrdina(v as typeof ordina)} />
                   </div>
-                  <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => setAggiuntaAperta((aperta) => !aperta)}
+                  >
                     <Icon name="plus" size={14} />
                     Aggiungi voce
                   </button>
                 </div>
+
+                {aggiuntaAperta && (
+                  <CampoAggiunta
+                    placeholder="Cosa manca? «latte», «carta forno»…"
+                    inCorso={aggiungi.isPending}
+                    onSalva={(nome) => {
+                      aggiungi.mutate(nome);
+                      setAggiuntaAperta(false);
+                    }}
+                    onAnnulla={() => setAggiuntaAperta(false)}
+                  />
+                )}
 
                 {data.reparti.map((reparto) => (
                   <div key={reparto.nome}>
@@ -144,7 +164,11 @@ export default function ListaSpesa() {
                         </div>
                       ))}
                     </div>
-                    <button className="btn btn-ghost" style={{ marginTop: 8 }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ marginTop: 8 }}
+                      onClick={() => navigate('/spese')}
+                    >
                       Vedi in Spese
                       <Icon name="arrow-right" size={14} />
                     </button>

@@ -194,7 +194,7 @@ liberi.
 
 ## Task
 
-`GET /api/task?vista=scadenza|progetto|completati` → `TaskData`
+`GET /api/task?vista=scadenza|provenienza|completati` → `TaskData`
 `PATCH /api/task/:id` body `{ fatto?: boolean, rinviaGiorni?: number }` → `TaskItem`
 `POST /api/task` body `{ titolo: string, scadenza?: string }` → `TaskItem` (201)
 
@@ -206,9 +206,10 @@ pagina non deve sapere quali raggruppamenti esistono.
   scadenza"; le sezioni vuote non vengono mandate, tranne "Oggi" che porta una
   `notaVuoto`.
 - `vista=completati` → "Chiusi oggi", "Questa settimana", "Prima".
-- `vista=progetto` → raggruppa per provenienza (Dashboard, Telegram, Piano di
-  ripasso, Regola di contesto): finché nello schema non esiste un concetto di
-  progetto, è l'unico raggruppamento che i dati permettono davvero.
+- `vista=provenienza` → raggruppa per **da dove arriva** il task (Dashboard,
+  Telegram, Piano di ripasso, Regola di contesto). Si chiamava `progetto`, e il
+  nome era sbagliato: un progetto nello schema non esiste, e promettere un
+  raggruppamento che non c'è fa cercare qualcosa che non si troverà mai.
 
 `scadenza` in `POST` è ISO-8601: `"2026-09-04"` per tutto il giorno oppure
 `"2026-09-04T18:00"` per un'ora precisa. `rinviaGiorni` sposta la scadenza in

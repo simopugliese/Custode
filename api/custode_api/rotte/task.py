@@ -19,7 +19,7 @@ from custode_core.formato import (
 
 router = APIRouter(prefix="/api/task", tags=["task"])
 
-Vista = Literal["scadenza", "progetto", "completati"]
+Vista = Literal["scadenza", "provenienza", "completati"]
 
 
 def _leggi_scadenza_richiesta(testo: str | None) -> date | datetime | None:
@@ -88,11 +88,13 @@ def _sezioni_completati(task: list[dom.Task], ora: datetime) -> list[schemi.Sezi
 
 
 def _sezioni_per_provenienza(task: list[dom.Task], ora: datetime) -> list[schemi.SezioneTask]:
-    """Raggruppa gli aperti per provenienza.
+    """Raggruppa gli aperti per provenienza: da dove è arrivato il task.
 
-    Nel modello dati non esiste (ancora) un concetto di progetto: la
-    provenienza — dashboard, Telegram, piano di ripasso, regola — è l'unico
-    raggruppamento che i dati permettono davvero, invece di inventarne uno.
+    La vista si chiamava «progetto», e il nome era sbagliato: nel modello dati
+    un progetto non esiste, e quello che si vede raggruppato è da dove arriva
+    la cosa — Dashboard, Telegram, piano di ripasso, regola di contesto. Un
+    nome che promette un raggruppamento che non c'è fa cercare all'utente
+    qualcosa che non troverà mai.
     """
     aperti = [t for t in task if not t.fatto]
     gruppi: dict[str, list[dom.Task]] = {}
@@ -137,7 +139,7 @@ def pagina_task(conn: ConnDip, ora: OraDip, vista: Vista = "scadenza") -> schemi
 
     if vista == "completati":
         sezioni = _sezioni_completati(tutti, ora)
-    elif vista == "progetto":
+    elif vista == "provenienza":
         sezioni = _sezioni_per_provenienza(tutti, ora)
     else:
         sezioni = _sezioni_per_scadenza(tutti, ora)

@@ -243,7 +243,8 @@ export interface LezioniData {
 /**
  * Una sezione della colonna principale della pagina Task. I titoli li decide
  * il backend in base alla vista richiesta (per scadenza: "In ritardo", "Oggi",
- * …; completati: per data di chiusura; per progetto: per provenienza), così la
+ * …; completati: per data di chiusura; provenienza: Dashboard, Telegram,
+ * piano di ripasso, regola), così la
  * pagina non deve sapere quali raggruppamenti esistono.
  */
 export interface SezioneTask {

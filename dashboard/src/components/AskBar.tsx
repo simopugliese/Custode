@@ -24,6 +24,21 @@ export function AskBar({ placeholder }: { placeholder: string }) {
 
   return (
     <div className="ask-blocco">
+      {/* Le frasi stanno **sopra** la riga, non sotto: la barra è in fondo alla
+          pagina, e una conferma disegnata sotto di lei finisce sotto il bordo
+          dello schermo — cioè proprio dove non la si legge. Chi ha appena
+          premuto «Invia» sta guardando la barra: l'esito va lì, e vale sia per
+          «Segnato: comprare il pane» sia per «manca la chiave del modello»,
+          che è il caso in cui non vederlo fa più danno. */}
+      {!isError && !isPending && fatte.length > 0 && (
+        <div className="ask-esiti">
+          {fatte.map((frase, i) => (
+            <span key={i} className="cu-muted" style={{ fontSize: 12 }}>
+              {frase}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="ask">
         <span className="cu-kicker" style={{ flex: 'none' }}>
           A Custode
@@ -47,18 +62,6 @@ export function AskBar({ placeholder }: { placeholder: string }) {
           </span>
         )}
       </div>
-      {/* Le frasi stanno **sotto** la riga, non dentro: un messaggio ne può
-          produrre più d'una, e farle stare sulla stessa riga del campo e del
-          bottone li spingerebbe a capo uno per volta. */}
-      {!isError && !isPending && fatte.length > 0 && (
-        <div className="ask-esiti">
-          {fatte.map((frase, i) => (
-            <span key={i} className="cu-muted" style={{ fontSize: 12 }}>
-              {frase}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

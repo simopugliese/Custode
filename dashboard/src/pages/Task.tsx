@@ -5,25 +5,28 @@ import { StatsBar } from '../components/StatsBar';
 import { AsyncState } from '../components/AsyncState';
 import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { CampoAggiunta } from '../components/CampoAggiunta';
 import { TaskRow } from '../components/TaskRow';
 import { Icon } from '../lib/icons';
 import { useToggleTask } from '../hooks/useHome';
-import { useRinviaTask, useTaskPage } from '../hooks/useTask';
+import { useCreaTask, useRinviaTask, useTaskPage } from '../hooks/useTask';
 import type { TaskItem } from '../types/api';
 
 const VISTE = [
   { value: 'scadenza', label: 'Per scadenza' },
-  { value: 'progetto', label: 'Per progetto' },
+  { value: 'provenienza', label: 'Per provenienza' },
   { value: 'completati', label: 'Completati' },
 ] as const;
 
 const GIORNI_INIZIALI = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
 
 export default function Task() {
-  const [vista, setVista] = useState<'scadenza' | 'progetto' | 'completati'>('scadenza');
+  const [vista, setVista] = useState<'scadenza' | 'provenienza' | 'completati'>('scadenza');
   const { data, isLoading, error, refetch } = useTaskPage(vista);
   const toggleTask = useToggleTask();
   const rinvia = useRinviaTask();
+  const crea = useCreaTask();
+  const [aggiuntaAperta, setAggiuntaAperta] = useState(false);
 
   function renderTasks(tasks: TaskItem[]) {
     return tasks.map((task) => (
@@ -69,11 +72,28 @@ export default function Task() {
                   <div style={{ marginLeft: 6 }}>
                     <SegmentedControl name="vTask" options={[...VISTE]} value={vista} onChange={(v) => setVista(v as typeof vista)} />
                   </div>
-                  <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ marginLeft: 'auto' }}
+                    onClick={() => setAggiuntaAperta((aperta) => !aperta)}
+                  >
                     <Icon name="plus" size={14} />
                     Nuovo task
                   </button>
                 </div>
+
+                {aggiuntaAperta && (
+                  <CampoAggiunta
+                    placeholder="Cosa devi ricordarti?"
+                    conData
+                    inCorso={crea.isPending}
+                    onSalva={(titolo, scadenza) => {
+                      crea.mutate({ titolo, scadenza });
+                      setAggiuntaAperta(false);
+                    }}
+                    onAnnulla={() => setAggiuntaAperta(false)}
+                  />
+                )}
 
                 {/* Le sezioni e i loro titoli arrivano dal backend: cambiano con la
                     vista scelta (per scadenza, per provenienza, completati). */}
