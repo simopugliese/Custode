@@ -25,13 +25,13 @@ segue tutte le pagine e solleva se una non arriva: quando ritorna, quello che
 ha in mano è tutto ciò che la sorgente ha da dire sulla finestra, ed è l'unica
 condizione in cui l'assenza di un evento significa «disdetto».
 
-**Il tagging (`tagga`) sta qui accanto perché segue il sync**, ma è un giro
-suo: chiede al modello il tipo delle serie che nessuno ha ancora guardato e le
-scrive. Non ha un registro in `job_runs` — la coda `gruppi_senza_tag` *è* il
-suo stato, e una coda che resta piena è già il «riprova al giro dopo». E non è
-legato al fatto che il sync abbia trovato qualcosa di nuovo: una coda avanzata
-da un giro precedente va svuotata anche in una giornata in cui il calendario
-non cambia.
+**Il tagging (`tagga`) sta qui accanto perché segue il sync nell'ordine**, ma
+è un giro suo e non dipende da com'è andato quello: chiede al modello il tipo
+delle serie che nessuno ha ancora guardato e le scrive. Non ha un registro in
+`job_runs` — la coda `gruppi_senza_tag` *è* il suo stato, e una coda che resta
+piena è già il «riprova al giro dopo». Legarlo a un sync riuscito vorrebbe dire
+che una giornata di Google irraggiungibile tiene ferma una coda che il modello
+svuoterebbe benissimo: le due cose non hanno niente da chiedersi a vicenda.
 """
 
 from __future__ import annotations
@@ -180,13 +180,19 @@ def tagga(
 ) -> EsitoTag:
     """Propone il tipo delle serie che nessuno ha ancora guardato (§8.10).
 
-    Gira dopo ogni sincronizzazione riuscita, e la coda è `gruppi_senza_tag`:
-    non serve un registro suo in `job_runs`, perché la coda **è** lo stato. Una
-    chiamata sola per l'intera coda — una per serie vorrebbe dire, il giorno
-    che colleghi il calendario, decine di richieste di fila.
+    Gira ad ogni giro del worker, e la coda è `gruppi_senza_tag`: non serve un
+    registro suo in `job_runs`, perché la coda **è** lo stato. Una chiamata
+    sola per l'intera coda — una per serie vorrebbe dire, il giorno che
+    colleghi il calendario, decine di richieste di fila.
+
+    Ad ogni giro e non solo dopo un sync riuscito: la coda non è fatta di
+    quello che l'ultima lettura ha portato, ci resta dentro tutto ciò che i
+    giri prima non sono riusciti a taggare. Su coda vuota si torna senza
+    chiamare nessuno, quindi il caso normale costa un `SELECT` sull'indice
+    parziale.
 
     Non solleva: un modello che non risponde non deve portarsi via il resto del
-    giro del worker, e la coda intatta è già il «riprova» — al sync dopo si
+    giro del worker, e la coda intatta è già il «riprova» — al giro dopo si
     rifà, cinque minuti più tardi.
     """
     if not router.configurato_per(Compito.TAG_CALENDARIO):

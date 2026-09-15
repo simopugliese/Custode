@@ -76,6 +76,15 @@ class RouterFinto:
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         return {"riepilogo": "Andata così."}
 
+    def configurato_per(self, compito: Any) -> bool:
+        """Il tagging del calendario lo chiede ad ogni giro, non solo dopo un sync.
+
+        Qui non ci sono eventi di calendario, quindi la coda è vuota e nessuna
+        chiamata parte comunque: serve solo che il finto abbia la stessa forma
+        del `Router` vero.
+        """
+        return True
+
 
 @pytest.fixture
 def impostazioni(db_path: Path) -> Settings:

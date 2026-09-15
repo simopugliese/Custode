@@ -7,7 +7,7 @@ elenco di titoli escono dei tipi, e chi chiama decide se e dove scriverli
 database, come ovunque nel progetto.
 
 **Una chiamata sola per tutta la coda, non una per serie.** Il tagging gira
-dopo ogni sincronizzazione, cioè ogni cinque minuti: una chiamata per serie
+ad ogni giro del worker, cioè ogni cinque minuti: una chiamata per serie
 vorrebbe dire, il giorno che colleghi il calendario, decine di richieste di
 fila per un lavoro che sta in una. Gli eventi arrivano quindi numerati e il
 modello risponde con un elenco.

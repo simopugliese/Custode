@@ -80,14 +80,8 @@ def giro(
     """Un singolo passaggio: guarda cosa è dovuto e, se c'è, lo fa."""
     ora = adesso(impostazioni.timezone)
     _giro_backup(impostazioni, worker, ora)
-    _giro_calendario(
-        impostazioni,
-        calendario,
-        ora,
-        sorgente=sorgente_calendario,
-        telegram=telegram,
-        router=router,
-    )
+    _giro_calendario(impostazioni, calendario, ora, sorgente=sorgente_calendario, telegram=telegram)
+    _giro_tag_calendario(impostazioni, ora, router=router)
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
 
@@ -135,7 +129,6 @@ def _giro_calendario(
     *,
     sorgente: SorgenteCalendario,
     telegram: ClientTelegram,
-    router: Router,
 ) -> None:
     """La sincronizzazione del calendario (§8.10), ogni cinque minuti.
 
@@ -147,8 +140,8 @@ def _giro_calendario(
     fosse configurato più stretto di cinque minuti, evita una seconda chiamata
     a Google per lo stesso periodo.
 
-    Finisce col tagging degli eventi nuovi: è l'unico momento in cui ce ne
-    possono essere, e la coda da guardare si legge dalla stessa connessione.
+    Il tagging degli eventi non sta qui ma accanto, in `_giro_tag_calendario`:
+    la coda da guardare non è fatta solo di quello che questo sync ha portato.
     """
     fascia = fascia_dovuta(ora, ogni_minuti=MINUTI_SYNC_CALENDARIO)
 
@@ -203,18 +196,26 @@ def _giro_calendario(
                 cambiato.rimossi,
             )
 
-        _giro_tag_calendario(conn, ora, router=router)
 
+def _giro_tag_calendario(impostazioni: Settings, ora: datetime, *, router: Router) -> None:
+    """Il tipo degli impegni che nessuno ha guardato, proposto dal modello (§8.10).
 
-def _giro_tag_calendario(conn: sqlite3.Connection, ora: datetime, *, router: Router) -> None:
-    """Il tipo degli eventi nuovi, proposto dal modello (§8.10, pezzo 5).
+    **Un passo suo, non la coda del sync.** Dopo il sync nell'ordine — la
+    fascia dice che Google è stato interrogato, e un modello che non risponde
+    non deve far richiamare *Google* al risveglio dopo per una lettura che era
+    andata bene — ma non *dentro* di lui e non condizionato al suo esito. La
+    coda non è fatta solo di quello che l'ultima sincronizzazione ha portato:
+    ci resta dentro tutto quello che i giri precedenti non sono riusciti a
+    taggare, e legare il tagging a un sync riuscito vorrebbe dire che una
+    giornata di Google irraggiungibile — o un calendario scollegato dopo aver
+    già riempito l'archivio — tiene ferma una coda che il modello svuoterebbe
+    benissimo.
 
-    Dopo il sync e **dopo** che la fascia è stata segnata: la fascia dice che
-    Google è stato interrogato, e un modello che non risponde non deve far
-    richiamare Google al risveglio dopo per qualcosa che era andato bene. La
-    coda resta piena da sola, ed è quella a far riprovare il tag.
+    Costa un `SELECT` sull'indice parziale quando non c'è niente da fare, che è
+    quasi sempre: `tagga` torna senza chiamare nessuno su coda vuota.
     """
-    esito = worker_calendario.tagga(conn, ora, router=router)
+    with connessione(impostazioni.db_path) as conn:
+        esito = worker_calendario.tagga(conn, ora, router=router)
     if esito.spento or (esito.gruppi == 0 and esito.errore is None):
         # Niente chiave, o niente da guardare: il caso normale di quasi tutti i
         # giri, e non c'è niente da dire.

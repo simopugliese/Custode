@@ -31,6 +31,7 @@ from pydantic_settings import SettingsConfigDict
 
 from custode_bot.risposte import Risposta
 from custode_calendario.config import ImpostazioniCalendario
+from custode_calendario.errori import CalendarioNonRaggiungibile
 from custode_calendario.evento import Evento
 from custode_calendario.google import ClientGoogle
 from custode_core.config import Settings
@@ -71,6 +72,16 @@ class CalendarioSpento:
 
     def eventi(self, da: date, a: date) -> list[Evento]:
         raise AssertionError("un calendario spento non va interrogato")
+
+
+class CalendarioIrraggiungibile:
+    """Google configurato ma che non risponde: il guasto passeggero di §8.10."""
+
+    def configurata(self) -> bool:
+        return True
+
+    def eventi(self, da: date, a: date) -> list[Evento]:
+        raise CalendarioNonRaggiungibile("Google non risponde")
 
 
 class ModelloFinto:
@@ -476,7 +487,8 @@ def test_un_modello_irraggiungibile_non_si_porta_via_il_sync(
     """Gli eventi sono già salvati: il tag è la seconda metà, non la prima.
 
     E il sync non si rifà per colpa del tagging — richiamerebbe Google fra
-    cinque secondi per qualcosa che era andato bene.
+    cinque secondi per una lettura che era andata bene. Il *tag* sì: la coda è
+    rimasta piena, e la coda è lo stato del job.
     """
     google.stato.eventi = [_voce("g-analisi", "Analisi II", OGGI)]
     modello = ModelloFinto(errore=ProviderNonRaggiungibile("DeepSeek non risponde"))
@@ -491,9 +503,44 @@ def test_un_modello_irraggiungibile_non_si_porta_via_il_sync(
     _giro(
         impostazioni, calendario, modello, adesso=ADESSO.replace(minute=4), monkeypatch=monkeypatch
     )
-    # Stessa fascia: Google non si richiama, e nemmeno il modello.
+    # Stessa fascia: Google non si richiama. Il modello sì, perché la coda che
+    # lo fa riprovare non ha niente a che vedere con la fascia del sync.
     assert len(google.stato.richieste_eventi) == 1
-    assert len(modello.chiamate) == 1
+    assert len(modello.chiamate) == 2
+
+
+def test_la_coda_si_svuota_anche_quando_google_non_risponde(
+    impostazioni: Settings,
+    calendario: _CalendarioDiTest,
+    google: FintoGoogle,
+    conn: sqlite3.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Il tagging non è la coda del sync: guarda l'archivio, non l'ultima lettura.
+
+    Un giro porta l'evento in archivio ma il modello è giù; al giro dopo è
+    Google a essere giù. Legare il tagging a un sync riuscito lascerebbe qui la
+    coda ferma — con un modello che risponde benissimo e un tag che si potrebbe
+    scrivere senza chiedere niente a nessun altro.
+    """
+    google.stato.eventi = [_voce("g-analisi", "Analisi II", OGGI)]
+    giu = ModelloFinto(errore=ProviderNonRaggiungibile("DeepSeek non risponde"))
+    _giro(impostazioni, calendario, giu, monkeypatch=monkeypatch)
+    assert _eventi(conn)[0].tag_proposto_il is None
+
+    modello = ModelloFinto({"Analisi II": "lezione"})
+    _giro(
+        impostazioni,
+        calendario,
+        modello,
+        adesso=ADESSO + timedelta(minutes=5),
+        sorgente=CalendarioIrraggiungibile(),
+        monkeypatch=monkeypatch,
+    )
+
+    (evento,) = _eventi(conn)
+    assert evento.tipo is dom.Tipo.LEZIONE
+    assert evento.tag_proposto_il is not None
 
 
 # — quando il tagging è spento ————————————————————————————
