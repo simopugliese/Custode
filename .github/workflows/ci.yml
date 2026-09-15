@@ -4,8 +4,19 @@
 name: CI
 
 on:
+  # Solo `main`, non «tutti i branch». Con `branches: ["**"]` ogni push su un
+  # branch con una PR aperta faceva partire **due run identiche** — una per il
+  # push e una per la PR, sullo stesso commit. Non era solo il doppio del
+  # lavoro: due job gemelli scrivono lo stesso `scope` della cache nello stesso
+  # istante, e uno dei due muore in `exporting to GitHub Actions Cache: error
+  # writing layer blob: not_found` — una build andata a buon fine segnata
+  # rossa. È successo sul commit 2d75017, verde come push e rosso come PR.
+  #
+  # Le PR restano coperte da `pull_request`, che scatta anche ad ogni push
+  # successivo (`synchronize`). Scoperto resta solo un push su un branch senza
+  # PR aperta: lì la CI parte quando la PR si apre.
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -54,14 +65,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `cache`: quanto di ogni build si conserva. `max` salva anche i
+          # layer intermedi di ogni stage, `min` solo quelli dell'immagine
+          # finale. Non è gratis — misurato sul target api, l'export della
+          # cache ha preso 15,5s contro 12s di build vera — e conviene solo
+          # dove gli stage intermedi costano più di quanto costa conservarli.
           - target: api
             modulo: custode_api.main
+            cache: min
           - target: bot
             modulo: custode_bot.main
+            cache: min
           - target: worker
             modulo: custode_worker.main
+            cache: min
+          # Whisper è l'unico che merita `max`: dietro c'è `whisper-build`, che
+          # compila whisper.cpp da sorgente e scarica il modello. Perdere
+          # quello stage intermedio vuol dire tre minuti invece di uno.
           - target: whisper
             modulo: custode_whisper.main
+            cache: max
     steps:
       - uses: actions/checkout@v4
 
@@ -75,9 +98,10 @@ jobs:
           load: true
           tags: custode-${{ matrix.target }}:ci
           # Il target whisper compila whisper.cpp e scarica il modello: senza
-          # cache ogni giro ripagherebbe quei minuti da capo.
+          # cache ogni giro ripagherebbe quei minuti da capo. Il modo lo decide
+          # la matrice, target per target — vedi lì il perché.
           cache-from: type=gha,scope=${{ matrix.target }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=${{ matrix.cache }},scope=${{ matrix.target }}
 
       - name: L'immagine importa il suo modulo
         # Il controllo che conta: ogni target installa solo i propri extra, e
