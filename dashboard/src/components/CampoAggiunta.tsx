@@ -15,10 +15,18 @@ import { Icon } from '../lib/icons';
  *
  * Un campo solo, e una data solo dove serve davvero: un form lungo in mezzo a
  * un elenco lo trasformerebbe in un modulo da compilare.
+ *
+ * **Chi chiude il campo è chi salva, e solo quando la scrittura è andata.** Il
+ * campo non si svuota e non si chiude da sé: se lo facesse al momento del
+ * clic, una POST fallita — API irraggiungibile, tunnel giù — lascerebbe la
+ * pagina identica a prima con quello che avevi scritto buttato via, cioè un
+ * bottone indistinguibile da uno rotto. Restando aperto tiene il testo, mostra
+ * `errore` e si può riprovare senza riscrivere niente.
  */
 export function CampoAggiunta({
   placeholder,
   inCorso,
+  errore = null,
   conData = false,
   dataIniziale = '',
   onSalva,
@@ -26,6 +34,8 @@ export function CampoAggiunta({
 }: {
   placeholder: string;
   inCorso: boolean;
+  /** Perché l'ultimo tentativo non è andato. `null` finché non è successo. */
+  errore?: string | null;
   /** Mostra anche la scadenza. Serve ai task, non alla lista della spesa. */
   conData?: boolean;
   /**
@@ -46,47 +56,54 @@ export function CampoAggiunta({
     e.preventDefault();
     if (!valido || inCorso) return;
     onSalva(testo.trim(), scadenza || undefined);
-    setTesto('');
-    setScadenza(dataIniziale);
   }
 
   return (
-    <form
-      onSubmit={salva}
-      // Esc chiude, come ci si aspetta da un campo aperto per sbaglio. Sul
-      // form e non sull'input: così vale anche mentre scegli la data.
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onAnnulla();
-      }}
-      className="row"
-      style={{ gap: 8, padding: '10px 0' }}
-    >
-      <input
-        className="input"
-        // Il bottone l'ha appena aperto: il cursore deve essere già qui,
-        // altrimenti il clic in più lo rende più lento che scriverlo al bot.
-        autoFocus
-        placeholder={placeholder}
-        value={testo}
-        onChange={(e) => setTesto(e.target.value)}
-      />
-      {conData && (
+    <div>
+      <form
+        onSubmit={salva}
+        // Esc chiude, come ci si aspetta da un campo aperto per sbaglio. Sul
+        // form e non sull'input: così vale anche mentre scegli la data.
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onAnnulla();
+        }}
+        className="row"
+        style={{ gap: 8, padding: '10px 0' }}
+      >
         <input
           className="input"
-          type="date"
-          style={{ width: 150, flex: 'none' }}
-          aria-label="Scadenza"
-          value={scadenza}
-          onChange={(e) => setScadenza(e.target.value)}
+          // Il bottone l'ha appena aperto: il cursore deve essere già qui,
+          // altrimenti il clic in più lo rende più lento che scriverlo al bot.
+          autoFocus
+          placeholder={placeholder}
+          value={testo}
+          onChange={(e) => setTesto(e.target.value)}
+          disabled={inCorso}
         />
+        {conData && (
+          <input
+            className="input"
+            type="date"
+            style={{ width: 150, flex: 'none' }}
+            aria-label="Scadenza"
+            value={scadenza}
+            onChange={(e) => setScadenza(e.target.value)}
+            disabled={inCorso}
+          />
+        )}
+        <button className="btn btn-primary" type="submit" disabled={!valido || inCorso}>
+          <Icon name="check" size={15} />
+          {inCorso ? 'Aggiungo…' : 'Aggiungi'}
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={onAnnulla}>
+          Annulla
+        </button>
+      </form>
+      {errore && (
+        <div className="cu-muted" style={{ fontSize: 12, paddingBottom: 10 }} role="alert">
+          Non aggiunto — {errore}
+        </div>
       )}
-      <button className="btn btn-primary" type="submit" disabled={!valido || inCorso}>
-        <Icon name="check" size={15} />
-        Aggiungi
-      </button>
-      <button className="btn btn-ghost" type="button" onClick={onAnnulla}>
-        Annulla
-      </button>
-    </form>
+    </div>
   );
 }

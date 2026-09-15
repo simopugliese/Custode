@@ -58,3 +58,15 @@ export const api = {
   // di ritorno è sempre vuoto.
   del: (path: string) => request<void>(path, { method: 'DELETE' }),
 };
+
+/**
+ * Il messaggio da mostrare per un errore qualunque.
+ *
+ * `ApiError` porta già la frase giusta — il `detail` dell'API, o «Impossibile
+ * contattare Custode» se la fetch non è nemmeno partita. Qualunque altra cosa
+ * arrivi qui è un guasto della pagina, non una risposta, e mostrarne il
+ * messaggio grezzo direbbe all'utente qualcosa che non lo riguarda.
+ */
+export function messaggioErrore(errore: unknown): string {
+  return errore instanceof ApiError ? errore.message : 'Errore imprevisto.';
+}
