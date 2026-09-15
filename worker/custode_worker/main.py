@@ -213,6 +213,18 @@ def _giro_tag_calendario(impostazioni: Settings, ora: datetime, *, router: Route
 
     Costa un `SELECT` sull'indice parziale quando non c'è niente da fare, che è
     quasi sempre: `tagga` torna senza chiamare nessuno su coda vuota.
+
+    **La connessione resta aperta durante la chiamata al modello**, che può
+    metterci decine di secondi. Va bene, ma non per caso: SQLite è aperto in
+    autocommit (`isolation_level=None`, §3) e in WAL, quindi una connessione
+    che in quel momento non sta scrivendo non tiene nessun lucchetto — API e
+    bot continuano a leggere e a scrivere. Chi un domani mettesse una
+    transazione attorno a questo blocco terrebbe invece il lucchetto di
+    scrittura per tutta la durata di una chiamata di rete, e il `busy_timeout`
+    di cinque secondi degli altri processi scadrebbe: lì le scritture di una
+    riga della lista spesa comincerebbero a fallire per colpa del calendario.
+    Se servisse una transazione, va aperta **dopo** che le proposte sono in
+    mano — cioè dentro `tagga`, attorno alle sole `applica_tag`.
     """
     with connessione(impostazioni.db_path) as conn:
         esito = worker_calendario.tagga(conn, ora, router=router)
