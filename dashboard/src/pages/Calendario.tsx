@@ -7,6 +7,7 @@ import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
 import { useCalendario, useCorreggiTagEvento, type VistaCalendario } from '../hooks/useCalendario';
 import type { CalendarioData, EventoCalendario, SerieDaRivedere, TipoEvento } from '../types/api';
 
@@ -195,6 +196,21 @@ export default function Calendario() {
 
   const manda = (id: string, tipo: string) => correggi.mutate({ id, tipo });
 
+  /**
+   * Cambiare vista dimentica l'esito dell'ultima correzione.
+   *
+   * `correggi.data` è stato della mutation: resta finché la pagina non si
+   * smonta. Senza azzerarlo, «Corretto su 12 occorrenze della serie: lezione.»
+   * ti segue da «Da rivedere» alla settimana e resta lì sopra un elenco in cui
+   * quella serie non c'è più — proprio perché l'hai corretta e la coda l'ha
+   * lasciata andare. Una conferma che sopravvive a ciò che confermava non è
+   * più una conferma.
+   */
+  function cambiaVista(nuova: VistaCalendario) {
+    correggi.reset();
+    setVista(nuova);
+  }
+
   return (
     <>
       <PageHeader
@@ -210,7 +226,7 @@ export default function Calendario() {
                 icon="lightbulb"
                 actionLabel="Guardale"
                 actionIcon="arrow-right"
-                onAction={() => setVista('da_rivedere')}
+                onAction={() => cambiaVista('da_rivedere')}
               >
                 {data.stats.daRivedere === 1 ? (
                   <>
@@ -225,8 +241,17 @@ export default function Calendario() {
               </AvvisoRow>
             )}
 
-            {correggi.data && (
-              <div className="cu-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            {/* L'esito della correzione, nei due versi. Quello che manca fa
+                più danno dell'altro: senza il ramo d'errore, una PATCH non
+                riuscita lascia la riga com'era e la pagina identica a prima,
+                e l'unico modo di accorgersene sarebbe ricaricare. */}
+            {correggi.isError && (
+              <div className="state-msg is-error" style={{ marginBottom: 12 }} role="alert">
+                Non corretto — {messaggioErrore(correggi.error)}
+              </div>
+            )}
+            {correggi.isSuccess && (
+              <div className="cu-muted" style={{ fontSize: 13, marginBottom: 12 }} role="status">
                 {correggi.data.label}
               </div>
             )}
@@ -250,7 +275,7 @@ export default function Calendario() {
                       name="perCalendario"
                       options={[...VISTE]}
                       value={vista}
-                      onChange={(v) => setVista(v as VistaCalendario)}
+                      onChange={(v) => cambiaVista(v as VistaCalendario)}
                     />
                   </div>
                 </div>
