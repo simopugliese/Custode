@@ -171,8 +171,18 @@ quattro caselle risponde `422`, un id inesistente `404`.
 `stats.daRivedere` e `stats.daGuardare` parlano sempre di tutto l'archivio da
 oggi in poi, **non** della vista: se «due da rivedere» sparisse guardando una
 settimana che non ne contiene, alla terza vista non ci si arriverebbe mai.
-`daGuardare` conta le serie che il tagging non ha ancora guardato — se non cala
-mai, il worker è fermo o manca `ROUTER_DEEPSEEK_API_KEY`.
+`daGuardare` conta le serie che il tagging non ha ancora guardato, **da oggi in
+poi** come la coda: un impegno di marzo rimasto senza tipo non è una cosa da
+sbrigare, e tenerlo nel conto lo lascerebbe sopra zero per sempre. Il *lavoro*
+del worker resta su tutto l'archivio — lì il passato serve al motore di
+contesto — ma questo è un numero mostrato a una persona.
+
+`daGuardareLabel` è la frase che lo accompagna, assente quando `daGuardare` è
+zero. Non è il numero detto a parole: dice anche **se** qualcuno li guarderà.
+Col compito `tag_calendario` acceso sono minuti d'attesa; senza
+`ROUTER_DEEPSEEK_API_KEY` non li guarda nessuno, il numero non scende mai, e la
+pagina lo dice invece di promettere un'attesa che non finisce — la differenza
+la sa solo il backend, quindi è lui a scrivere la frase.
 
 `notaVuoto` dice *perché* la lista è vuota, come in Home: calendario non
 collegato, collegato ma mai sincronizzato, o periodo davvero libero — sono tre

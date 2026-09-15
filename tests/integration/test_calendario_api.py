@@ -174,6 +174,87 @@ def test_una_proposta_dell_ia_si_distingue_da_una_tua_correzione(
     assert dopo["statoTagLabel"] == "corretto da te"
 
 
+def test_gli_impegni_senza_tipo_si_contano_da_oggi_in_poi(
+    client: TestClient, db_path: Path
+) -> None:
+    """Un impegno di marzo senza tipo non è una cosa da sbrigare.
+
+    Lo stesso filtro della coda «da rivedere», e per la stessa ragione: un
+    contatore che non scende mai è un contatore che si smette di guardare — e
+    l'archivio del passato non si tagga per l'utente, si tagga per il motore
+    di contesto, che è un'altra cosa e non ha una casella in cima alla pagina.
+    """
+    _sincronizza(
+        db_path,
+        [
+            _evento("g-vecchio", "Analisi I", giorno=OGGI - timedelta(days=5)),
+            _evento("g-nuovo", "Analisi II", giorno=OGGI + timedelta(days=3)),
+        ],
+    )
+
+    corpo = client.get("/api/calendario?vista=settimana").json()
+
+    assert corpo["stats"]["daGuardare"] == 1
+    assert corpo["daGuardareLabel"] == (
+        "1 impegno non ha ancora un tipo: Custode lo guarda al prossimo giro,"
+        " entro cinque minuti."
+    )
+
+
+def test_la_frase_su_cosa_manca_concorda_col_numero(client: TestClient, db_path: Path) -> None:
+    """«1 impegno … Custode li guarda» si legge come una frase generata.
+
+    È quello che viene da sé mettendo insieme un `plurale()` e una coda scritta
+    al plurale: il numero concorda e il pronome no.
+    """
+    _sincronizza(
+        db_path,
+        [
+            _evento("g-1", "Ricevimento", giorno=OGGI + timedelta(days=1)),
+            _evento("g-2", "Dentista", giorno=OGGI + timedelta(days=2)),
+        ],
+    )
+
+    corpo = client.get("/api/calendario?vista=settimana").json()
+
+    assert corpo["daGuardareLabel"] == (
+        "2 impegni non hanno ancora un tipo: Custode li guarda al prossimo giro,"
+        " entro cinque minuti."
+    )
+
+
+def test_senza_la_chiave_del_modello_la_pagina_non_promette_un_attesa(
+    client: TestClient, db_path: Path, modello: Any
+) -> None:
+    """«Li guarda entro cinque minuti» è vero solo se qualcuno li guarda.
+
+    Senza `ROUTER_DEEPSEEK_API_KEY` il tagging è spento: quel numero non scende
+    mai, e la frase resterebbe lì a promettere un'attesa che non finisce. Chi
+    legge non ha modo di distinguere i due casi — l'unico che lo sa è il
+    backend.
+    """
+    modello.compiti_accesi = False
+    _sincronizza(db_path, [_evento("g-1", "Analisi II")])
+
+    corpo = client.get("/api/calendario?vista=settimana").json()
+
+    assert corpo["stats"]["daGuardare"] == 1
+    assert corpo["daGuardareLabel"] is not None
+    assert "ROUTER_DEEPSEEK_API_KEY" in corpo["daGuardareLabel"]
+    assert "cinque minuti" not in corpo["daGuardareLabel"]
+
+
+def test_senza_niente_da_guardare_la_frase_si_omette(client: TestClient, db_path: Path) -> None:
+    """Campo assente ≠ campo vuoto (§5 del contratto)."""
+    _sincronizza(db_path, [_evento("g-1", "Analisi II", serie_id="serie-an")])
+    _tagga(db_path, "serie-an", dom.Tipo.LEZIONE)
+
+    corpo = client.get("/api/calendario?vista=settimana").json()
+
+    assert corpo["stats"]["daGuardare"] == 0
+    assert "daGuardareLabel" not in corpo
+
+
 def test_le_quattro_caselle_arrivano_dal_backend(client: TestClient) -> None:
     """Il menu di correzione non se le scrive in casa (contratto, §Etichette)."""
     corpo = client.get("/api/calendario?vista=settimana").json()

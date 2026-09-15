@@ -343,13 +343,14 @@ export default function Calendario() {
 
               <div className="colR">
                 <Legenda data={data} />
-                {data.stats.daGuardare > 0 && (
+                {/* La frase la scrive il backend: è l'unico che sa se il
+                    compito `tag_calendario` ha una chiave dietro, e quindi se
+                    quel numero scenderà davvero da solo. */}
+                {data.daGuardareLabel && (
                   <div>
                     <h5 style={{ marginBottom: 12 }}>Ancora da guardare</h5>
                     <p className="cu-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
-                      {data.stats.daGuardare === 1
-                        ? "Un impegno non ha ancora un tipo: Custode lo guarda al prossimo giro, che è entro cinque minuti."
-                        : `${data.stats.daGuardare} impegni non hanno ancora un tipo: Custode li guarda al prossimo giro, che è entro cinque minuti.`}
+                      {data.daGuardareLabel}
                     </p>
                   </div>
                 )}
