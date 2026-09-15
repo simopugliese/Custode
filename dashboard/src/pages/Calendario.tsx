@@ -67,6 +67,13 @@ function RigaEvento({
   disabilitato: boolean;
   onCorreggi: (id: string, tipo: string) => void;
 }) {
+  // Un `select` avvisa solo quando il valore **cambia**: riscegliere «Altro»
+  // su una riga che già dice «Altro» non fa partire niente. Ma un evento che
+  // nessuno ha guardato è sempre «Altro», e quando altro è la risposta giusta
+  // — un ricevimento, una visita — da qui non c'era modo di dirlo: restava
+  // «da guardare» a meno di metterci un tipo sbagliato e poi rimetterlo a
+  // posto. Il bottone è quel «sì, è giusto», ed è lo stesso di «Da rivedere».
+  const daConfermare = evento.statoTag !== 'corretto';
   return (
     <div className="listrow" style={{ padding: '10px 0', gap: 12, alignItems: 'baseline' }}>
       <span className="cu-mono" style={{ fontSize: 13, width: 46, flex: 'none' }}>
@@ -91,6 +98,20 @@ function RigaEvento({
           disabilitato={disabilitato}
           onScegli={(tipo) => onCorreggi(evento.id, tipo)}
         />
+        {daConfermare && (
+          <button
+            className="btn btn-ghost btn-icon"
+            disabled={disabilitato}
+            // Solo l'icona: la riga è già lunga di suo e sta dentro un elenco
+            // di giornata. Il nome per intero ce l'hanno lettore di schermo e
+            // suggerimento del mouse.
+            title={`Va bene: è ${evento.tipoLabel.toLowerCase()}`}
+            aria-label={`Conferma il tipo: ${evento.tipoLabel}`}
+            onClick={() => onCorreggi(evento.id, evento.tipo)}
+          >
+            <Icon name="check" size={15} />
+          </button>
+        )}
       </div>
     </div>
   );
