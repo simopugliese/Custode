@@ -96,10 +96,19 @@ def test_vista_completati_senza_niente_chiuso(client: TestClient) -> None:
     assert corpo["sezioni"][0]["notaVuoto"] == "Nessun task ancora chiuso."
 
 
-def test_vista_per_progetto_raggruppa_per_provenienza(client: TestClient) -> None:
+def test_vista_per_provenienza_raggruppa_per_da_dove_arriva(client: TestClient) -> None:
     client.post("/api/task", json={"titolo": "dalla dashboard"})
-    corpo = client.get("/api/task?vista=progetto").json()
+    corpo = client.get("/api/task?vista=provenienza").json()
     assert _sezioni(corpo) == {"Dashboard": ["dalla dashboard"]}
+
+
+def test_la_vecchia_vista_progetto_non_esiste_piu(client: TestClient) -> None:
+    """Si chiamava così, e prometteva un raggruppamento che nello schema non c'è.
+
+    Un 422 è meglio di una vista che risponde lo stesso: se un giorno tornasse
+    un `?vista=progetto` scritto a mano, è un errore da vedere subito.
+    """
+    assert client.get("/api/task?vista=progetto").status_code == 422
 
 
 def test_vista_non_ammessa(client: TestClient) -> None:

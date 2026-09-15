@@ -32,6 +32,7 @@ from custode_api.rotte import calendario as rotta_calendario
 from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione, db_raggiungibile
+from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
 from custode_router import Router
 
@@ -62,7 +63,7 @@ def crea_app(
     impostazioni = settings or get_settings()
     instradatore = router or Router()
     calendario_impostazioni = calendario or get_impostazioni_calendario()
-    logging.basicConfig(level=impostazioni.log_level.upper())
+    configura_log(impostazioni.log_level)
     log = logging.getLogger("custode.api")
 
     @asynccontextmanager

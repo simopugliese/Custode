@@ -13,6 +13,7 @@ import sys
 from custode_bot.applicazione import crea_applicazione
 from custode_bot.config import ImpostazioniBot, get_impostazioni_bot
 from custode_core.config import Settings, get_settings
+from custode_core.log import configura as configura_log
 
 log = logging.getLogger("custode.bot")
 
@@ -29,10 +30,7 @@ def _mancanti(bot: ImpostazioniBot) -> list[str]:
 def main(settings: Settings | None = None, bot: ImpostazioniBot | None = None) -> int:
     impostazioni = settings or get_settings()
     impostazioni_bot = bot or get_impostazioni_bot()
-    logging.basicConfig(
-        level=impostazioni.log_level.upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configura_log(impostazioni.log_level)
 
     mancanti = _mancanti(impostazioni_bot)
     if mancanti:

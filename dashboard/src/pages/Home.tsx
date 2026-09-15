@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/PageHeader';
 import { AvvisoRow } from '../components/AvvisoRow';
@@ -6,16 +7,26 @@ import { AsyncState } from '../components/AsyncState';
 import { AskBar } from '../components/AskBar';
 import { TaskRow } from '../components/TaskRow';
 import { ShoppingRow } from '../components/ShoppingRow';
+import { CampoAggiunta } from '../components/CampoAggiunta';
 import { HabitDotsRow } from '../components/HabitDotsRow';
 import { Money } from '../components/Money';
 import { Icon } from '../lib/icons';
 import { ACCENT_RAMP } from '../lib/palette';
+import { oggiISO } from '../lib/date';
 import { useHome, useToggleShoppingItem, useToggleTask } from '../hooks/useHome';
+import { useCreaTask } from '../hooks/useTask';
+import { useAggiungiVoceSpesa } from '../hooks/useListaSpesa';
 
 export default function Home() {
   const { data, isLoading, error, refetch } = useHome();
   const toggleTask = useToggleTask();
   const toggleShopping = useToggleShoppingItem();
+  const creaTask = useCreaTask();
+  const aggiungiVoce = useAggiungiVoceSpesa();
+  // Due campi distinti: aprire «Aggiungi» sulla lista non deve far comparire
+  // un campo per i task dall'altra parte della pagina.
+  const [nuovoTask, setNuovoTask] = useState(false);
+  const [nuovaVoce, setNuovaVoce] = useState(false);
   const navigate = useNavigate();
 
   return (
@@ -76,11 +87,28 @@ export default function Home() {
                 <div>
                   <div className="row" style={{ marginBottom: 4 }}>
                     <h5>Oggi</h5>
-                    <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => setNuovoTask((aperto) => !aperto)}
+                    >
                       <Icon name="plus" size={14} />
                       Aggiungi
                     </button>
                   </div>
+                  {nuovoTask && (
+                    <CampoAggiunta
+                      placeholder="Cosa devi ricordarti?"
+                      conData
+                      dataIniziale={oggiISO()}
+                      inCorso={creaTask.isPending}
+                      onSalva={(titolo, scadenza) => {
+                        creaTask.mutate({ titolo, scadenza });
+                        setNuovoTask(false);
+                      }}
+                      onAnnulla={() => setNuovoTask(false)}
+                    />
+                  )}
                   <div>
                     {data.taskOggi.map((task) => (
                       <TaskRow
@@ -183,11 +211,26 @@ export default function Home() {
                 <div>
                   <div className="row" style={{ marginBottom: 6 }}>
                     <h5>Lista spesa</h5>
-                    <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => setNuovaVoce((aperto) => !aperto)}
+                    >
                       <Icon name="plus" size={14} />
                       Aggiungi
                     </button>
                   </div>
+                  {nuovaVoce && (
+                    <CampoAggiunta
+                      placeholder="Cosa manca? «latte», «carta forno»…"
+                      inCorso={aggiungiVoce.isPending}
+                      onSalva={(nome) => {
+                        aggiungiVoce.mutate(nome);
+                        setNuovaVoce(false);
+                      }}
+                      onAnnulla={() => setNuovaVoce(false)}
+                    />
+                  )}
                   <div>
                     {data.listaSpesa.map((item) => (
                       <ShoppingRow
