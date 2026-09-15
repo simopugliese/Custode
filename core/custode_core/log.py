@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
 
 FORMATO = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
@@ -30,17 +31,25 @@ NASCOSTO = "<nascosto>"
 # prefisso riconoscibile: si cerca quello e non «una stringa lunga a caso»,
 # perché un filtro troppo largo cancellerebbe anche gli id degli eventi di
 # Google e i percorsi dei file, rendendo i log inutili invece che sicuri.
+# Un URL in un log arriva in due forme, e i separatori cambiano: `httpx`
+# stampa l'URL com'è (`/bot123:AAF.../getUpdates`), mentre l'access log di
+# uvicorn riporta il *request target* grezzo, che è percent-encoded
+# (`/bot123%3AAAF.../getUpdates`). Cercare solo i due punti veri lascerebbe
+# passare la seconda — ed è quella del processo esposto alla rete.
+DUE_PUNTI = r"(?::|%3[Aa])"
+BARRA = r"(?:/|%2[Ff])"
+
 SEGRETI: tuple[re.Pattern[str], ...] = (
     # Token di un bot Telegram: `1234567890:AAF...`. Il lookbehind rifiuta solo
     # una cifra o un due punti — non una lettera — perché il posto in cui il
     # token si vede davvero è **dentro l'URL**, attaccato a «bot»:
     # `/bot1234567890:AAF.../getUpdates`. Rifiutare qualunque carattere di
     # parola lascerebbe passare proprio quello.
-    re.compile(r"(?<![\d:])\d{6,12}:[A-Za-z0-9_-]{30,}"),
+    re.compile(rf"(?<![\d:])\d{{6,12}}{DUE_PUNTI}[A-Za-z0-9_-]{{30,}}"),
     # Chiavi API in stile OpenAI/DeepSeek/Anthropic: `sk-...`, `sk-ant-...`.
     re.compile(r"(?<![\w-])sk-[A-Za-z0-9_-]{16,}"),
     # Refresh token di Google (`1//0g...`) e client secret (`GOCSPX-...`).
-    re.compile(r"(?<![\w-])1//[A-Za-z0-9_-]{20,}"),
+    re.compile(rf"(?<![\w-])1{BARRA}{BARRA}[A-Za-z0-9_-]{{20,}}"),
     re.compile(r"(?<![\w-])GOCSPX-[A-Za-z0-9_-]{10,}"),
 )
 
@@ -58,14 +67,48 @@ def nascondi_segreti(testo: str) -> str:
 
 
 class FormattatoreSenzaSegreti(logging.Formatter):
-    """Il formattatore normale, con i segreti nascosti dopo la formattazione.
+    """Avvolge un altro formattatore e nasconde i segreti da ciò che produce.
 
-    Dopo, non prima: a quel punto messaggio, argomenti ed eventuale traceback
-    sono già una stringa sola, e non c'è modo che uno dei tre scappi.
+    Dopo la formattazione, non prima: a quel punto messaggio, argomenti ed
+    eventuale traceback sono già una stringa sola, e non c'è modo che uno dei
+    tre scappi.
+
+    **Avvolge invece di sostituire** perché non tutti i formattatori del
+    processo sono nostri. Quello dell'access log di `uvicorn` è una classe sua
+    che sa di `%(client_addr)s`, `%(request_line)s` e del colore del livello:
+    rimpiazzarlo con il formato di Custode nasconderebbe i segreti buttando via
+    la riga: resterebbe un access log senza dentro l'accesso.
     """
 
+    def __init__(self, dentro: logging.Formatter | None = None) -> None:
+        # Nessun `super().__init__`: di `logging.Formatter` qui non serve
+        # niente se non l'interfaccia — tutto il lavoro lo fa quello dentro.
+        self._dentro = dentro if dentro is not None else logging.Formatter()
+
     def format(self, record: logging.LogRecord) -> str:
-        return nascondi_segreti(super().format(record))
+        return nascondi_segreti(self._dentro.format(record))
+
+
+def _gestori_del_processo() -> Iterator[logging.Handler]:
+    """Ogni gestore già installato, non solo quelli della radice.
+
+    Sotto `uvicorn` i log del server **non passano dalla radice**: `uvicorn`,
+    `uvicorn.error` e `uvicorn.access` hanno gestori propri e `propagate=False`,
+    che è proprio il meccanismo con cui un logger dice «di me mi occupo io».
+    Un formattatore messo solo sulla radice li lascerebbe quindi fuori, e sono
+    le righe di un processo esposto alla rete — il posto in cui un URL con
+    dentro un segreto finisce senza che nessuno l'abbia scritto apposta.
+
+    `uvicorn` configura i suoi prima di importare l'app (`Config.__init__`
+    chiama `configure_logging()`, `Config.load()` importa l'app dopo), quindi
+    quando `crea_app` arriva qui li trova già montati.
+    """
+    yield from logging.getLogger().handlers
+    for logger in list(logging.root.manager.loggerDict.values()):
+        # `loggerDict` contiene anche dei `PlaceHolder`, che sono i buchi
+        # nell'albero dei nomi e non hanno gestori.
+        if isinstance(logger, logging.Logger):
+            yield from logger.handlers
 
 
 def configura(livello: str, *, formato: str = FORMATO) -> None:
@@ -78,5 +121,14 @@ def configura(livello: str, *, formato: str = FORMATO) -> None:
     cui il processo gira in produzione.
     """
     logging.basicConfig(level=livello.upper(), format=formato)
-    for gestore in logging.getLogger().handlers:
-        gestore.setFormatter(FormattatoreSenzaSegreti(formato))
+
+    radice = logging.getLogger().handlers
+    for gestore in _gestori_del_processo():
+        if isinstance(gestore.formatter, FormattatoreSenzaSegreti):
+            # Già avvolto: `crea_app` si chiama più volte nei test, e avvolgere
+            # due volte funzionerebbe ma metterebbe uno strato ad ogni giro.
+            continue
+        # Sulla radice il formato è il nostro; altrove si tiene quello che il
+        # gestore ha già — vedi `FormattatoreSenzaSegreti`.
+        dentro = logging.Formatter(formato) if gestore in radice else gestore.formatter
+        gestore.setFormatter(FormattatoreSenzaSegreti(dentro))
