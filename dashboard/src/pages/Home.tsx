@@ -13,6 +13,7 @@ import { Money } from '../components/Money';
 import { Icon } from '../lib/icons';
 import { ACCENT_RAMP } from '../lib/palette';
 import { oggiISO } from '../lib/date';
+import { messaggioErrore } from '../lib/apiClient';
 import { useHome, useToggleShoppingItem, useToggleTask } from '../hooks/useHome';
 import { useCreaTask } from '../hooks/useTask';
 import { useAggiungiVoceSpesa } from '../hooks/useListaSpesa';
@@ -27,6 +28,19 @@ export default function Home() {
   // un campo per i task dall'altra parte della pagina.
   const [nuovoTask, setNuovoTask] = useState(false);
   const [nuovaVoce, setNuovaVoce] = useState(false);
+
+  // Riaprire il campo azzera l'errore del tentativo precedente: «Non aggiunto
+  // — …» riferito a una cosa che nel frattempo hai cambiato sarebbe peggio di
+  // non dirlo affatto.
+  function apriNuovoTask() {
+    creaTask.reset();
+    setNuovoTask((aperto) => !aperto);
+  }
+
+  function apriNuovaVoce() {
+    aggiungiVoce.reset();
+    setNuovaVoce((aperto) => !aperto);
+  }
   const navigate = useNavigate();
 
   return (
@@ -90,7 +104,7 @@ export default function Home() {
                     <button
                       className="btn btn-ghost"
                       style={{ marginLeft: 'auto' }}
-                      onClick={() => setNuovoTask((aperto) => !aperto)}
+                      onClick={apriNuovoTask}
                     >
                       <Icon name="plus" size={14} />
                       Aggiungi
@@ -102,11 +116,14 @@ export default function Home() {
                       conData
                       dataIniziale={oggiISO()}
                       inCorso={creaTask.isPending}
-                      onSalva={(titolo, scadenza) => {
-                        creaTask.mutate({ titolo, scadenza });
-                        setNuovoTask(false);
-                      }}
-                      onAnnulla={() => setNuovoTask(false)}
+                      errore={creaTask.isError ? messaggioErrore(creaTask.error) : null}
+                      onSalva={(titolo, scadenza) =>
+                        creaTask.mutate(
+                          { titolo, scadenza },
+                          { onSuccess: () => setNuovoTask(false) },
+                        )
+                      }
+                      onAnnulla={apriNuovoTask}
                     />
                   )}
                   <div>
@@ -214,7 +231,7 @@ export default function Home() {
                     <button
                       className="btn btn-ghost"
                       style={{ marginLeft: 'auto' }}
-                      onClick={() => setNuovaVoce((aperto) => !aperto)}
+                      onClick={apriNuovaVoce}
                     >
                       <Icon name="plus" size={14} />
                       Aggiungi
@@ -224,11 +241,11 @@ export default function Home() {
                     <CampoAggiunta
                       placeholder="Cosa manca? «latte», «carta forno»…"
                       inCorso={aggiungiVoce.isPending}
-                      onSalva={(nome) => {
-                        aggiungiVoce.mutate(nome);
-                        setNuovaVoce(false);
-                      }}
-                      onAnnulla={() => setNuovaVoce(false)}
+                      errore={aggiungiVoce.isError ? messaggioErrore(aggiungiVoce.error) : null}
+                      onSalva={(nome) =>
+                        aggiungiVoce.mutate(nome, { onSuccess: () => setNuovaVoce(false) })
+                      }
+                      onAnnulla={apriNuovaVoce}
                     />
                   )}
                   <div>

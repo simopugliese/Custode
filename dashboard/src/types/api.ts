@@ -175,6 +175,12 @@ export interface CalendarioData {
   giorni: GiornoCalendario[];
   daRivedere: SerieDaRivedere[];
   notaVuoto?: string;
+  /**
+   * Cosa aspetta gli impegni senza tipo, in parole. Assente quando non ce ne
+   * sono. Non è `stats.daGuardare` detto a parole: dice anche **se** qualcuno
+   * li guarderà, perché senza la chiave del modello quel numero non scende mai.
+   */
+  daGuardareLabel?: string;
   orizzonteLabel?: string; // fin dove arriva la finestra sincronizzata
 }
 

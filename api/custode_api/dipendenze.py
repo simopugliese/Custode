@@ -18,6 +18,7 @@ from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 from custode_core.db import connect
 from custode_core.formato import adesso
+from custode_router import Router
 
 
 def prendi_settings(request: Request) -> Settings:
@@ -41,6 +42,22 @@ def prendi_calendario(request: Request) -> ImpostazioniCalendario:
 
 
 CalendarioDip = Annotated[ImpostazioniCalendario, Depends(prendi_calendario)]
+
+
+def prendi_router(request: Request) -> Router:
+    """Il router dei compiti (§6), per sapere quali sono accesi.
+
+    L'API non fa **mai** parlare un modello dentro una richiesta — quello è
+    mestiere del bot e del worker — ma ha bisogno di sapere se un compito ha
+    una chiave dietro: una pagina che promette «Custode ci pensa al prossimo
+    giro» quando nessuno ci penserà mai è peggio di una che non promette
+    niente.
+    """
+    instradatore: Router = request.app.state.router
+    return instradatore
+
+
+RouterDip = Annotated[Router, Depends(prendi_router)]
 
 
 def prendi_conn(settings: ImpostazioniDip) -> Iterator[sqlite3.Connection]:

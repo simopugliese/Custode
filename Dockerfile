@@ -50,16 +50,21 @@ RUN uv sync --frozen --no-install-project --no-dev
 # — progetto: il codice, e l'installazione del pacchetto ————————
 FROM dipendenze AS progetto
 
-COPY core/ core/
-COPY api/ api/
-COPY bot/ bot/
-COPY README.md .
-COPY router/ router/
-COPY whisper/ whisper/
-COPY worker/ worker/
-COPY calendario/ calendario/
+# `--chown` sulla copia e non un `chown -R` dopo: `chown -R` riscrive il
+# proprietario di ogni file, e Docker registra quel cambiamento come uno strato
+# nuovo che contiene **un'altra copia** dell'albero dei sorgenti. Passandolo
+# alla COPY i file nascono già dell'utente giusto e l'albero sta nell'immagine
+# una volta sola. È lo stesso motivo per cui il `chown` di `/data` sta in
+# `base`, dove la cartella viene creata.
+COPY --chown=custode:custode core/ core/
+COPY --chown=custode:custode api/ api/
+COPY --chown=custode:custode bot/ bot/
+COPY --chown=custode:custode README.md .
+COPY --chown=custode:custode router/ router/
+COPY --chown=custode:custode whisper/ whisper/
+COPY --chown=custode:custode worker/ worker/
+COPY --chown=custode:custode calendario/ calendario/
 RUN uv sync --frozen --no-dev
-RUN chown -R custode:custode /app
 
 
 # — api: il backend che serve la dashboard ————————————————
@@ -142,10 +147,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=whisper-build /opt/whisper /opt/whisper
+# Niente `--chown` qui e niente `/app` nel `chown` sotto: una COPY da un altro
+# stage porta con sé il proprietario che i file hanno là, e là sono già di
+# `custode`. Rifarlo costerebbe una seconda copia dell'albero in questa
+# immagine, che è la più grossa delle quattro.
 COPY --from=progetto /app /app
 
 RUN uv sync --frozen --no-dev --extra whisper
-RUN chown -R custode:custode /opt/venv /opt/whisper /app
+RUN chown -R custode:custode /opt/venv /opt/whisper
 USER custode
 EXPOSE 8100
 

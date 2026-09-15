@@ -24,7 +24,7 @@ richiedono qualità, visione o ragionamento a Claude.
   modello. Da qui escono numeri e nomi, non righe di database.
 - `calendario.py` — il **tipo** di un evento (lezione, palestra, viaggio,
   altro) proposto dal titolo (§8.10). Una chiamata sola per l'intera coda di
-  serie da guardare, non una per serie: gira dopo ogni sincronizzazione, cioè
+  serie da guardare, non una per serie: gira ad ogni giro del worker, cioè
   ogni cinque minuti.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice

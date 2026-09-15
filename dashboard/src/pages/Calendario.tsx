@@ -7,6 +7,7 @@ import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
 import { useCalendario, useCorreggiTagEvento, type VistaCalendario } from '../hooks/useCalendario';
 import type { CalendarioData, EventoCalendario, SerieDaRivedere, TipoEvento } from '../types/api';
 
@@ -66,6 +67,13 @@ function RigaEvento({
   disabilitato: boolean;
   onCorreggi: (id: string, tipo: string) => void;
 }) {
+  // Un `select` avvisa solo quando il valore **cambia**: riscegliere «Altro»
+  // su una riga che già dice «Altro» non fa partire niente. Ma un evento che
+  // nessuno ha guardato è sempre «Altro», e quando altro è la risposta giusta
+  // — un ricevimento, una visita — da qui non c'era modo di dirlo: restava
+  // «da guardare» a meno di metterci un tipo sbagliato e poi rimetterlo a
+  // posto. Il bottone è quel «sì, è giusto», ed è lo stesso di «Da rivedere».
+  const daConfermare = evento.statoTag !== 'corretto';
   return (
     <div className="listrow" style={{ padding: '10px 0', gap: 12, alignItems: 'baseline' }}>
       <span className="cu-mono" style={{ fontSize: 13, width: 46, flex: 'none' }}>
@@ -90,6 +98,20 @@ function RigaEvento({
           disabilitato={disabilitato}
           onScegli={(tipo) => onCorreggi(evento.id, tipo)}
         />
+        {daConfermare && (
+          <button
+            className="btn btn-ghost btn-icon"
+            disabled={disabilitato}
+            // Solo l'icona: la riga è già lunga di suo e sta dentro un elenco
+            // di giornata. Il nome per intero ce l'hanno lettore di schermo e
+            // suggerimento del mouse.
+            title={`Va bene: è ${evento.tipoLabel.toLowerCase()}`}
+            aria-label={`Conferma il tipo: ${evento.tipoLabel}`}
+            onClick={() => onCorreggi(evento.id, evento.tipo)}
+          >
+            <Icon name="check" size={15} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -195,6 +217,21 @@ export default function Calendario() {
 
   const manda = (id: string, tipo: string) => correggi.mutate({ id, tipo });
 
+  /**
+   * Cambiare vista dimentica l'esito dell'ultima correzione.
+   *
+   * `correggi.data` è stato della mutation: resta finché la pagina non si
+   * smonta. Senza azzerarlo, «Corretto su 12 occorrenze della serie: lezione.»
+   * ti segue da «Da rivedere» alla settimana e resta lì sopra un elenco in cui
+   * quella serie non c'è più — proprio perché l'hai corretta e la coda l'ha
+   * lasciata andare. Una conferma che sopravvive a ciò che confermava non è
+   * più una conferma.
+   */
+  function cambiaVista(nuova: VistaCalendario) {
+    correggi.reset();
+    setVista(nuova);
+  }
+
   return (
     <>
       <PageHeader
@@ -210,7 +247,7 @@ export default function Calendario() {
                 icon="lightbulb"
                 actionLabel="Guardale"
                 actionIcon="arrow-right"
-                onAction={() => setVista('da_rivedere')}
+                onAction={() => cambiaVista('da_rivedere')}
               >
                 {data.stats.daRivedere === 1 ? (
                   <>
@@ -225,8 +262,17 @@ export default function Calendario() {
               </AvvisoRow>
             )}
 
-            {correggi.data && (
-              <div className="cu-muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            {/* L'esito della correzione, nei due versi. Quello che manca fa
+                più danno dell'altro: senza il ramo d'errore, una PATCH non
+                riuscita lascia la riga com'era e la pagina identica a prima,
+                e l'unico modo di accorgersene sarebbe ricaricare. */}
+            {correggi.isError && (
+              <div className="state-msg is-error" style={{ marginBottom: 12 }} role="alert">
+                Non corretto — {messaggioErrore(correggi.error)}
+              </div>
+            )}
+            {correggi.isSuccess && (
+              <div className="cu-muted" style={{ fontSize: 13, marginBottom: 12 }} role="status">
                 {correggi.data.label}
               </div>
             )}
@@ -250,7 +296,7 @@ export default function Calendario() {
                       name="perCalendario"
                       options={[...VISTE]}
                       value={vista}
-                      onChange={(v) => setVista(v as VistaCalendario)}
+                      onChange={(v) => cambiaVista(v as VistaCalendario)}
                     />
                   </div>
                 </div>
@@ -318,13 +364,14 @@ export default function Calendario() {
 
               <div className="colR">
                 <Legenda data={data} />
-                {data.stats.daGuardare > 0 && (
+                {/* La frase la scrive il backend: è l'unico che sa se il
+                    compito `tag_calendario` ha una chiave dietro, e quindi se
+                    quel numero scenderà davvero da solo. */}
+                {data.daGuardareLabel && (
                   <div>
                     <h5 style={{ marginBottom: 12 }}>Ancora da guardare</h5>
                     <p className="cu-muted" style={{ fontSize: 13, lineHeight: 1.6 }}>
-                      {data.stats.daGuardare === 1
-                        ? "Un impegno non ha ancora un tipo: Custode lo guarda al prossimo giro, che è entro cinque minuti."
-                        : `${data.stats.daGuardare} impegni non hanno ancora un tipo: Custode li guarda al prossimo giro, che è entro cinque minuti.`}
+                      {data.daGuardareLabel}
                     </p>
                   </div>
                 )}

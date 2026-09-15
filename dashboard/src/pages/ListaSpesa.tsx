@@ -11,6 +11,7 @@ import { CampoAggiunta } from '../components/CampoAggiunta';
 import { Bar } from '../components/Bar';
 import { Money } from '../components/Money';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
 import { useToggleShoppingItem } from '../hooks/useHome';
 import { useAggiungiVoceSpesa, useListaSpesaPage, useSvuotaPresi } from '../hooks/useListaSpesa';
 
@@ -27,6 +28,14 @@ export default function ListaSpesa() {
   const toggle = useToggleShoppingItem();
   const svuota = useSvuotaPresi();
   const aggiungi = useAggiungiVoceSpesa();
+
+  // Riaprire il campo azzera l'errore del tentativo precedente: «Non aggiunto
+  // — …» riferito a una voce che nel frattempo hai cambiato sarebbe peggio di
+  // non dirlo affatto.
+  function apriAggiunta() {
+    aggiungi.reset();
+    setAggiuntaAperta((aperta) => !aperta);
+  }
 
   return (
     <>
@@ -78,7 +87,7 @@ export default function ListaSpesa() {
                   <button
                     className="btn btn-ghost"
                     style={{ marginLeft: 'auto' }}
-                    onClick={() => setAggiuntaAperta((aperta) => !aperta)}
+                    onClick={apriAggiunta}
                   >
                     <Icon name="plus" size={14} />
                     Aggiungi voce
@@ -89,11 +98,11 @@ export default function ListaSpesa() {
                   <CampoAggiunta
                     placeholder="Cosa manca? «latte», «carta forno»…"
                     inCorso={aggiungi.isPending}
-                    onSalva={(nome) => {
-                      aggiungi.mutate(nome);
-                      setAggiuntaAperta(false);
-                    }}
-                    onAnnulla={() => setAggiuntaAperta(false)}
+                    errore={aggiungi.isError ? messaggioErrore(aggiungi.error) : null}
+                    onSalva={(nome) =>
+                      aggiungi.mutate(nome, { onSuccess: () => setAggiuntaAperta(false) })
+                    }
+                    onAnnulla={apriAggiunta}
                   />
                 )}
 

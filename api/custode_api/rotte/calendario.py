@@ -20,7 +20,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 
 from custode_api import schemi
-from custode_api.dipendenze import CalendarioDip, ConnDip, OraDip
+from custode_api.dipendenze import CalendarioDip, ConnDip, OraDip, RouterDip
 from custode_api.rotte.presentazione import (
     TIPO_LABEL,
     evento_calendario_taggato,
@@ -35,6 +35,7 @@ from custode_core.formato import (
     plurale,
 )
 from custode_core.registro_job import SYNC_CALENDARIO, ultima_esecuzione
+from custode_router.compiti import Compito
 
 router = APIRouter(prefix="/api/calendario", tags=["calendario"])
 
@@ -150,6 +151,35 @@ def _titolo(da_rivedere: int, da_guardare: int, eventi: int) -> str:
     return "Tutti gli impegni hanno un tipo."
 
 
+def _da_guardare_label(quanti: int, *, tagging_acceso: bool) -> str | None:
+    """Cosa aspetta gli impegni senza tipo — e se davvero li aspetta qualcosa.
+
+    La pagina diceva «Custode li guarda al prossimo giro, che è entro cinque
+    minuti» in ogni caso. È vero solo finché il compito `tag_calendario` ha una
+    chiave dietro: senza, non li guarda nessuno, il numero non scende mai, e la
+    frase resta lì a promettere un'attesa che non finisce. Chi legge non ha
+    modo di distinguere i due casi — l'unico che lo sa è il backend, ed è il
+    posto dove il contratto vuole le etichette.
+    """
+    if not quanti:
+        return None
+    quanti_label = plurale(quanti, "impegno non ha", "impegni non hanno")
+    # Il pronome segue il numero: «1 impegno … Custode li guarda» è la frase
+    # che viene da sé mettendo insieme due pezzi scritti in momenti diversi, e
+    # si legge come una frase generata invece che scritta.
+    pronome = "lo" if quanti == 1 else "li"
+    if not tagging_acceso:
+        return (
+            f"{quanti_label} ancora un tipo, e per ora non {pronome} guarda nessuno:"
+            " manca la chiave del modello (ROUTER_DEEPSEEK_API_KEY, DEPLOY.md)."
+            " Il tipo puoi metterlo a mano da qui, o dalla vista di un giorno."
+        )
+    return (
+        f"{quanti_label} ancora un tipo:"
+        f" Custode {pronome} guarda al prossimo giro, entro cinque minuti."
+    )
+
+
 def _orizzonte(calendario: CalendarioDip, oggi: date) -> str:
     """Fin dove arriva l'archivio, quando la vista guarda oltre.
 
@@ -166,6 +196,7 @@ def pagina_calendario(
     conn: ConnDip,
     ora: OraDip,
     impostazioni_calendario: CalendarioDip,
+    instradatore: RouterDip,
     vista: Vista = "settimana",
 ) -> schemi.CalendarioData:
     oggi = ora.date()
@@ -185,7 +216,14 @@ def pagina_calendario(
     # poi, non della vista: «due proposte da rivedere» deve restare vero anche
     # mentre guardi una settimana in cui non ce n'è nessuna, o non ci si
     # arriverebbe mai — è la riga che porta sulla terza vista.
-    da_guardare = len(dom.gruppi_senza_tag(conn))
+    #
+    # `dal=oggi` come per la coda, e per la stessa ragione: un impegno di marzo
+    # rimasto senza tipo non è una cosa da sbrigare, e tenerlo nel contatore lo
+    # lascerebbe sopra zero per sempre. Il *lavoro* del worker resta su tutto
+    # l'archivio — lì il passato serve al motore di contesto — ma quello che si
+    # mostra qui è una cosa da fare, e una cosa da fare che non finisce mai
+    # smette di essere guardata.
+    da_guardare = len(dom.gruppi_senza_tag(conn, dal=oggi))
 
     return schemi.CalendarioData(
         periodoLabel=_etichetta_periodo(vista, da, a, oggi),
@@ -199,6 +237,10 @@ def pagina_calendario(
         giorni=righe,
         daRivedere=coda,
         notaVuoto=_nota_vuoto(conn, vista, righe=righe, coda=coda),
+        daGuardareLabel=_da_guardare_label(
+            da_guardare,
+            tagging_acceso=instradatore.configurato_per(Compito.TAG_CALENDARIO),
+        ),
         orizzonteLabel=_orizzonte(impostazioni_calendario, oggi),
     )
 

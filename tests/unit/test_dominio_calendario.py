@@ -382,6 +382,42 @@ def test_gruppi_senza_tag_non_ripropone_una_serie_gia_taggata(conn: sqlite3.Conn
     assert dom.gruppi_senza_tag(conn) == []
 
 
+def test_gruppi_senza_tag_senza_dal_guarda_tutto_l_archivio(conn: sqlite3.Connection) -> None:
+    """Chi propone i tag li vuole tutti: l'archivio è l'ingresso del motore di contesto."""
+    ieri = OGGI - timedelta(days=30)
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-vecchio", titolo="Analisi I", inizio=datetime.combine(ieri, time(9, 0))),
+            _evento("ev-nuovo", titolo="Analisi II"),
+        ],
+    )
+
+    assert {g.titolo for g in dom.gruppi_senza_tag(conn)} == {"Analisi I", "Analisi II"}
+
+
+def test_gruppi_senza_tag_con_dal_lascia_fuori_quello_che_e_gia_passato(
+    conn: sqlite3.Connection,
+) -> None:
+    """`dal` serve a contare, non a lavorare: è la casella «da guardare» della pagina.
+
+    Un impegno di un mese fa rimasto senza tipo non è una cosa da sbrigare, e
+    tenerlo nel contatore lo lascerebbe sopra zero per sempre. Il confronto è
+    su `fine`, come in `fra`: un evento cominciato ieri e ancora in corso è di
+    oggi.
+    """
+    ieri = OGGI - timedelta(days=30)
+    _sincronizza(
+        conn,
+        [
+            _evento("ev-vecchio", titolo="Analisi I", inizio=datetime.combine(ieri, time(9, 0))),
+            _evento("ev-nuovo", titolo="Analisi II"),
+        ],
+    )
+
+    assert [g.titolo for g in dom.gruppi_senza_tag(conn, dal=OGGI)] == ["Analisi II"]
+
+
 def test_applica_tag_scrive_tutta_la_serie_insieme(conn: sqlite3.Connection) -> None:
     domani = OGGI + timedelta(days=1)
     _sincronizza(

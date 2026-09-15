@@ -26,6 +26,9 @@ class RouterFinto:
         self.risposta: dict[str, Any] = {"azioni": [{"azione": "nessuna"}]}
         self.errore: Exception | None = None
         self.messaggi_visti: list[str] = []
+        self.compiti_accesi = True
+        """Se i compiti di §6 hanno una chiave dietro. Un test che vuole vedere
+        la pagina col modello spento lo mette a `False`."""
 
     def interpreta_come(self, *azioni: dict[str, Any]) -> None:
         """Fa rispondere all'interprete queste azioni, nella forma vera.
@@ -40,6 +43,9 @@ class RouterFinto:
             "azioni": [{k: v for k, v in a.items() if k not in CAMPI_MESSAGGIO} for a in azioni],
             **{k: v for a in azioni for k, v in a.items() if k in CAMPI_MESSAGGIO},
         }
+
+    def configurato_per(self, compito: Any) -> bool:
+        return self.compiti_accesi
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         self.messaggi_visti.append(kwargs.get("utente", ""))

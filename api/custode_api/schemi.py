@@ -359,6 +359,11 @@ class CalendarioData(BaseModel):
     giorni: list[GiornoCalendario] = []
     daRivedere: list[SerieDaRivedere] = []
     notaVuoto: str | None = None
+    daGuardareLabel: str | None = None
+    """Cosa aspetta gli impegni senza tipo, in parole. Assente quando non ce ne
+    sono. Non è `stats.daGuardare` detto a parole: dice anche **se** qualcuno
+    li guarderà, perché senza la chiave del modello quel numero non scende mai
+    e la pagina non deve promettere un'attesa che non finisce."""
     orizzonteLabel: str | None = None
     """Fin dove arriva il calendario: il worker sincronizza una finestra, e un
     mese che finisce oltre quella finestra è vuoto perché nessuno ha ancora

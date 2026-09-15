@@ -371,7 +371,7 @@ class GruppoDaTaggare:
 
 
 def gruppi_senza_tag(
-    conn: sqlite3.Connection, *, fonte: str = FONTE_GOOGLE
+    conn: sqlite3.Connection, *, fonte: str = FONTE_GOOGLE, dal: date | None = None
 ) -> list[GruppoDaTaggare]:
     """Le serie e gli eventi singoli che il tagging non ha ancora guardato.
 
@@ -379,12 +379,25 @@ def gruppi_senza_tag(
     tag in `sincronizza`, dentro una stessa serie o tutte le righe hanno
     `tag_proposto_il` valorizzato o nessuna — non serve interrogare più di una
     riga a serie per sapere se è da proporre.
+
+    `dal` restringe a ciò che finisce da quel giorno in poi, col filtro di
+    `fra` (`fine >= dal`), e serve a **contare** non a lavorare: chi propone i
+    tag lo chiama senza, perché un archivio taggato per intero è ciò che il
+    motore di contesto vorrà avere quando cercherà pattern nello storico; chi
+    mostra un numero all'utente lo chiama con `oggi`, perché un impegno di
+    marzo rimasto senza tipo non è una cosa da sbrigare — e un contatore che
+    non scende mai è un contatore che si smette di guardare.
     """
+    condizioni = ["fonte = ?", "tag_proposto_il IS NULL"]
+    valori: list[object] = [fonte]
+    if dal is not None:
+        condizioni.append("fine >= ?")
+        valori.append(dal.isoformat())
+
     righe = conn.execute(
-        "SELECT id, serie_id, titolo FROM calendar_events"
-        " WHERE fonte = ? AND tag_proposto_il IS NULL"
+        f"SELECT id, serie_id, titolo FROM calendar_events WHERE {' AND '.join(condizioni)}"
         " ORDER BY inizio ASC",
-        (fonte,),
+        valori,
     )
 
     visti: set[str] = set()

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ApiError } from '../lib/apiClient';
+import { messaggioErrore } from '../lib/apiClient';
 
 interface AsyncStateProps {
   isLoading: boolean;
@@ -14,7 +14,7 @@ export function AsyncState({ isLoading, error, onRetry, children }: AsyncStatePr
     return <div className="state-msg">Caricamento…</div>;
   }
   if (error) {
-    const message = error instanceof ApiError ? error.message : 'Errore imprevisto.';
+    const message = messaggioErrore(error);
     return (
       <div className="state-msg is-error row" style={{ gap: 12 }}>
         <span>{message}</span>

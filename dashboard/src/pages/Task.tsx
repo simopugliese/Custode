@@ -8,6 +8,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { CampoAggiunta } from '../components/CampoAggiunta';
 import { TaskRow } from '../components/TaskRow';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
 import { useToggleTask } from '../hooks/useHome';
 import { useCreaTask, useRinviaTask, useTaskPage } from '../hooks/useTask';
 import type { TaskItem } from '../types/api';
@@ -27,6 +28,14 @@ export default function Task() {
   const rinvia = useRinviaTask();
   const crea = useCreaTask();
   const [aggiuntaAperta, setAggiuntaAperta] = useState(false);
+
+  // Riaprire il campo azzera l'errore del tentativo precedente: «Non aggiunto
+  // — …» riferito a un task che nel frattempo hai cambiato sarebbe peggio di
+  // non dirlo affatto.
+  function apriAggiunta() {
+    crea.reset();
+    setAggiuntaAperta((aperta) => !aperta);
+  }
 
   function renderTasks(tasks: TaskItem[]) {
     return tasks.map((task) => (
@@ -75,7 +84,7 @@ export default function Task() {
                   <button
                     className="btn btn-ghost"
                     style={{ marginLeft: 'auto' }}
-                    onClick={() => setAggiuntaAperta((aperta) => !aperta)}
+                    onClick={apriAggiunta}
                   >
                     <Icon name="plus" size={14} />
                     Nuovo task
@@ -87,11 +96,11 @@ export default function Task() {
                     placeholder="Cosa devi ricordarti?"
                     conData
                     inCorso={crea.isPending}
-                    onSalva={(titolo, scadenza) => {
-                      crea.mutate({ titolo, scadenza });
-                      setAggiuntaAperta(false);
-                    }}
-                    onAnnulla={() => setAggiuntaAperta(false)}
+                    errore={crea.isError ? messaggioErrore(crea.error) : null}
+                    onSalva={(titolo, scadenza) =>
+                      crea.mutate({ titolo, scadenza }, { onSuccess: () => setAggiuntaAperta(false) })
+                    }
+                    onAnnulla={apriAggiunta}
                   />
                 )}
 
