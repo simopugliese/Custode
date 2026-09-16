@@ -52,10 +52,10 @@ vere. Senza, «lezione ogni martedì» sarebbe un evento solo con dentro una reg
 di ripetizione, e «prima della prossima lezione» non avrebbe nessun istante a cui
 riferirsi.
 
-Ogni occorrenza porta `serie_id` (il `recurringEventId` di Google). Non serve
-ancora: servirà al passo dopo di §8.10, dove il tipo di un evento si decide una
-volta per la serie invece che ogni martedì da capo. Raccoglierlo adesso costa
-zero; raccoglierlo dopo vorrebbe dire risincronizzare tutto.
+Ogni occorrenza porta `serie_id` (il `recurringEventId` di Google), ed è
+l'unità su cui si decide il **tipo** di un evento: una volta per la serie
+invece che ogni martedì da capo (§8.10). Raccoglierlo insieme all'evento costa
+zero; raccoglierlo dopo avrebbe voluto dire risincronizzare tutto.
 
 ## L'autorizzazione
 

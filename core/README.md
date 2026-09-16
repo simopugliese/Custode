@@ -12,10 +12,13 @@ schema §7 in quattro servizi.
   c'è. Le usano sia l'API sia il bot.
 - `migrazioni/` — lo schema di §7, un file `NNN_nome.sql` per volta.
 - `dominio/` — i servizi che API, bot e worker usano identici: `task.py`,
-  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`, più
-  `vocabolario.py`.
+  `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`,
+  `calendario.py`, più `vocabolario.py`.
+- `registro_job.py` — `job_runs`, cioè cosa un job schedulato ha già fatto e
+  quando. Sta qui e non nel worker perché da §8.10 lo legge anche l'API, per
+  sapere se il calendario ha mai sincronizzato.
 
-Da fare, con i moduli funzionali: calendario, corsi.
+Da fare, con i moduli funzionali: corsi (§8.11).
 
 `vocabolario.py` è l'unico che attraversa gli altri invece di stare su un
 modulo suo: raccoglie i **nomi in uso** — abitudini, categorie di spesa,
@@ -28,6 +31,17 @@ Una nota su `spese.py`: gli importi ci stanno dentro in **centesimi**, come
 interi, e diventano euro solo al confine con l'API e col bot. Sommare float per
 centinaia di spese produce totali che non tornano per qualche centesimo, e su
 dei soldi un totale che non torna è un bug che si nota.
+
+Una nota su `calendario.py`: la tabella `calendar_events` è un **archivio** e
+non una cache — un evento che esce dalla finestra sincronizzata resta dov'è,
+perché il calendario di tre mesi fa è uno degli ingressi del motore di contesto
+(§8.10). E i **tipi** di evento non sono più quattro costanti: stanno in
+`calendar_tags` (migrazione 009) e li crei tu. Un evento porta lo **slug** del
+suo tipo, non l'etichetta, ed è ciò che permette di rinominare un tipo toccando
+una riga sola invece che mille: chi deve mostrare l'etichetta la cerca in
+`mappa_tag`. Archiviare un tipo lo toglie dal menu e dal prompt del modello ma
+lo lascia addosso agli impegni che ce l'hanno; cancellarlo si può solo se non
+lo usa nessuno, e a impedirlo è la chiave esterna, non una convenzione.
 
 Una nota su `abitudini.py`: le funzioni che calcolano — `attesi`, `aderenza`,
 `striscia`, `presenze` — sono **pure** e prendono insiemi di date, non una

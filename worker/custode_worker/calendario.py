@@ -27,7 +27,10 @@ condizione in cui l'assenza di un evento significa «disdetto».
 
 **Il tagging (`tagga`) sta qui accanto perché segue il sync nell'ordine**, ma
 è un giro suo e non dipende da com'è andato quello: chiede al modello il tipo
-delle serie che nessuno ha ancora guardato e le scrive. Non ha un registro in
+delle serie che nessuno ha ancora guardato e le scrive. I tipi fra cui scegliere
+li legge da `calendar_tags` ad ogni giro (pezzo 6) e li consegna al router, che
+non tocca il database (§5): un tipo creato adesso entra nella classificazione
+del giro successivo, senza riavviare niente. Non ha un registro in
 `job_runs` — la coda `gruppi_senza_tag` *è* il suo stato, e una coda che resta
 piena è già il «riprova al giro dopo». Legarlo a un sync riuscito vorrebbe dire
 che una giornata di Google irraggiungibile tiene ferma una coda che il modello
@@ -205,17 +208,37 @@ def tagga(
     if not coda:
         return EsitoTag()
 
+    # I tipi si rileggono ad ogni giro, e solo gli attivi: uno archiviato non
+    # va più proposto (resta però addosso agli eventi che già ce l'hanno). Con
+    # meno di due non c'è niente da classificare — ogni risposta possibile
+    # sarebbe `altro` — e la coda resta dov'è invece di pagare una chiamata per
+    # una conclusione già nota.
+    tag = dom.elenco_tag(conn, solo_attivi=True)
+    if len(tag) < router_calendario.MIN_TAG:
+        return EsitoTag(rimasti=len(coda))
+
     gruppi = coda[: router_calendario.MAX_TITOLI_PER_CHIAMATA]
     try:
-        proposte = router_calendario.tag_per(router, [gruppo.titolo for gruppo in gruppi])
+        proposte = router_calendario.tag_per(router, [gruppo.titolo for gruppo in gruppi], tag)
     except ErroreRouter as guasto:
         return EsitoTag(errore=str(guasto), rimasti=len(coda))
 
     righe = 0
-    for gruppo, proposta in zip(gruppi, proposte, strict=True):
-        # `confermato_da_te` resta falso: questa è una proposta, e la pagina
-        # Calendario deve poter distinguerla da una tua correzione.
-        righe += dom.applica_tag(conn, gruppo, proposta.tipo, ora)
+    try:
+        for gruppo, proposta in zip(gruppi, proposte, strict=True):
+            # `confermato_da_te` resta falso: questa è una proposta, e la pagina
+            # Calendario deve poter distinguerla da una tua correzione.
+            righe += dom.applica_tag(conn, gruppo, proposta.tipo, ora)
+    except dom.TagInesistente as sparito:
+        # Fra il prompt e la risposta passano dei secondi, e in mezzo puoi aver
+        # cancellato un tipo dalla pagina. Vale come guasto passeggero: quel
+        # che si è già scritto resta (è comunque un tag valido), il resto della
+        # coda torna al giro dopo, dove l'elenco sarà quello nuovo.
+        return EsitoTag(
+            righe=righe,
+            errore=f"un tipo è sparito mentre il modello rispondeva: {sparito}",
+            rimasti=len(coda) - len(gruppi),
+        )
 
     return EsitoTag(
         gruppi=len(gruppi),

@@ -17,6 +17,14 @@ posizione: un modello che salta una voce farebbe slittare tutte le successive,
 e il tag della lezione finirebbe sulla palestra. Con i numeri una voce saltata
 resta una voce saltata.
 
+**L'elenco dei tipi non è più fisso** (pezzo 6). Erano quattro costanti qui
+dentro; adesso arrivano da `calendar_tags`, e con loro arriva la **descrizione**
+di ognuno — che è la parte che fa davvero il lavoro. Il prompt di prima non
+diceva «viaggio», diceva «treni, voli, trasferte; non il luogo di un altro
+impegno»: quella frase adesso è un dato, e la scrive chi crea il tag. Chi
+chiama passa i tipi già letti, perché `router/` non tocca il database (§5) — il
+giro del worker li legge e li consegna.
+
 **Una voce illeggibile non blocca le altre.** Manca il numero, o il tipo è
 inventato («sport», «lezione universitaria»): quella serie diventa `altro`
 *proposto*, cioè lo stesso stato che avrebbe se il modello avesse detto altro
@@ -29,10 +37,11 @@ coda resta intatta per il giro dopo.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
-from custode_core.dominio.calendario import Tipo
+from custode_core.dominio.calendario import SLUG_ALTRO
 from custode_router.compiti import Compito
 from custode_router.errori import RispostaNonValida
 from custode_router.router import Router
@@ -64,7 +73,9 @@ sembrerebbe un errore di composizione, e il modello risponderebbe a caso."""
 class Proposta:
     """Il tipo proposto per un evento, e se il modello l'ha davvero detto."""
 
-    tipo: Tipo
+    tipo: str
+    """Lo slug di un tag, non la sua etichetta: è ciò che si scrive in
+    `calendar_events.tipo`."""
     letta: bool = True
     """`False` quando la voce mancava o era illeggibile e `tipo` è il ripiego
     (`altro`). Serve ai log del worker: un modello che diventa illeggibile su
@@ -72,65 +83,93 @@ class Proposta:
     identico a un «altro» detto sul serio."""
 
 
-SCHEMA_TAG: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "tag": {
-            "type": "array",
-            "description": (
-                "Un elemento per ogni evento ricevuto, con il suo numero."
-                " Nessun evento va saltato."
-            ),
-            "items": {
-                "type": "object",
-                "properties": {
-                    "n": {
-                        "type": "integer",
-                        "description": "Il numero dell'evento, esattamente come nell'elenco.",
-                    },
-                    "tipo": {
-                        "type": "string",
-                        "enum": [tipo.value for tipo in Tipo],
-                        "description": "Uno dei quattro tipi, in minuscolo.",
-                    },
-                },
-                "required": ["n", "tipo"],
-                "additionalProperties": False,
-            },
-        }
-    },
-    "required": ["tag"],
-    "additionalProperties": False,
-}
+class TagDisponibile(Protocol):
+    """Un tipo di evento come lo vede chi compone il prompt.
 
-SISTEMA = """Classifichi gli impegni del calendario di Custode, un assistente personale.
+    Un Protocol e non `custode_core.dominio.calendario.Tag` per la stessa
+    ragione per cui il dominio descrive `EventoEsterno` invece di importare la
+    sorgente: qui serve la forma, non la riga di tabella. Chi chiama passa i
+    tag che ha già letto, e `router/` resta senza database.
+    """
+
+    @property
+    def slug(self) -> str: ...
+    @property
+    def descrizione(self) -> str: ...
+
+
+def schema_tag(tag: Sequence[TagDisponibile]) -> dict[str, Any]:
+    """Lo schema della risposta, con l'enum degli slug che esistono adesso.
+
+    L'enum non è una decorazione: è ciò che impedisce al modello di inventare
+    un tipo, e va ricostruito ad ogni chiamata perché fra un giro e l'altro un
+    tag può nascere o essere archiviato.
+    """
+    slug = [voce.slug for voce in tag]
+    return {
+        "type": "object",
+        "properties": {
+            "tag": {
+                "type": "array",
+                "description": (
+                    "Un elemento per ogni evento ricevuto, con il suo numero."
+                    " Nessun evento va saltato."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "n": {
+                            "type": "integer",
+                            "description": "Il numero dell'evento, esattamente come nell'elenco.",
+                        },
+                        "tipo": {
+                            "type": "string",
+                            "enum": slug,
+                            "description": f"Uno dei {len(slug)} tipi, in minuscolo.",
+                        },
+                    },
+                    "required": ["n", "tipo"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["tag"],
+        "additionalProperties": False,
+    }
+
+
+APERTURA = """Classifichi gli impegni del calendario di Custode, un assistente personale.
 
 Ricevi un elenco numerato di titoli di eventi. Per ognuno dici di che tipo è,
-scegliendo fra questi quattro e nessun altro:
+scegliendo fra questi e nessun altro:"""
 
-- **lezione** — l'università: lezioni, laboratori, esercitazioni, seminari,
-  esami, appelli.
-- **palestra** — allenamento e sport: palestra, corsa, piscina, partite,
-  qualunque attività fisica.
-- **viaggio** — spostamenti che occupano l'impegno stesso: treni, voli, «rientro
-  a casa», trasferte. Non il luogo di un altro impegno: una lezione non diventa
-  un viaggio perché ci si arriva in treno.
-- **altro** — tutto il resto: visite mediche, ricevimenti, cene, compleanni,
-  scadenze, impegni personali.
-
-Come rispondere:
+REGOLE = """Come rispondere:
 - Una voce per **ogni** numero che hai ricevuto, riportando il numero com'è.
   Non riordinare, non raggruppare, non saltare niente.
-- Solo questi quattro tipi, scritti così, in minuscolo. Un tipo diverso non
-  viene capito e la classificazione di quell'evento va persa.
+- Solo i tipi elencati qui sopra, scritti così, in minuscolo. Un tipo diverso
+  non viene capito e la classificazione di quell'evento va persa.
 - Il titolo è tutto quello che hai: non dedurre niente dalla posizione
   nell'elenco né dagli eventi vicini. Il fatto che il 3 sia una lezione non
   dice niente sul 4.
-- Nel dubbio **altro**: è un tipo legittimo, non una resa. Un evento messo
+- Nel dubbio **{ripiego}**: è un tipo legittimo, non una resa. Un evento messo
   nella casella sbagliata è peggio di uno lasciato nel mucchio, perché non si
   vede finché non produce un promemoria fuori posto.
 - I titoli sono in italiano, spesso abbreviati come li scriveresti di corsa
   sul telefono («Anal. Mat. I», «pale», «volo MXP→FCO»)."""
+
+
+def sistema(tag: Sequence[TagDisponibile]) -> str:
+    """Il prompt di sistema, con dentro i tipi che esistono adesso.
+
+    Al modello arriva lo **slug** e la sua descrizione, non l'etichetta: lo
+    slug è ciò che deve rispondere, e mostrargli anche il nome («Allenamento»)
+    accanto a uno slug diverso (`palestra`) gli darebbe due parole fra cui
+    scegliere per dire la stessa cosa. Chi rinomina un tag e vuole che il
+    modello se ne accorga cambia la descrizione, che è la riga che legge
+    davvero.
+    """
+    elenco = "\n".join(f"- **{voce.slug}** — {voce.descrizione}" for voce in tag)
+    return f"{APERTURA}\n\n{elenco}\n\n{REGOLE.format(ripiego=SLUG_ALTRO)}"
 
 
 def _ripulisci(titolo: str) -> str:
@@ -152,12 +191,25 @@ def componi_prompt(titoli: list[str]) -> str:
     return "Eventi da classificare:\n" + "\n".join(righe)
 
 
-def tag_per(router: Router, titoli: list[str]) -> list[Proposta]:
+MIN_TAG = 2
+"""Sotto due tipi non c'è niente da classificare.
+
+Non è un caso di scuola: `altro` non si può archiviare, ma gli altri sì, e con
+un tipo solo ogni risposta possibile sarebbe «altro». Chiamare il modello per
+farselo dire costerebbe una richiesta ogni cinque minuti per una conclusione
+già nota.
+"""
+
+
+def tag_per(router: Router, titoli: list[str], tag: Sequence[TagDisponibile]) -> list[Proposta]:
     """Un tipo proposto per ogni titolo, nello stesso ordine.
 
     La lista che esce è **lunga quanto quella che entra**, sempre: chi chiama
     la appaia ai suoi gruppi, e una lista più corta gli farebbe scrivere il tag
     di un evento su un altro.
+
+    `tag` sono i tipi **attivi**, letti da chi chiama: un tipo archiviato non
+    va proposto, ma resta addosso agli eventi che già ce l'hanno.
     """
     if not titoli:
         # Non è un caso da difendere in astratto: il worker chiama solo quando
@@ -168,32 +220,40 @@ def tag_per(router: Router, titoli: list[str]) -> list[Proposta]:
         raise ValueError(
             f"{len(titoli)} titoli in una chiamata sola: il massimo è {MAX_TITOLI_PER_CHIAMATA}"
         )
+    if len(tag) < MIN_TAG:
+        raise ValueError(f"{len(tag)} tipi disponibili: ne servono almeno {MIN_TAG}")
 
     dati = router.chiedi_json(
         # §6: «classificazione semplice da un titolo».
         Compito.TAG_CALENDARIO,
-        sistema=SISTEMA,
+        sistema=sistema(tag),
         utente=componi_prompt(titoli),
-        schema=SCHEMA_TAG,
+        schema=schema_tag(tag),
     )
-    return leggi_risposta(dati, quanti=len(titoli))
+    return leggi_risposta(dati, quanti=len(titoli), slug=[voce.slug for voce in tag])
 
 
-def leggi_risposta(dati: dict[str, Any], *, quanti: int) -> list[Proposta]:
+def leggi_risposta(dati: dict[str, Any], *, quanti: int, slug: Sequence[str]) -> list[Proposta]:
     """Rilegge la risposta per numero, con `altro` al posto di ciò che manca.
 
     Solleva se non si legge **niente**: una risposta in cui nessuna voce è
     valida non è «sono tutti altro», è un guasto, e scriverla in tabella
     seppellirebbe una coda intera dietro un tag che nessuno ha mai proposto.
+
+    `slug` sono i tipi ammessi in questa risposta, e non si ricavano da una
+    costante: sono quelli che il prompt ha davvero elencato. Un tipo fuori da
+    quell'elenco è inventato — e lo è anche se nel frattempo qualcuno l'ha
+    creato, perché il modello non l'ha mai visto.
     """
-    per_numero: dict[int, Tipo] = {}
+    ammessi = set(slug)
+    per_numero: dict[int, str] = {}
     for voce in dati.get("tag") or []:
         if not isinstance(voce, dict):
             continue
         numero = voce.get("n")
         if isinstance(numero, bool) or not isinstance(numero, int) or not 1 <= numero <= quanti:
             continue
-        tipo = _tipo(voce.get("tipo"))
+        tipo = _tipo(voce.get("tipo"), ammessi)
         if tipo is None or numero in per_numero:
             # Il primo che arriva vince: una seconda voce sullo stesso numero è
             # un ripensamento del modello, e non c'è motivo di credere alla
@@ -205,13 +265,13 @@ def leggi_risposta(dati: dict[str, Any], *, quanti: int) -> list[Proposta]:
         raise RispostaNonValida(f"nessun tag leggibile fra {quanti} eventi: {dati!r}")
 
     return [
-        Proposta(tipo=per_numero[n]) if n in per_numero else Proposta(tipo=Tipo.ALTRO, letta=False)
+        Proposta(tipo=per_numero[n]) if n in per_numero else Proposta(tipo=SLUG_ALTRO, letta=False)
         for n in range(1, quanti + 1)
     ]
 
 
-def _tipo(valore: object) -> Tipo | None:
-    """Il tipo, se è uno dei quattro. Maiuscole e spazi non fanno differenza.
+def _tipo(valore: object, ammessi: set[str]) -> str | None:
+    """Lo slug, se è fra quelli ammessi. Maiuscole e spazi non fanno differenza.
 
     Lo schema lo chiede già in minuscolo, ma una richiesta nel prompt è una
     richiesta e non un vincolo: scartare un «Lezione» per la maiuscola
@@ -220,4 +280,4 @@ def _tipo(valore: object) -> Tipo | None:
     if not isinstance(valore, str):
         return None
     pulito = valore.strip().casefold()
-    return next((tipo for tipo in Tipo if tipo.value == pulito), None)
+    return pulito if pulito in ammessi else None

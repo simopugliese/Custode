@@ -1,4 +1,7 @@
-"""Calendario — `GET /api/calendario`, `PATCH /api/calendario/{id}` (§8.10).
+"""Calendario — la pagina, la correzione dei tag e i tipi che decidi tu (§8.10).
+
+`GET /api/calendario`, `PATCH /api/calendario/{id}`, e le tre rotte dei tipi:
+`POST /api/calendario/tipi`, `PATCH|DELETE /api/calendario/tipi/{slug}`.
 
 La pagina risponde a due domande diverse, ed è la ragione delle tre viste:
 *«cosa ho questa settimana»* (settimana, mese) e *«cosa ha capito Custode»*
@@ -14,17 +17,15 @@ invece di «non hai impegni», che a calendario scollegato sarebbe falso.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Mapping
 from datetime import date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from custode_api import schemi
 from custode_api.dipendenze import CalendarioDip, ConnDip, OraDip, RouterDip
-from custode_api.rotte.presentazione import (
-    TIPO_LABEL,
-    evento_calendario_taggato,
-)
+from custode_api.rotte.presentazione import evento_calendario_taggato
 from custode_core.dominio import calendario as dom
 from custode_core.formato import (
     etichetta_giorno,
@@ -84,7 +85,13 @@ def _etichetta_periodo(vista: Vista, da: date, a: date, oggi: date) -> str:
 
 
 def _giorni(
-    eventi: list[dom.Evento], *, da: date, a: date, oggi: date, tutti: bool
+    eventi: list[dom.Evento],
+    *,
+    da: date,
+    a: date,
+    oggi: date,
+    tutti: bool,
+    tag: Mapping[str, dom.Tag],
 ) -> list[schemi.GiornoCalendario]:
     """Una riga per giorno, con dentro gli eventi che lo **toccano**.
 
@@ -106,7 +113,7 @@ def _giorni(
                 schemi.GiornoCalendario(
                     label=etichetta_giorno_voce(giorno),
                     isOggi=True if giorno == oggi else None,
-                    eventi=[evento_calendario_taggato(e, giorno) for e in del_giorno],
+                    eventi=[evento_calendario_taggato(e, giorno, tag) for e in del_giorno],
                     notaVuoto=None if del_giorno else NIENTE_IN_PROGRAMMA,
                 )
             )
@@ -114,13 +121,15 @@ def _giorni(
     return righe
 
 
-def _da_rivedere(conn: sqlite3.Connection, oggi: date) -> list[schemi.SerieDaRivedere]:
+def _da_rivedere(
+    conn: sqlite3.Connection, oggi: date, tag: Mapping[str, dom.Tag]
+) -> list[schemi.SerieDaRivedere]:
     return [
         schemi.SerieDaRivedere(
             id=str(serie.evento_id),
             titolo=serie.titolo,
-            tipo=serie.tipo.value,
-            tipoLabel=TIPO_LABEL[serie.tipo],
+            tipo=serie.tipo,
+            tipoLabel=dom.etichette(tag, serie.tipo),
             quandoLabel=_quando(serie, oggi),
             occorrenzeLabel=(
                 f"{plurale(serie.occorrenze, 'occorrenza', 'occorrenze')} in calendario"
@@ -200,17 +209,22 @@ def pagina_calendario(
     vista: Vista = "settimana",
 ) -> schemi.CalendarioData:
     oggi = ora.date()
+    # I tipi si leggono anche a calendario scollegato: sono il contratto della
+    # pagina, non un dato del calendario — e sono anche l'unica cosa che si può
+    # ancora sistemare mentre le credenziali mancano.
+    tipi = _tipi(conn)
     if not impostazioni_calendario.configurato():
-        return _scollegato(vista, oggi)
+        return _scollegato(vista, oggi, tipi)
 
+    tag = dom.mappa_tag(conn)
     da, a = _periodo(vista, oggi, giorni_avanti=impostazioni_calendario.giorni_avanti)
     eventi = dom.fra(conn, da, a)
     righe = (
-        _giorni(eventi, da=da, a=a, oggi=oggi, tutti=vista == "settimana")
+        _giorni(eventi, da=da, a=a, oggi=oggi, tutti=vista == "settimana", tag=tag)
         if vista != "da_rivedere"
         else []
     )
-    coda = _da_rivedere(conn, oggi)
+    coda = _da_rivedere(conn, oggi, tag)
 
     # La coda e ciò che resta da guardare parlano di tutto l'archivio da oggi in
     # poi, non della vista: «due proposte da rivedere» deve restare vero anche
@@ -233,7 +247,7 @@ def pagina_calendario(
             daRivedere=len(coda),
             daGuardare=da_guardare,
         ),
-        tipi=_tipi(),
+        tipi=tipi,
         giorni=righe,
         daRivedere=coda,
         notaVuoto=_nota_vuoto(conn, vista, righe=righe, coda=coda),
@@ -245,25 +259,67 @@ def pagina_calendario(
     )
 
 
-def _tipi() -> list[schemi.TipoEvento]:
-    return [schemi.TipoEvento(valore=tipo.value, label=TIPO_LABEL[tipo]) for tipo in dom.Tipo]
+def _tipi(conn: sqlite3.Connection) -> list[schemi.TipoEvento]:
+    """I tipi come li vede la pagina: archiviati compresi, e con i loro numeri.
+
+    Gli archiviati ci sono perché un impegno di marzo può portarne uno, e la
+    sua etichetta va comunque mostrata; è il menu a offrire solo gli attivi.
+    """
+    quanti = dom.eventi_per_tag(conn)
+    return [_tipo_evento(tag, quanti.get(tag.slug, 0)) for tag in dom.elenco_tag(conn)]
 
 
-def _scollegato(vista: Vista, oggi: date) -> schemi.CalendarioData:
+def _tipo_evento(tag: dom.Tag, eventi: int) -> schemi.TipoEvento:
+    return schemi.TipoEvento(
+        valore=tag.slug,
+        label=tag.nome,
+        descrizione=tag.descrizione,
+        attivo=tag.attivo,
+        diSistema=tag.di_sistema,
+        eventi=eventi,
+        eliminabile=not tag.di_sistema and eventi == 0,
+        notaLabel=_nota_tipo(tag, eventi),
+    )
+
+
+def _nota_tipo(tag: dom.Tag, eventi: int) -> str:
+    """Quanti impegni lo usano, e cosa se ne può fare di conseguenza.
+
+    Una riga sola invece di un numero nudo accanto al nome: «3» in un angolo non
+    dice di cosa è il conto, e uno «0» ancora meno. Detto a parole, lo stesso
+    numero spiega anche perché i bottoni sono quelli che sono — il mancato
+    «Elimina» su un tipo che degli impegni usano, o la mancata archiviazione su
+    «Altro». Un bottone assente senza spiegazione si legge come un guasto della
+    pagina.
+    """
+    if tag.di_sistema:
+        return "Ci finisce ogni impegno appena sincronizzato: si rinomina, non si archivia."
+    if not tag.attivo:
+        if eventi:
+            quanti = plurale(eventi, "impegno ce l'ha", "impegni ce l'hanno")
+            return f"Archiviato: fuori dal menu e dal modello, ma {quanti} ancora."
+        return "Archiviato: fuori dal menu e dal modello."
+    if eventi:
+        quanti = plurale(eventi, "impegno lo usa", "impegni lo usano")
+        return f"{quanti[0].upper()}{quanti[1:]}: si archivia, non si cancella."
+    return "Non lo usa nessun impegno: si può ancora cancellare."
+
+
+def _scollegato(vista: Vista, oggi: date, tipi: list[schemi.TipoEvento]) -> schemi.CalendarioData:
     """La pagina senza credenziali: esiste, ed è l'unica cosa che ha da dire.
 
     Niente eventi e niente numeri, nemmeno se in archivio è rimasto qualcosa da
     quando era collegato: mostrarli come «i tuoi impegni» direbbe che il
     calendario sta funzionando, mentre è fermo all'ultima sincronizzazione. I
-    quattro tipi restano — sono il contratto della pagina, non un dato del
-    calendario.
+    tipi restano — sono il contratto della pagina, non un dato del calendario, e
+    sono anche l'unica cosa che si può ancora sistemare da qui.
     """
     da, a = _periodo(vista, oggi, giorni_avanti=0)
     return schemi.CalendarioData(
         periodoLabel=_etichetta_periodo(vista, da, a, oggi),
         titolo="Il calendario non è collegato.",
         stats=schemi.StatsCalendario(eventiPeriodo=0, daRivedere=0, daGuardare=0),
-        tipi=_tipi(),
+        tipi=tipi,
         notaVuoto=NON_COLLEGATO,
     )
 
@@ -302,18 +358,144 @@ def correggi(
     altri martedì sarebbe una correzione che non regge fino alla settimana dopo.
     """
     try:
-        toccate = dom.correggi_tag(conn, evento_id, dom.Tipo(corpo.tipo), ora)
+        toccate = dom.correggi_tag(conn, evento_id, corpo.tipo, ora)
     except dom.EventoInesistente as errore:
         raise HTTPException(status_code=404, detail="Evento non trovato.") from errore
+    except dom.TagInesistente as errore:
+        # 422 e non 404: il 404 parla dell'evento nell'URL, questo parla del
+        # corpo della richiesta — ed è lo stesso codice con cui l'API rifiuta
+        # ogni altro valore che non sta nel contratto.
+        raise HTTPException(
+            status_code=422, detail=f"Il tipo «{corpo.tipo}» non esiste."
+        ) from errore
 
+    tag = dom.mappa_tag(conn)
     evento = dom.per_id(conn, evento_id)
+    etichetta = dom.etichette(tag, evento.tipo).lower()
     return schemi.CorrezioneTag(
-        evento=evento_calendario_taggato(evento, ora.date()),
+        evento=evento_calendario_taggato(evento, ora.date(), tag),
         occorrenze=toccate,
         label=(
-            f"Corretto: {TIPO_LABEL[evento.tipo].lower()}."
+            f"Corretto: {etichetta}."
             if toccate <= 1
             else f"Corretto su {plurale(toccate, 'occorrenza', 'occorrenze')}"
-            f" della serie: {TIPO_LABEL[evento.tipo].lower()}."
+            f" della serie: {etichetta}."
         ),
     )
+
+
+# — i tipi, adesso che li decidi tu (§8.10, pezzo 6) —
+#
+# Stanno qui e non in Impostazioni, ed è una scelta: i tipi si guardano dove si
+# vedono gli impegni. Il menu di correzione è il posto in cui ci si accorge che
+# un tipo manca, e la vista «da rivedere» è quella in cui si vede il modello
+# sbagliare perché non ce l'ha. Impostazioni parla di come e quando Custode ti
+# scrive, e non ha nessun blocco che parli di dati del calendario.
+
+
+@router.post("/tipi", response_model=schemi.TipoEventoSalvato, response_model_exclude_none=True)
+def crea_tipo(
+    corpo: schemi.NuovoTipoEvento, conn: ConnDip, ora: OraDip
+) -> schemi.TipoEventoSalvato:
+    """Un tipo nuovo. Se lo slug esisteva archiviato, lo **riprende**.
+
+    Ripreso e non duplicato: `palestra` e `palestra_2` spaccherebbero in due gli
+    eventi già taggati, e riprenderlo lo restituisce a tutti i suoi impegni
+    nello stesso istante — non l'avevano mai perso. La risposta lo dice in
+    `label`, perché è una cosa diversa da quella che hai chiesto.
+    """
+    esistevano = {tag.slug for tag in dom.elenco_tag(conn)}
+    try:
+        tag = dom.crea_tag(conn, nome=corpo.nome, descrizione=corpo.descrizione, ora=ora)
+    except dom.NomeTagGiaUsato as errore:
+        raise HTTPException(status_code=422, detail=f"{errore}.") from errore
+    except ValueError as errore:
+        raise HTTPException(status_code=422, detail=f"{errore}.") from errore
+
+    ripreso = tag.slug in esistevano
+    eventi = dom.eventi_per_tag(conn).get(tag.slug, 0)
+    return schemi.TipoEventoSalvato(
+        tipo=_tipo_evento(tag, eventi),
+        label=(
+            f"Ripreso «{tag.nome}», che avevi archiviato."
+            if ripreso
+            else f"Creato «{tag.nome}»: Custode lo userà dal prossimo giro, entro cinque minuti."
+        ),
+    )
+
+
+@router.patch(
+    "/tipi/{slug}", response_model=schemi.TipoEventoSalvato, response_model_exclude_none=True
+)
+def modifica_tipo(
+    slug: str, corpo: schemi.ModificaTipoEvento, conn: ConnDip
+) -> schemi.TipoEventoSalvato:
+    """Nome, descrizione, archiviazione. Lo slug no: quello non cambia mai.
+
+    **Rinominare non tocca nessun evento.** Gli impegni portano lo slug e
+    l'etichetta la cercano nella tabella dei tipi: cambiare nome è una riga
+    sola, e la pagina la mostra nuova su tutti gli eventi appena si ricarica.
+    """
+    try:
+        tag = dom.modifica_tag(
+            conn,
+            slug,
+            nome=corpo.nome,
+            descrizione=corpo.descrizione,
+            attivo=corpo.attivo,
+        )
+    except dom.TagInesistente as errore:
+        raise HTTPException(status_code=404, detail=f"Il tipo «{slug}» non esiste.") from errore
+    except dom.TagDiSistema as errore:
+        raise HTTPException(status_code=409, detail=f"{errore}.") from errore
+    except dom.NomeTagGiaUsato as errore:
+        raise HTTPException(status_code=422, detail=f"{errore}.") from errore
+    except ValueError as errore:
+        raise HTTPException(status_code=422, detail=f"{errore}.") from errore
+
+    eventi = dom.eventi_per_tag(conn).get(tag.slug, 0)
+    return schemi.TipoEventoSalvato(
+        tipo=_tipo_evento(tag, eventi), label=_label_modifica(tag, corpo)
+    )
+
+
+def _label_modifica(tag: dom.Tag, corpo: schemi.ModificaTipoEvento) -> str:
+    """Cos'è cambiato, detto come lo diresti tu.
+
+    L'archiviazione viene prima di tutto perché è la sola che cambia dove il
+    tipo *si vede*: rinominare e riscrivere la descrizione si vedono da soli
+    nella riga che hai appena modificato.
+    """
+    if corpo.attivo is False:
+        return f"«{tag.nome}» archiviato: non comparirà più nel menu."
+    if corpo.attivo is True:
+        return f"«{tag.nome}» ripreso: torna nel menu e fra quelli che Custode propone."
+    if corpo.nome is not None:
+        return (
+            f"Rinominato in «{tag.nome}». Nessun impegno è cambiato: portano tutti lo stesso tipo."
+        )
+    return f"Descrizione di «{tag.nome}» aggiornata: Custode la userà dal prossimo giro."
+
+
+@router.delete("/tipi/{slug}", status_code=204)
+def elimina_tipo(slug: str, conn: ConnDip) -> Response:
+    """Cancella un tipo, e solo se nessun impegno lo usa.
+
+    409 e non 422 quando è in uso: la richiesta è scritta bene, è lo stato delle
+    cose a impedirla — lo stesso codice con cui l'API rifiuta di decidere due
+    volte la stessa proposta di abitudine. Il messaggio dice quanti sono e cosa
+    fare al posto suo, perché un no senza alternativa è un vicolo cieco.
+    """
+    try:
+        dom.elimina_tag(conn, slug)
+    except dom.TagInesistente as errore:
+        raise HTTPException(status_code=404, detail=f"Il tipo «{slug}» non esiste.") from errore
+    except dom.TagDiSistema as errore:
+        raise HTTPException(status_code=409, detail=f"{errore}.") from errore
+    except dom.TagInUso as errore:
+        quanti = plurale(errore.eventi, "impegno lo usa", "impegni lo usano")
+        raise HTTPException(
+            status_code=409,
+            detail=f"{quanti[0].upper()}{quanti[1:]}: archivialo invece di cancellarlo.",
+        ) from errore
+    return Response(status_code=204)

@@ -8,7 +8,14 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
 import { Icon } from '../lib/icons';
 import { messaggioErrore } from '../lib/apiClient';
-import { useCalendario, useCorreggiTagEvento, type VistaCalendario } from '../hooks/useCalendario';
+import {
+  useCalendario,
+  useCorreggiTagEvento,
+  useCreaTipoEvento,
+  useEliminaTipoEvento,
+  useModificaTipoEvento,
+  type VistaCalendario,
+} from '../hooks/useCalendario';
 import type { CalendarioData, EventoCalendario, SerieDaRivedere, TipoEvento } from '../types/api';
 
 const VISTE = [
@@ -47,11 +54,18 @@ function SceltaTipo({
       disabled={disabilitato}
       onChange={(e) => onScegli(e.target.value)}
     >
-      {tipi.map((tipo) => (
-        <option key={tipo.valore} value={tipo.valore}>
-          {tipo.label}
-        </option>
-      ))}
+      {/* Gli attivi, più quello che questo evento ha già addosso anche se
+          archiviato: un menu che non contiene il valore selezionato mostrerebbe
+          la prima voce dell'elenco, cioè direbbe una cosa falsa su cosa c'è
+          scritto in archivio. */}
+      {tipi
+        .filter((tipo) => tipo.attivo || tipo.valore === valore)
+        .map((tipo) => (
+          <option key={tipo.valore} value={tipo.valore}>
+            {tipo.label}
+            {tipo.attivo ? '' : ' (archiviato)'}
+          </option>
+        ))}
     </select>
   );
 }
@@ -210,6 +224,208 @@ function Legenda({ data }: { data: CalendarioData }) {
   );
 }
 
+/**
+ * I tipi si gestiscono qui e non in Impostazioni (§8.10, pezzo 6): si guardano
+ * dove si vedono gli impegni. Il menu di correzione è il posto in cui ci si
+ * accorge che un tipo manca, e la vista «da rivedere» quello in cui si vede il
+ * modello sbagliare perché non ce l'ha.
+ */
+function PannelloTipi({ tipi }: { tipi: TipoEvento[] }) {
+  const [apri, setApri] = useState(false);
+  const [inModifica, setInModifica] = useState<string | null>(null);
+  const crea = useCreaTipoEvento();
+  const modifica = useModificaTipoEvento();
+  const elimina = useEliminaTipoEvento();
+
+  /**
+   * Un errore solo, quello dell'ultima cosa che hai chiesto.
+   *
+   * Le tre mutazioni non si sovrappongono mai — si preme un bottone alla volta
+   * — ma tenere tre riquadri d'errore separati lascerebbe sullo schermo quello
+   * di due azioni fa accanto all'esito di quella appena riuscita.
+   */
+  const guasto = crea.error ?? modifica.error ?? elimina.error;
+  const esito = crea.data?.label ?? modifica.data?.label ?? null;
+  const inCorso = crea.isPending || modifica.isPending || elimina.isPending;
+
+  function azzera() {
+    crea.reset();
+    modifica.reset();
+    elimina.reset();
+  }
+
+  function creaTipo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    azzera();
+    crea.mutate(
+      {
+        nome: String(form.get('nome') ?? ''),
+        descrizione: String(form.get('descrizione') ?? ''),
+      },
+      { onSuccess: () => setApri(false) },
+    );
+    e.currentTarget.reset();
+  }
+
+  function salvaTipo(slug: string, e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    azzera();
+    modifica.mutate(
+      {
+        slug,
+        nome: String(form.get('nome') ?? ''),
+        descrizione: String(form.get('descrizione') ?? ''),
+      },
+      { onSuccess: () => setInModifica(null) },
+    );
+  }
+
+  return (
+    <div>
+      <div className="row" style={{ marginBottom: 10 }}>
+        <h5>Tipi di impegno</h5>
+        <button
+          className="btn btn-ghost"
+          style={{ marginLeft: 'auto' }}
+          onClick={() => {
+            azzera();
+            setApri((era) => !era);
+          }}
+        >
+          {!apri && <Icon name="plus" size={14} />}
+          {apri ? 'Annulla' : 'Nuovo'}
+        </button>
+      </div>
+
+      {apri && (
+        <form onSubmit={creaTipo} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          <input className="input" name="nome" placeholder="Nome, es. «Spesa»" required maxLength={60} />
+          {/* La descrizione è obbligatoria perché è la riga che legge il
+              modello: senza, un tipo nuovo è un tipo che classifica male. */}
+          <textarea
+            className="input"
+            name="descrizione"
+            rows={2}
+            required
+            maxLength={300}
+            placeholder="Come lo riconosce Custode, es. «il supermercato, non le uscite di denaro in generale»"
+          />
+          <button className="btn btn-primary" type="submit" disabled={inCorso}>
+            <Icon name="check" size={15} />
+            Crea
+          </button>
+        </form>
+      )}
+
+      {guasto && (
+        <div className="state-msg is-error" style={{ marginBottom: 10 }} role="alert">
+          {messaggioErrore(guasto)}
+        </div>
+      )}
+      {!guasto && esito && (
+        <div className="cu-muted" style={{ fontSize: 12, marginBottom: 10 }} role="status">
+          {esito}
+        </div>
+      )}
+
+      <div>
+        {tipi.map((tipo) => (
+          <div
+            key={tipo.valore}
+            className="listrow"
+            style={{ padding: '11px 0', display: 'block', opacity: tipo.attivo ? 1 : 0.6 }}
+          >
+            {inModifica === tipo.valore ? (
+              <form
+                onSubmit={(e) => salvaTipo(tipo.valore, e)}
+                style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+              >
+                <input className="input" name="nome" defaultValue={tipo.label} required maxLength={60} />
+                <textarea
+                  className="input"
+                  name="descrizione"
+                  rows={2}
+                  required
+                  maxLength={300}
+                  defaultValue={tipo.descrizione}
+                />
+                <div className="row" style={{ gap: 6 }}>
+                  <button className="btn btn-primary" type="submit" disabled={inCorso}>
+                    Salva
+                  </button>
+                  <button className="btn btn-ghost" type="button" onClick={() => setInModifica(null)}>
+                    Annulla
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="row">
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{tipo.label}</span>
+                  {!tipo.attivo && (
+                    <span style={{ marginLeft: 8 }}>
+                      <Tag variant="outline">archiviato</Tag>
+                    </span>
+                  )}
+                </div>
+                <div className="cu-muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+                  {tipo.descrizione}
+                </div>
+                {/* Quanti impegni lo usano, detto a parole: è anche la riga
+                    che spiega perché i bottoni sono quelli che sono. */}
+                <div className="cu-muted" style={{ fontSize: 11, marginTop: 5 }}>
+                  {tipo.notaLabel}
+                </div>
+                <div className="row" style={{ gap: 4, marginTop: 7 }}>
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => {
+                      azzera();
+                      setInModifica(tipo.valore);
+                    }}
+                  >
+                    Modifica
+                  </button>
+                  {/* «Altro» non ha né archiviazione né cancellazione: è il tipo
+                      con cui nasce ogni impegno appena sincronizzato. Il perché
+                      lo dice `notaLabel`, così un bottone assente non si legge
+                      come un guasto della pagina. */}
+                  {!tipo.diSistema && (
+                    <button
+                      className="btn btn-ghost"
+                      disabled={inCorso}
+                      onClick={() => {
+                        azzera();
+                        modifica.mutate({ slug: tipo.valore, attivo: !tipo.attivo });
+                      }}
+                    >
+                      {tipo.attivo ? 'Archivia' : 'Riprendi'}
+                    </button>
+                  )}
+                  {tipo.eliminabile && (
+                    <button
+                      className="btn btn-ghost"
+                      disabled={inCorso}
+                      onClick={() => {
+                        azzera();
+                        elimina.mutate(tipo.valore);
+                      }}
+                    >
+                      Elimina
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Calendario() {
   const [vista, setVista] = useState<VistaCalendario>('settimana');
   const { data, isLoading, error, refetch } = useCalendario(vista);
@@ -364,6 +580,7 @@ export default function Calendario() {
 
               <div className="colR">
                 <Legenda data={data} />
+                <PannelloTipi tipi={data.tipi} />
                 {/* La frase la scrive il backend: è l'unico che sa se il
                     compito `tag_calendario` ha una chiave dietro, e quindi se
                     quel numero scenderà davvero da solo. */}

@@ -8,11 +8,12 @@ niente lo segnali: in tabella un tag vale l'altro.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import pytest
 
-from custode_core.dominio.calendario import Tipo
+from custode_core.dominio.calendario import Tag
 from custode_router import calendario as router_calendario
 from custode_router.compiti import Compito
 from custode_router.errori import RispostaNonValida
@@ -31,13 +32,38 @@ class RouterFinto:
 TITOLI = ["Analisi Matematica I", "Palestra", "Treno per Napoli"]
 
 
+def _tipo(slug: str, nome: str, descrizione: str = "roba.") -> Tag:
+    return Tag(
+        id=0,
+        slug=slug,
+        nome=nome,
+        descrizione=descrizione,
+        di_sistema=slug == "altro",
+        attivo=True,
+        creato_il=datetime(2026, 9, 15, 8, 0),
+    )
+
+
+# I quattro di sempre, come li semina la migrazione 009: da qui in poi sono un
+# dato che entra, non una costante di questo modulo.
+TIPI = [
+    _tipo("lezione", "Lezione", "l'università: lezioni, laboratori, esami."),
+    _tipo("palestra", "Palestra", "allenamento e sport."),
+    _tipo("viaggio", "Viaggio", "treni, voli, trasferte."),
+    _tipo("altro", "Altro", "tutto il resto."),
+]
+
+
 def _tag(
-    risposta: dict[str, Any], titoli: list[str] | None = None
+    risposta: dict[str, Any],
+    titoli: list[str] | None = None,
+    tipi: list[Tag] | None = None,
 ) -> tuple[list[router_calendario.Proposta], RouterFinto]:
     router = RouterFinto(risposta)
     proposte = router_calendario.tag_per(
         router,  # type: ignore[arg-type]
         TITOLI if titoli is None else titoli,
+        TIPI if tipi is None else tipi,
     )
     return proposte, router
 
@@ -81,10 +107,50 @@ def test_un_titolo_fluviale_viene_accorciato() -> None:
     assert "a" * (router_calendario.MAX_CARATTERI_TITOLO + 1) not in prompt
 
 
-def test_i_quattro_tipi_sono_quelli_del_dominio() -> None:
-    """Lo schema e `Tipo` non devono poter divergere in silenzio."""
-    voci = router_calendario.SCHEMA_TAG["properties"]["tag"]["items"]
+def test_l_enum_sono_i_tipi_che_esistono_adesso() -> None:
+    """Lo schema si ricostruisce ad ogni chiamata, coi tag che ci sono."""
+    voci = router_calendario.schema_tag(TIPI)["properties"]["tag"]["items"]
     assert voci["properties"]["tipo"]["enum"] == ["lezione", "palestra", "viaggio", "altro"]
+
+    miei = [*TIPI, _tipo("spesa", "Spesa", "fare la spesa al supermercato.")]
+    voci = router_calendario.schema_tag(miei)["properties"]["tag"]["items"]
+    assert voci["properties"]["tipo"]["enum"] == [
+        "lezione",
+        "palestra",
+        "viaggio",
+        "altro",
+        "spesa",
+    ]
+
+
+def test_il_prompt_porta_gli_slug_con_le_loro_descrizioni() -> None:
+    """È la descrizione a fare il lavoro, non il nome del tipo."""
+    prompt = router_calendario.sistema(
+        [*TIPI, _tipo("spesa", "Spesa", "il supermercato, non le uscite di denaro in generale.")]
+    )
+    assert "- **spesa** — il supermercato, non le uscite di denaro in generale." in prompt
+    assert "- **lezione** — l'università: lezioni, laboratori, esami." in prompt
+    # Il ripiego si nomina per slug: è la parola che il modello deve scrivere.
+    assert "Nel dubbio **altro**" in prompt
+
+
+def test_il_prompt_dice_il_nome_nuovo_quando_rinomini() -> None:
+    """Rinominare un tipo cambia ciò che il modello legge, non il suo slug.
+
+    Lo slug resta `palestra` perché è l'identificatore scritto negli eventi; ciò
+    che il modello legge per decidere è la descrizione, ed è lì che si aggiusta
+    il tiro.
+    """
+    rinominato = _tipo("palestra", "Allenamento", "allenamento, corsa, piscina, partite.")
+    prompt = router_calendario.sistema([rinominato, TIPI[-1]])
+    assert "- **palestra** — allenamento, corsa, piscina, partite." in prompt
+    assert "Allenamento" not in prompt
+
+
+def test_con_un_tipo_solo_non_si_chiama_nessuno() -> None:
+    """Ogni risposta possibile sarebbe «altro»: la chiamata si pagherebbe a vuoto."""
+    with pytest.raises(ValueError, match="almeno"):
+        _tag(_risposta((1, "altro")), tipi=[TIPI[-1]])
 
 
 # — come si rilegge la risposta —
@@ -92,14 +158,14 @@ def test_i_quattro_tipi_sono_quelli_del_dominio() -> None:
 
 def test_ogni_titolo_riceve_il_suo_tipo() -> None:
     proposte, _ = _tag(_risposta((1, "lezione"), (2, "palestra"), (3, "viaggio")))
-    assert [p.tipo for p in proposte] == [Tipo.LEZIONE, Tipo.PALESTRA, Tipo.VIAGGIO]
+    assert [p.tipo for p in proposte] == ["lezione", "palestra", "viaggio"]
     assert all(p.letta for p in proposte)
 
 
 def test_la_risposta_si_legge_per_numero_non_per_ordine() -> None:
     """Un modello che risponde in ordine sparso non deve spostare i tag."""
     proposte, _ = _tag(_risposta((3, "viaggio"), (1, "lezione"), (2, "palestra")))
-    assert [p.tipo for p in proposte] == [Tipo.LEZIONE, Tipo.PALESTRA, Tipo.VIAGGIO]
+    assert [p.tipo for p in proposte] == ["lezione", "palestra", "viaggio"]
 
 
 def test_una_voce_saltata_non_fa_slittare_le_altre() -> None:
@@ -108,23 +174,23 @@ def test_una_voce_saltata_non_fa_slittare_le_altre() -> None:
     Letta per posizione, qui il «viaggio» finirebbe sulla palestra.
     """
     proposte, _ = _tag(_risposta((1, "lezione"), (3, "viaggio")))
-    assert [p.tipo for p in proposte] == [Tipo.LEZIONE, Tipo.ALTRO, Tipo.VIAGGIO]
+    assert [p.tipo for p in proposte] == ["lezione", "altro", "viaggio"]
     assert [p.letta for p in proposte] == [True, False, True]
 
 
 def test_un_tipo_inventato_diventa_altro_di_ripiego() -> None:
-    """«sport» non è uno dei quattro: quella serie esce comunque dalla coda.
+    """«sport» non è uno dei tipi che esistono: quella serie esce comunque dalla coda.
 
     Lasciarla dentro vorrebbe dire richiamare il modello su quel titolo ad ogni
     sincronizzazione, per sempre.
     """
     proposte, _ = _tag(_risposta((1, "lezione"), (2, "sport"), (3, "viaggio")))
-    assert proposte[1] == router_calendario.Proposta(tipo=Tipo.ALTRO, letta=False)
+    assert proposte[1] == router_calendario.Proposta(tipo="altro", letta=False)
 
 
 def test_le_maiuscole_non_fanno_perdere_una_classificazione_giusta() -> None:
     proposte, _ = _tag(_risposta((1, " Lezione "), (2, "PALESTRA"), (3, "viaggio")))
-    assert [p.tipo for p in proposte] == [Tipo.LEZIONE, Tipo.PALESTRA, Tipo.VIAGGIO]
+    assert [p.tipo for p in proposte] == ["lezione", "palestra", "viaggio"]
     assert all(p.letta for p in proposte)
 
 
@@ -145,14 +211,14 @@ def test_le_maiuscole_non_fanno_perdere_una_classificazione_giusta() -> None:
 def test_una_voce_storta_non_travolge_le_altre(voce: Any) -> None:
     """Un numero fuori elenco o assente vale come voce mancante, non come errore."""
     proposte, _ = _tag({"tag": [{"n": 1, "tipo": "lezione"}, voce]})
-    assert proposte[0].tipo is Tipo.LEZIONE
+    assert proposte[0].tipo == "lezione"
     assert [p.letta for p in proposte] == [True, False, False]
 
 
 def test_il_primo_tipo_su_un_numero_vince() -> None:
     """Un ripensamento del modello non è più credibile della prima risposta."""
     proposte, _ = _tag(_risposta((1, "lezione"), (1, "palestra"), (2, "palestra"), (3, "altro")))
-    assert proposte[0].tipo is Tipo.LEZIONE
+    assert proposte[0].tipo == "lezione"
 
 
 def test_se_non_si_legge_niente_e_un_guasto_non_una_classificazione() -> None:

@@ -13,8 +13,6 @@ niente da dire" — es. la lista della spesa davvero vuota.
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel
 
 
@@ -296,15 +294,40 @@ class SpeseData(BaseModel):
 
 
 class TipoEvento(BaseModel):
-    """Una delle quattro caselle di §8.10, col nome da mostrare.
+    """Un tipo di evento, adesso che li decidi tu (§8.10, pezzo 6).
 
-    Il menu di correzione le riceve dal backend invece di scriverle nella
-    pagina: le etichette le compone chi le sa comporre, e una casella in più un
-    domani non richiederebbe di ricompilare la dashboard.
+    Il menu di correzione li riceve dal backend invece di scriverli nella
+    pagina — lo faceva già quando erano quattro e fissi, ed è la ragione per cui
+    renderli tuoi non ha richiesto di cambiare la forma di questo campo, solo di
+    riempirlo meglio.
+
+    **Ci sono anche gli archiviati**, con `attivo: false`: un impegno di marzo
+    può portare un tipo archiviato ieri, e la sua etichetta va comunque mostrata.
+    Il menu offre gli attivi più, se c'è, quello che l'evento ha già addosso.
     """
 
     valore: str
+    """Lo slug: è ciò che si manda indietro in `PATCH`, e non cambia mai."""
     label: str
+    """Il nome, quello che si legge. Cambia quando lo rinomini."""
+    descrizione: str
+    """La riga che legge il modello per decidere. Si modifica, ed è la manopola
+    con cui si aggiusta il tiro quando classifica male."""
+    attivo: bool
+    diSistema: bool
+    """`altro`: rinominabile, mai archiviabile né cancellabile — è il tipo con
+    cui nasce ogni evento appena sincronizzato."""
+    eventi: int
+    """Quanti impegni lo usano, in tutto l'archivio — non da oggi in poi come i
+    contatori della pagina: qui il numero non è una cosa da fare, è ciò che si
+    perderebbe cancellando, e un impegno di marzo si perde come uno di domani."""
+    eliminabile: bool
+    """Vero solo per un tipo tuo che nessun evento usa: il caso dell'hai appena
+    creato e non ti serve. Per tutti gli altri c'è l'archiviazione."""
+    notaLabel: str
+    """`eventi` detto a parole, e cosa se ne può fare di conseguenza — «3 impegni
+    lo usano: si archivia, non si cancella». C'è sempre: è la riga che spiega
+    perché i bottoni della riga sono quelli che sono."""
 
 
 class EventoCalendario(CalendarEventItem):
@@ -381,7 +404,41 @@ class CorrezioneTag(BaseModel):
 class CorreggiTag(BaseModel):
     """Corpo di `PATCH /api/calendario/{id}`."""
 
-    tipo: Literal["lezione", "palestra", "viaggio", "altro"]
+    tipo: str
+    """Lo slug di un tipo. Era un `Literal` coi quattro valori fissi: adesso
+    l'elenco sta in tabella, e a dire che un tipo non esiste è la rotta con un
+    422 che lo nomina — un `Literal` non potrebbe più essere vero."""
+
+
+class NuovoTipoEvento(BaseModel):
+    """Corpo di `POST /api/calendario/tipi`."""
+
+    nome: str
+    descrizione: str
+    """Obbligatoria: è la riga che il modello legge per decidere. Un tipo senza
+    non è un tipo creato più in fretta, è un tipo che il modello sbaglia."""
+
+
+class ModificaTipoEvento(BaseModel):
+    """Corpo di `PATCH /api/calendario/tipi/{slug}`.
+
+    Lo slug non c'è, e non è una dimenticanza: è l'identificatore che esce dal
+    database — sta negli eventi, nel contratto, nell'enum del modello — e
+    cambiarlo vorrebbe dire rincorrerlo in tutti quei posti insieme.
+    """
+
+    nome: str | None = None
+    descrizione: str | None = None
+    attivo: bool | None = None
+    """`false` archivia: fuori dal menu e dal prompt, addosso agli eventi che
+    ce l'hanno."""
+
+
+class TipoEventoSalvato(BaseModel):
+    """La risposta a una creazione o a una modifica: il tipo, e cos'è successo."""
+
+    tipo: TipoEvento
+    label: str
 
 
 # — corpi delle richieste —

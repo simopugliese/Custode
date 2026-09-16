@@ -6,6 +6,7 @@ Sta a parte dalle rotte perché Home e Task mostrano le stesse righe: la regola
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date, datetime
 
 from custode_api import schemi
@@ -74,12 +75,11 @@ def evento_calendario(evento: dom_calendario.Evento, oggi: date) -> schemi.Calen
     )
 
 
-TIPO_LABEL = {
-    dom_calendario.Tipo.LEZIONE: "Lezione",
-    dom_calendario.Tipo.PALESTRA: "Palestra",
-    dom_calendario.Tipo.VIAGGIO: "Viaggio",
-    dom_calendario.Tipo.ALTRO: "Altro",
-}
+# Le etichette dei tipi non stanno più qui (pezzo 6): un tipo è una riga di
+# `calendar_tags`, e il suo nome lo si cambia quando si vuole. Chi compone una
+# pagina legge la mappa una volta — `dom_calendario.mappa_tag` — e la passa a
+# ogni riga: una JOIN per evento costerebbe una query ogni riga per una tabella
+# che ne ha cinque.
 
 # I tre stati del tag (§8.10), e come si dicono. «Da guardare» non è un difetto:
 # è il minuto fra la sincronizzazione e il giro di tagging — o tutto il tempo in
@@ -101,14 +101,21 @@ def stato_tag(evento: dom_calendario.Evento) -> tuple[str, str]:
     return STATO_CORRETTO if evento.tag_confermato_da_te else STATO_PROPOSTO
 
 
-def evento_calendario_taggato(evento: dom_calendario.Evento, oggi: date) -> schemi.EventoCalendario:
-    """La riga della pagina Calendario: quella di Home, più il tag e il suo stato."""
+def evento_calendario_taggato(
+    evento: dom_calendario.Evento, oggi: date, tag: Mapping[str, dom_calendario.Tag]
+) -> schemi.EventoCalendario:
+    """La riga della pagina Calendario: quella di Home, più il tag e il suo stato.
+
+    `tag` è la mappa slug → tipo letta una volta per richiesta: un evento porta
+    lo slug, l'etichetta sta nella tabella dei tipi, e nel mezzo può esserci una
+    rinomina fatta un minuto fa.
+    """
     base = evento_calendario(evento, oggi)
     stato, stato_label = stato_tag(evento)
     return schemi.EventoCalendario(
         **base.model_dump(),
-        tipo=evento.tipo.value,
-        tipoLabel=TIPO_LABEL[evento.tipo],
+        tipo=evento.tipo,
+        tipoLabel=dom_calendario.etichette(tag, evento.tipo),
         statoTag=stato,
         statoTagLabel=stato_label,
         serie=bool(evento.serie_id),
