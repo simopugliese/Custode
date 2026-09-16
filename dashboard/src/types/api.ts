@@ -124,9 +124,41 @@ export interface DiarioData {
 
 // — Calendario (§8.10) —
 
-/** Uno dei quattro tipi di §8.10. Le etichette arrivano dal backend. */
+/**
+ * Un tipo di evento, adesso che li decidi tu (§8.10, pezzo 6). Le etichette
+ * arrivano dal backend, come già quando i tipi erano quattro e fissi.
+ *
+ * `tipi` porta **anche gli archiviati** (`attivo: false`): un impegno di marzo
+ * può portarne uno, e la sua etichetta va comunque mostrata. Il menu di
+ * correzione offre gli attivi più, se c'è, quello che l'evento ha già addosso.
+ */
 export interface TipoEvento {
-  valore: string; // 'lezione' | 'palestra' | 'viaggio' | 'altro'
+  valore: string; // lo slug: è ciò che si rimanda in PATCH, e non cambia mai
+  label: string; // il nome, che cambia quando lo rinomini
+  descrizione: string; // la riga che legge il modello per decidere
+  attivo: boolean;
+  diSistema: boolean; // 'altro': si rinomina, non si archivia né si cancella
+  eventi: number; // quanti impegni lo usano, in tutto l'archivio
+  eliminabile: boolean; // solo un tipo tuo che nessun impegno usa
+  notaLabel: string; // `eventi` a parole, e perché i bottoni sono quelli che sono
+}
+
+/** Corpo di `POST /api/calendario/tipi`. La descrizione è obbligatoria. */
+export interface NuovoTipoEvento {
+  nome: string;
+  descrizione: string;
+}
+
+/** Corpo di `PATCH /api/calendario/tipi/:slug`. Lo slug non si cambia mai. */
+export interface ModificaTipoEvento {
+  nome?: string;
+  descrizione?: string;
+  attivo?: boolean;
+}
+
+/** La risposta a una creazione o a una modifica di un tipo. */
+export interface TipoEventoSalvato {
+  tipo: TipoEvento;
   label: string;
 }
 

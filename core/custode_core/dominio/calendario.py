@@ -12,6 +12,12 @@ auto-proposte cerchino pattern «nei dati storici (calendario, abitudini, orari
 in cui scrivi)»: il calendario di tre mesi fa è uno degli ingressi, quindi ciò
 che esce dalla finestra sincronizzata resta dov'è invece di essere potato.
 
+**I tipi li decidi tu** (pezzo 6). Erano quattro e fissi, incisi in un CHECK e
+in una StrEnum; adesso stanno in `calendar_tags` e i quattro di prima ci sono
+dentro come dati iniziali. Un evento porta lo **slug** del suo tag e non
+l'etichetta: rinominare un tipo tocca una riga sola e nessun evento, e
+archiviarne uno lo toglie dal menu senza toglierlo agli impegni che ce l'hanno.
+
 **Si cancella solo dentro la finestra, e solo dopo una lettura completa.** Un
 evento che Google non restituisce più mentre è dentro la finestra è disdetto
 davvero, e lasciarlo renderebbe sbagliata la prima cosa che si vede in Home.
@@ -23,11 +29,12 @@ pagine di una risposta riuscita.
 
 from __future__ import annotations
 
+import re
 import sqlite3
-from collections.abc import Sequence
+import unicodedata
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from enum import StrEnum
 from typing import Protocol
 
 FONTE_GOOGLE = "google"
@@ -37,22 +44,68 @@ class EventoInesistente(LookupError):
     """Sollevata quando l'id richiesto non corrisponde a nessun evento."""
 
 
-class Tipo(StrEnum):
-    """Il tag di §8.10.
+SLUG_ALTRO = "altro"
+"""Il tag con cui nasce ogni evento, e il ripiego di una risposta illeggibile.
 
-    Un evento nuovo nasce `ALTRO` finché il job di tagging non l'ha guardato —
-    ma `ALTRO` è anche un esito legittimo (un ricevimento non è nessuno degli
-    altri tre): a distinguere "mai guardato" da "guardato e detto altro" è
-    `Evento.tag_proposto_il`, non il tipo. La scelta vale una volta per l'intera
-    serie ricorrente (`serie_id`), mai per la singola occorrenza. Qui il tipo si
-    **conserva**: è la ragione per cui risincronizzare aggiorna la riga invece
-    di rifarla.
+È l'unico slug che il codice conosce per nome, ed è la ragione per cui la sua
+riga in `calendar_tags` è marcata `di_sistema`: si può rinominare, non
+archiviare né cancellare. `altro` è anche un esito **legittimo** del modello (un
+ricevimento non è nessuno degli altri) — a distinguere "mai guardato" da
+"guardato e detto altro" è `Evento.tag_proposto_il`, non il tipo.
+"""
+
+
+class TagInesistente(LookupError):
+    """Lo slug richiesto non corrisponde a nessun tag."""
+
+
+class TagDiSistema(ValueError):
+    """Si è provato ad archiviare o cancellare `altro`."""
+
+
+class TagInUso(ValueError):
+    """Si è provato a cancellare un tag che degli eventi usano ancora.
+
+    Porta con sé **quanti** sono: è l'unico numero che rende l'errore una
+    risposta utile («47 impegni lo usano, archivialo invece») invece di un no.
     """
 
-    LEZIONE = "lezione"
-    PALESTRA = "palestra"
-    VIAGGIO = "viaggio"
-    ALTRO = "altro"
+    def __init__(self, slug: str, eventi: int) -> None:
+        super().__init__(f"«{slug}» è usato da {eventi} eventi")
+        self.slug = slug
+        self.eventi = eventi
+
+
+class NomeTagGiaUsato(ValueError):
+    """Esiste già un tag con questo nome, o con lo slug che ne uscirebbe."""
+
+
+@dataclass(frozen=True)
+class Tag:
+    """Un tipo di evento, adesso che li decidi tu (§8.10, pezzo 6).
+
+    **Due nomi e non uno.** `slug` è l'identificatore: deciso alla creazione,
+    mai più toccato, ed è ciò che esce dal database — sta in
+    `calendar_events.tipo`, nel campo `tipo` del contratto REST, nell'enum che
+    riceve il modello e domani nel riferimento di una regola di contesto.
+    `nome` è l'etichetta che leggi, e cambiarla tocca questa riga sola: zero
+    eventi, perché nessun evento porta scritto il nome.
+
+    `descrizione` è la riga che il modello legge per decidere, non un commento:
+    è quella frase a fare il lavoro del tagging automatico, ed è la manopola con
+    cui si aggiusta il tiro quando classifica male.
+    """
+
+    id: int
+    slug: str
+    nome: str
+    descrizione: str
+    di_sistema: bool
+    """`altro`: rinominabile, mai archiviabile né cancellabile."""
+    attivo: bool
+    """Archiviato (`False`) vuol dire fuori dal menu e fuori dal prompt, non
+    cancellato: gli eventi che ce l'hanno se lo tengono."""
+    creato_il: datetime
 
 
 class EventoEsterno(Protocol):
@@ -92,11 +145,14 @@ class Evento:
     tutto_il_giorno: bool
     luogo: str
     serie_id: str
-    tipo: Tipo
+    tipo: str
+    """Lo slug del suo tag (`calendar_tags.slug`), non l'etichetta: chi deve
+    mostrarla la cerca in `mappa_tag`. L'etichetta cambia quando rinomini un
+    tag, e un evento che se la portasse dietro resterebbe indietro."""
     sincronizzato_il: datetime
     tag_proposto_il: datetime | None
     """Quando un tag è stato scritto l'ultima volta, dall'IA o da te. `None`
-    finché nessuno l'ha ancora guardato — vedi `Tipo`."""
+    finché nessuno l'ha ancora guardato — vedi `SLUG_ALTRO`."""
     tag_confermato_da_te: bool
     """Vero se l'ultima scrittura del tag è stata una tua correzione, non una
     proposta dell'IA. Serve solo alla pagina Calendario per mostrarlo."""
@@ -148,7 +204,7 @@ def _da_riga(riga: sqlite3.Row) -> Evento:
         tutto_il_giorno=bool(riga["tutto_il_giorno"]),
         luogo=riga["luogo"],
         serie_id=riga["serie_id"],
-        tipo=Tipo(riga["tipo"]),
+        tipo=riga["tipo"],
         sincronizzato_il=datetime.fromisoformat(riga["sincronizzato_il"]),
         tag_proposto_il=(
             datetime.fromisoformat(riga["tag_proposto_il"])
@@ -157,6 +213,244 @@ def _da_riga(riga: sqlite3.Row) -> Evento:
         ),
         tag_confermato_da_te=bool(riga["tag_confermato_da_te"]),
     )
+
+
+# — i tag, adesso che li decidi tu (§8.10, pezzo 6) —
+
+
+def _normalizza(nome: str) -> str:
+    """Forma di confronto di un nome di tag, come per le abitudini.
+
+    Serve a non far nascere «Palestra» accanto a «palestra  » per una maiuscola
+    o uno spazio: due righe quasi identiche renderebbero ambiguo sia il menu di
+    correzione sia l'elenco che legge il modello.
+    """
+    pulito = unicodedata.normalize("NFKC", nome).strip()
+    return " ".join(pulito.split()).casefold()
+
+
+def _pulisci(testo: str) -> str:
+    return " ".join(testo.strip().split())
+
+
+MAX_CARATTERI_SLUG = 40
+
+
+def slug_da(nome: str) -> str:
+    """Lo slug che nascerebbe da questo nome.
+
+    Accenti via, minuscole, tutto ciò che non è lettera o cifra diventa un
+    trattino basso: è la forma che regge come valore di un enum JSON, come
+    segmento di URL e come chiave in tabella senza doversi far virgolettare da
+    nessuna parte — ed è lo stesso vincolo che il CHECK della migrazione 009
+    scrive nello schema.
+
+    Pubblica e non privata perché **è una decisione che si vede**: lo slug
+    nasce qui e non cambia più, quindi chi crea un tag ha diritto di sapere
+    prima quale identificatore sta creando.
+    """
+    senza_accenti = "".join(
+        carattere
+        for carattere in unicodedata.normalize("NFKD", nome)
+        if not unicodedata.combining(carattere)
+    )
+    pulito = re.sub(r"[^a-z0-9]+", "_", senza_accenti.casefold()).strip("_")
+    if not pulito:
+        # Un nome fatto solo di emoji o di punteggiatura non lascia niente da
+        # cui ricavare un identificatore. Inventarne uno («tag_7») darebbe un
+        # tag che nel database non si riconosce più: meglio dirlo subito, che è
+        # anche l'unico momento in cui si può ancora cambiare nome senza costo.
+        raise ValueError(f"«{nome}» non contiene nessuna lettera o cifra da cui ricavare un nome")
+    return pulito[:MAX_CARATTERI_SLUG].strip("_")
+
+
+def _da_riga_tag(riga: sqlite3.Row) -> Tag:
+    return Tag(
+        id=riga["id"],
+        slug=riga["slug"],
+        nome=riga["nome"],
+        descrizione=riga["descrizione"],
+        di_sistema=bool(riga["di_sistema"]),
+        attivo=bool(riga["attivo"]),
+        creato_il=datetime.fromisoformat(riga["creato_il"]),
+    )
+
+
+# L'ordine è quello in cui li hai aggiunti, con `altro` sempre in fondo. Non
+# alfabetico, per la stessa ragione delle abitudini — una lista che si riordina
+# da sola ogni volta che ne aggiungi una costringe a ricercare col dito dove
+# stava quella di prima — e `altro` ultimo perché in un menu di scelte è il
+# ripiego, e un ripiego in mezzo si legge come un'opzione qualunque.
+_ORDINE_TAG = f"ORDER BY (slug = '{SLUG_ALTRO}') ASC, id ASC"
+
+
+def elenco_tag(conn: sqlite3.Connection, *, solo_attivi: bool = False) -> list[Tag]:
+    """I tag. Con `solo_attivi` quelli che il menu offre e il modello vede.
+
+    Il default è **tutti**, archiviati compresi: chi mostra la pagina deve
+    poterli disegnare tutti — un evento di marzo può portare un tag che hai
+    archiviato ieri, e la sua etichetta va comunque mostrata.
+    """
+    dove = "WHERE attivo = 1 " if solo_attivi else ""
+    return [
+        _da_riga_tag(r) for r in conn.execute(f"SELECT * FROM calendar_tags {dove}{_ORDINE_TAG}")
+    ]
+
+
+def mappa_tag(conn: sqlite3.Connection) -> dict[str, Tag]:
+    """I tag per slug, per chi deve tradurre in etichette un elenco di eventi.
+
+    Una lettura sola invece di una JOIN per riga: la pagina Calendario traduce
+    qualche centinaio di eventi contro una tabella che ne ha cinque.
+    """
+    return {tag.slug: tag for tag in elenco_tag(conn)}
+
+
+def tag_per_slug(conn: sqlite3.Connection, slug: str) -> Tag:
+    riga = conn.execute("SELECT * FROM calendar_tags WHERE slug = ?", (slug,)).fetchone()
+    if riga is None:
+        raise TagInesistente(slug)
+    return _da_riga_tag(riga)
+
+
+def _assicura_tag(conn: sqlite3.Connection, slug: str) -> None:
+    if conn.execute("SELECT 1 FROM calendar_tags WHERE slug = ?", (slug,)).fetchone() is None:
+        raise TagInesistente(slug)
+
+
+def _nome_libero(conn: sqlite3.Connection, nome: str, *, tranne: str | None = None) -> None:
+    for tag in elenco_tag(conn):
+        if tag.slug != tranne and _normalizza(tag.nome) == _normalizza(nome):
+            raise NomeTagGiaUsato(f"esiste già un tipo chiamato «{tag.nome}»")
+
+
+def eventi_per_tag(conn: sqlite3.Connection) -> dict[str, int]:
+    """Quanti eventi usa ogni tag, in tutto l'archivio.
+
+    Tutto l'archivio e non da oggi in poi, al contrario dei contatori della
+    pagina: qui il numero non è una cosa da fare, è ciò che si perderebbe
+    cancellando — e un impegno di marzo si perde come uno di domani.
+    """
+    return {
+        riga["tipo"]: riga["quanti"]
+        for riga in conn.execute(
+            "SELECT tipo, COUNT(*) AS quanti FROM calendar_events GROUP BY tipo"
+        )
+    }
+
+
+def crea_tag(conn: sqlite3.Connection, *, nome: str, descrizione: str, ora: datetime) -> Tag:
+    """Un tipo nuovo. Se lo slug esiste già archiviato, lo **riprende**.
+
+    Stessa scelta di `abitudini.crea`, e qui la ragione è più forte: un secondo
+    tag che significa la stessa cosa (`palestra` e `palestra_2`) spaccherebbe
+    in due gli eventi già taggati, che è esattamente ciò che rende utile
+    riprendere quello di prima. Riprenderlo restituisce il tag a tutti i suoi
+    eventi nello stesso istante — non l'avevano mai perso.
+
+    La descrizione è obbligatoria: è la riga che il modello legge per decidere,
+    e un tag senza non è un tag più veloce da creare, è un tag che il modello
+    sbaglia.
+    """
+    nome_pulito = _pulisci(nome)
+    if not nome_pulito:
+        raise ValueError("il nome di un tipo non può essere vuoto")
+    descrizione_pulita = _pulisci(descrizione)
+    if not descrizione_pulita:
+        raise ValueError("la descrizione di un tipo non può essere vuota: la legge il modello")
+
+    slug = slug_da(nome_pulito)
+    esistente = conn.execute("SELECT * FROM calendar_tags WHERE slug = ?", (slug,)).fetchone()
+    if esistente is not None:
+        if esistente["attivo"]:
+            raise NomeTagGiaUsato(f"esiste già un tipo chiamato «{esistente['nome']}»")
+        _nome_libero(conn, nome_pulito, tranne=slug)
+        conn.execute(
+            "UPDATE calendar_tags SET nome = ?, descrizione = ?, attivo = 1 WHERE slug = ?",
+            (nome_pulito, descrizione_pulita, slug),
+        )
+        return tag_per_slug(conn, slug)
+
+    _nome_libero(conn, nome_pulito)
+    conn.execute(
+        "INSERT INTO calendar_tags (slug, nome, descrizione, creato_il) VALUES (?, ?, ?, ?)",
+        (slug, nome_pulito, descrizione_pulita, _iso(ora)),
+    )
+    return tag_per_slug(conn, slug)
+
+
+def modifica_tag(
+    conn: sqlite3.Connection,
+    slug: str,
+    *,
+    nome: str | None = None,
+    descrizione: str | None = None,
+    attivo: bool | None = None,
+) -> Tag:
+    """Cambia nome, descrizione o stato. Lo slug no, mai.
+
+    **Rinominare non tocca nessun evento**: gli eventi portano lo slug, e
+    l'etichetta la cercano qui. È tutta la differenza fra cambiare un nome e
+    riscrivere mille righe.
+    """
+    tag = tag_per_slug(conn, slug)
+
+    if nome is not None:
+        nome_pulito = _pulisci(nome)
+        if not nome_pulito:
+            raise ValueError("il nome di un tipo non può essere vuoto")
+        _nome_libero(conn, nome_pulito, tranne=slug)
+        conn.execute("UPDATE calendar_tags SET nome = ? WHERE slug = ?", (nome_pulito, slug))
+
+    if descrizione is not None:
+        descrizione_pulita = _pulisci(descrizione)
+        if not descrizione_pulita:
+            raise ValueError("la descrizione di un tipo non può essere vuota: la legge il modello")
+        conn.execute(
+            "UPDATE calendar_tags SET descrizione = ? WHERE slug = ?", (descrizione_pulita, slug)
+        )
+
+    if attivo is not None:
+        if not attivo and tag.di_sistema:
+            raise TagDiSistema(
+                f"«{tag.nome}» non si può archiviare: è il tipo con cui nasce ogni evento nuovo"
+            )
+        conn.execute("UPDATE calendar_tags SET attivo = ? WHERE slug = ?", (int(attivo), slug))
+
+    return tag_per_slug(conn, slug)
+
+
+def elimina_tag(conn: sqlite3.Connection, slug: str) -> None:
+    """Cancella un tag, e solo se nessun evento lo usa.
+
+    Il caso che serve è uno: l'hai appena creato e ti sei accorto che non ti
+    serve. Per tutti gli altri c'è l'archiviazione — cancellare un tag usato
+    vorrebbe dire riscrivere il tipo degli eventi che ce l'hanno, cioè
+    riscrivere la storia di cos'era un impegno perché oggi hai cambiato idea.
+    A impedirlo c'è comunque la FK della migrazione 009: questo controllo esiste
+    per poter dire **quanti** sono gli eventi, che è ciò che rende il no una
+    risposta utile.
+    """
+    tag = tag_per_slug(conn, slug)
+    if tag.di_sistema:
+        raise TagDiSistema(
+            f"«{tag.nome}» non si può cancellare: è il tipo con cui nasce ogni evento nuovo"
+        )
+    quanti = eventi_per_tag(conn).get(slug, 0)
+    if quanti:
+        raise TagInUso(slug, quanti)
+    conn.execute("DELETE FROM calendar_tags WHERE slug = ?", (slug,))
+
+
+def etichette(tag: Mapping[str, Tag], slug: str) -> str:
+    """L'etichetta di uno slug, con lo slug stesso come ripiego.
+
+    Il ripiego non dovrebbe servire — la FK garantisce che ogni `tipo` abbia la
+    sua riga — ma trasformare un tag mancante in un `KeyError` vorrebbe dire
+    una pagina intera che non si apre per una parola che manca.
+    """
+    voce = tag.get(slug)
+    return voce.nome if voce is not None else slug
 
 
 # — lettura —
@@ -285,7 +579,7 @@ def sincronizza(
                     evento.id,
                     *campi,
                     timbro,
-                    eredita["tipo"] if eredita is not None else Tipo.ALTRO.value,
+                    eredita["tipo"] if eredita is not None else SLUG_ALTRO,
                     eredita["tag_proposto_il"] if eredita is not None else None,
                     eredita["tag_confermato_da_te"] if eredita is not None else 0,
                 ),
@@ -422,7 +716,7 @@ def gruppi_senza_tag(
 def applica_tag(
     conn: sqlite3.Connection,
     gruppo: GruppoDaTaggare,
-    tipo: Tipo,
+    tipo: str,
     ora: datetime,
     *,
     confermato_da_te: bool = False,
@@ -432,26 +726,33 @@ def applica_tag(
     Una serie si scrive tutta insieme: scriverla riga per riga lascerebbe le
     occorrenze non toccate — passate o non ancora sincronizzate — senza tag, e
     la prossima sincronizzazione le riproporrebbe da capo.
+
+    `tipo` è uno slug, e si controlla che esista prima di scriverlo: la FK lo
+    impedirebbe comunque, ma con una `IntegrityError` che il worker non
+    saprebbe raccontare. Il caso non è teorico — fra il momento in cui il
+    prompt elenca i tag e quello in cui la risposta arriva passano dei
+    secondi, e in mezzo puoi averne cancellato uno dalla pagina.
     """
+    _assicura_tag(conn, tipo)
     timbro = _iso(ora)
     if gruppo.serie_id:
         cursore = conn.execute(
             "UPDATE calendar_events"
             " SET tipo = ?, tag_proposto_il = ?, tag_confermato_da_te = ?"
             " WHERE fonte = ? AND serie_id = ?",
-            (tipo.value, timbro, int(confermato_da_te), gruppo.fonte, gruppo.serie_id),
+            (tipo, timbro, int(confermato_da_te), gruppo.fonte, gruppo.serie_id),
         )
     else:
         assert gruppo.evento_id is not None  # un gruppo o ha una serie, o un id
         cursore = conn.execute(
             "UPDATE calendar_events SET tipo = ?, tag_proposto_il = ?, tag_confermato_da_te = ?"
             " WHERE id = ?",
-            (tipo.value, timbro, int(confermato_da_te), gruppo.evento_id),
+            (tipo, timbro, int(confermato_da_te), gruppo.evento_id),
         )
     return cursore.rowcount
 
 
-def correggi_tag(conn: sqlite3.Connection, evento_id: int, tipo: Tipo, ora: datetime) -> int:
+def correggi_tag(conn: sqlite3.Connection, evento_id: int, tipo: str, ora: datetime) -> int:
     """La correzione a mano di §8.10 ("tu correggi se serve").
 
     Parte da un evento che vedi — nella pagina Calendario, per esempio — e
@@ -488,7 +789,7 @@ class SerieDaRivedere:
     serie_id: str
     """Vuoto per un evento singolo."""
     titolo: str
-    tipo: Tipo
+    tipo: str
     prossima: datetime
     """Quando torna la prima volta da oggi in poi."""
     occorrenze: int
@@ -528,7 +829,7 @@ def da_rivedere(
             evento_id=gruppo[0]["id"],
             serie_id=gruppo[0]["serie_id"],
             titolo=gruppo[0]["titolo"],
-            tipo=Tipo(gruppo[0]["tipo"]),
+            tipo=gruppo[0]["tipo"],
             prossima=datetime.fromisoformat(gruppo[0]["inizio"]),
             occorrenze=len(gruppo),
             proposto_il=datetime.fromisoformat(gruppo[0]["tag_proposto_il"]),

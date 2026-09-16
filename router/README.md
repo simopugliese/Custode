@@ -22,10 +22,14 @@ richiedono qualità, visione o ragionamento a Claude.
 - `spese.py` — la categoria di una spesa e la **lettura degli scontrini**
   (§8.5): l'unica riga *vision* di §6, e l'unica che manda un'immagine al
   modello. Da qui escono numeri e nomi, non righe di database.
-- `calendario.py` — il **tipo** di un evento (lezione, palestra, viaggio,
-  altro) proposto dal titolo (§8.10). Una chiamata sola per l'intera coda di
-  serie da guardare, non una per serie: gira ad ogni giro del worker, cioè
-  ogni cinque minuti.
+- `calendario.py` — il **tipo** di un evento proposto dal titolo (§8.10). Una
+  chiamata sola per l'intera coda di serie da guardare, non una per serie: gira
+  ad ogni giro del worker, cioè ogni cinque minuti. I tipi fra cui scegliere non
+  sono più quattro costanti scritte qui (§8.10, pezzo 6): arrivano da
+  `calendar_tags` con la loro **descrizione**, che è la riga su cui il modello
+  decide davvero — `schema_tag` e `sistema` si ricostruiscono ad ogni chiamata.
+  Chi chiama passa i tipi già letti, perché questo pacchetto non tocca il
+  database.
 
 Questo pacchetto dipende da `custode_core`, mai il contrario: il codice
 condiviso non deve sapere che esistono dei modelli.

@@ -42,7 +42,9 @@ file ne descrive solo la forma a endpoint per endpoint.
 ## Stato di implementazione
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
-**Diario**, **Spese**, **Calendario** e la barra **«A Custode»**.
+**Diario**, **Spese**, **Abitudini**, **Calendario** — con i suoi tipi di evento,
+che da §8.10 pezzo 6 si creano e si modificano da lì — e la barra
+**«A Custode»**.
 Tutti gli altri endpoint qui sotto rispondono `501` finché non arriva il loro
 modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
 
@@ -128,7 +130,10 @@ Approvare una giornata la cui raccolta è ancora aperta (nessuna bozza) risponde
 ## Calendario
 
 `GET /api/calendario?vista=settimana|mese|da_rivedere` → `CalendarioData`
-`PATCH /api/calendario/:id` body `{ tipo: "lezione"|"palestra"|"viaggio"|"altro" }` → `CorrezioneTag`
+`PATCH /api/calendario/:id` body `{ tipo: string }` → `CorrezioneTag`
+`POST /api/calendario/tipi` body `{ nome, descrizione }` → `TipoEventoSalvato`
+`PATCH /api/calendario/tipi/:slug` body `{ nome?, descrizione?, attivo? }` → `TipoEventoSalvato`
+`DELETE /api/calendario/tipi/:slug` → `204`
 
 La pagina risponde a due domande diverse, ed è la ragione delle tre viste:
 *«cosa ho questa settimana»* (`settimana`, `mese`) e *«cosa ha capito Custode»*
@@ -156,17 +161,74 @@ sincronizzato sia un esito legittimo del modello (§8.10), quindi senza un
 secondo segnale «l'IA ha detto altro» e «nessuno l'ha ancora guardato»
 sarebbero la stessa cosa.
 
-`tipi` porta le quattro caselle con le loro etichette: il menu di correzione le
-riceve dal backend invece di scriverle nella pagina, com'è per ogni altra
-etichetta del contratto.
+`tipi` porta i tipi di evento con le loro etichette: il menu di correzione li
+riceve dal backend invece di scriverli nella pagina, com'è per ogni altra
+etichetta del contratto. Erano quattro e fissi; da §8.10 pezzo 6 li crei tu, e
+questo campo non ha cambiato forma — ha solo smesso di essere un elenco che si
+sapeva a memoria.
+
+Ci sono **anche gli archiviati** (`attivo: false`): un impegno di marzo può
+portare un tipo archiviato ieri, e la sua etichetta va comunque mostrata. Il
+menu di correzione offre gli attivi più, se c'è, quello che l'evento ha già
+addosso — un menu che non contiene il valore selezionato mostrerebbe la prima
+voce dell'elenco, cioè direbbe una cosa falsa su cosa c'è in archivio.
+
+`valore` è lo **slug**, deciso alla creazione e mai più toccato: è ciò che si
+manda indietro in `PATCH`, ed è ciò che un evento porta scritto. `label` è il
+nome, e cambia quando lo rinomini. È la ragione per cui rinominare un tipo non
+tocca nessun evento. `descrizione` è la riga che legge il modello per decidere
+(«treni, voli, trasferte; non il luogo di un altro impegno»), ed è la manopola
+con cui si aggiusta il tiro quando classifica male.
+
+`notaLabel` c'è sempre e dice `eventi` a parole, più cosa se ne può fare: «3
+impegni lo usano: si archivia, non si cancella», «Non lo usa nessun impegno: si
+può ancora cancellare». Un numero nudo in un angolo non direbbe di cosa è il
+conto, e uno `0` ancora meno; detto così, spiega anche perché i bottoni della
+riga sono quelli che sono.
+
+### I tipi si gestiscono da qui
+
+E non dalle impostazioni: i tipi si guardano dove si vedono gli impegni. Il menu
+di correzione è il posto in cui ci si accorge che un tipo manca, e `da_rivedere`
+quello in cui si vede il modello sbagliare perché non ce l'ha.
+
+`POST /api/calendario/tipi` vuole **nome e descrizione**, tutti e due non vuoti.
+La descrizione è obbligatoria perché è la riga che legge il modello: un tipo
+senza non è un tipo creato più in fretta, è un tipo che il modello sbaglia. Lo
+slug si ricava dal nome (minuscole, senza accenti, `_` al posto del resto); un
+nome che non contiene nessuna lettera o cifra → `422`, come un nome già usato.
+Se lo slug esiste **archiviato**, quello si **riprende** invece di aprirne un
+secondo — `palestra` e `palestra_2` spaccherebbero in due gli impegni già
+taggati — e `label` lo dice, perché è una cosa diversa da quella che hai chiesto.
+
+`PATCH /api/calendario/tipi/:slug` cambia `nome`, `descrizione` e `attivo`. Lo
+slug non c'è nel corpo e non è una dimenticanza: è l'identificatore che esce dal
+database — sta negli eventi, nel contratto, nell'enum che riceve il modello —
+e cambiarlo vorrebbe dire rincorrerlo in tutti quei posti insieme. `attivo:
+false` **archivia**: il tipo esce dal menu e dal prompt del modello, ma resta
+addosso agli impegni che ce l'hanno. Un tipo che non esiste → `404`; un nome già
+di un altro → `422`; archiviare «Altro» → `409`.
+
+`DELETE /api/calendario/tipi/:slug` cancella davvero, e **solo** un tipo che
+nessun impegno usa: il caso dell'hai appena creato e non ti serve. Per tutti gli
+altri c'è l'archiviazione, perché cancellare un tipo usato vorrebbe dire
+riscrivere il tipo degli impegni che ce l'hanno, cioè riscrivere la storia di
+cos'era un impegno perché oggi hai cambiato idea. Un tipo in uso → `409` che
+dice **quanti** sono e cosa fare al posto suo; un tipo che non esiste → `404`.
+
+**«Altro» è speciale** (`diSistema: true`): è il tipo con cui nasce ogni evento
+appena sincronizzato e il ripiego di una risposta illeggibile del modello. Si
+rinomina come gli altri — è ciò che *fa* a essere di sistema, non come si chiama
+— ma non si archivia né si cancella: `409` in tutti e due i casi.
 
 La `PATCH` è il «tu correggi se serve» di §8.10 e tocca **tutta la serie**
 dell'evento indicato, non la sola occorrenza: la risposta dice quante
 occorrenze ha cambiato (`occorrenze`) e come dirlo (`label`). Mandare lo stesso
 tipo che c'era è comunque una conferma — «ha indovinato» è una risposta, e
 senza di essa l'unico modo di togliere dalla coda una proposta giusta sarebbe
-cambiarla in una sbagliata e poi rimetterla a posto. Un tipo fuori dalle
-quattro caselle risponde `422`, un id inesistente `404`.
+cambiarla in una sbagliata e poi rimetterla a posto. Un tipo che non esiste
+risponde `422` (il `404` parlerebbe dell'evento nell'URL, che invece c'è), un id
+inesistente `404`.
 
 `stats.daRivedere` e `stats.daGuardare` parlano sempre di tutto l'archivio da
 oggi in poi, **non** della vista: se «due da rivedere» sparisse guardando una

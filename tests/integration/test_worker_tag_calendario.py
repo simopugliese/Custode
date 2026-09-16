@@ -105,7 +105,12 @@ class ModelloFinto:
         self.errore = errore
         self.configurato = configurato
         self.chiamate: list[str] = []
-        """Il prompt di ogni chiamata al tagging: quante sono e cosa c'era dentro."""
+        """Il messaggio utente di ogni chiamata: l'elenco numerato dei titoli."""
+        self.sistemi: list[str] = []
+        """Il prompt di sistema di ogni chiamata, che da §8.10 pezzo 6 non è più
+        una costante: ci sono dentro i tipi che esistono in quel momento, con le
+        loro descrizioni. È l'unico posto da cui si vede che un tipo creato o
+        rinominato arriva davvero al modello."""
 
     def configurato_per(self, compito: Compito) -> bool:
         return self.configurato
@@ -122,6 +127,7 @@ class ModelloFinto:
             return {"riepilogo": "Andata così."}
 
         self.chiamate.append(kwargs["utente"])
+        self.sistemi.append(kwargs["sistema"])
         if self.errore is not None:
             raise self.errore
         if self.risposta_fissa is not None:
@@ -221,7 +227,7 @@ def _eventi(conn: sqlite3.Connection) -> list[dom.Evento]:
     return dom.fra(conn, OGGI - timedelta(days=7), OGGI + timedelta(days=14))
 
 
-def _tipi(conn: sqlite3.Connection) -> dict[str, dom.Tipo]:
+def _tipi(conn: sqlite3.Connection) -> dict[str, str]:
     """Il tipo per titolo, che è il verso in cui si leggono questi test."""
     return {evento.titolo: evento.tipo for evento in _eventi(conn)}
 
@@ -246,10 +252,10 @@ def test_gli_eventi_nuovi_ricevono_il_tipo_proposto_dal_modello(
     _giro(impostazioni, calendario, modello, monkeypatch=monkeypatch)
 
     assert _tipi(conn) == {
-        "Analisi II": dom.Tipo.LEZIONE,
-        "Palestra": dom.Tipo.PALESTRA,
+        "Analisi II": "lezione",
+        "Palestra": "palestra",
         # Il dentista non è nessuno dei tre, e «altro» è un esito legittimo.
-        "Dentista": dom.Tipo.ALTRO,
+        "Dentista": "altro",
     }
 
 
@@ -296,7 +302,7 @@ def test_una_serie_si_chiede_una_volta_e_si_scrive_tutta(
     assert modello.titoli_visti() == ["Analisi II"]
     salvati = _eventi(conn)
     assert len(salvati) == 3
-    assert {e.tipo for e in salvati} == {dom.Tipo.LEZIONE}
+    assert {e.tipo for e in salvati} == {"lezione"}
 
 
 # — quante volte si chiama il modello ————————————————————
@@ -352,7 +358,7 @@ def test_un_occorrenza_nuova_di_una_serie_gia_taggata_non_torna_in_coda(
     )
 
     assert len(modello.chiamate) == 1
-    assert [e.tipo for e in _eventi(conn)] == [dom.Tipo.LEZIONE, dom.Tipo.LEZIONE]
+    assert [e.tipo for e in _eventi(conn)] == ["lezione", "lezione"]
 
 
 def test_un_evento_davvero_nuovo_viene_taggato_al_giro_dopo(
@@ -379,7 +385,7 @@ def test_un_evento_davvero_nuovo_viene_taggato_al_giro_dopo(
     )
 
     assert modello.titoli_visti(1) == ["Volo per Catania"]
-    assert _tipi(conn)["Volo per Catania"] is dom.Tipo.VIAGGIO
+    assert _tipi(conn)["Volo per Catania"] == "viaggio"
 
 
 def test_la_coda_si_svuota_in_piu_giri_quando_e_piu_lunga_del_tetto(
@@ -444,7 +450,7 @@ def test_un_tipo_inventato_esce_comunque_dalla_coda(
         monkeypatch=monkeypatch,
     )
 
-    assert _tipi(conn)["Palestra"] is dom.Tipo.ALTRO
+    assert _tipi(conn)["Palestra"] == "altro"
     assert all(e.tag_proposto_il == ADESSO for e in _eventi(conn))
     assert len(modello.chiamate) == 1
 
@@ -539,7 +545,7 @@ def test_la_coda_si_svuota_anche_quando_google_non_risponde(
     )
 
     (evento,) = _eventi(conn)
-    assert evento.tipo is dom.Tipo.LEZIONE
+    assert evento.tipo == "lezione"
     assert evento.tag_proposto_il is not None
 
 
@@ -562,7 +568,7 @@ def test_senza_chiave_il_modello_non_si_chiama_e_gli_eventi_restano_da_guardare(
     assert modello.chiamate == []
     (evento,) = _eventi(conn)
     assert evento.tag_proposto_il is None
-    assert evento.tipo is dom.Tipo.ALTRO
+    assert evento.tipo == "altro"
 
 
 def test_col_calendario_spento_non_si_chiama_nessuno(
@@ -576,3 +582,123 @@ def test_col_calendario_spento_non_si_chiama_nessuno(
     _giro(impostazioni, calendario, modello, sorgente=CalendarioSpento(), monkeypatch=monkeypatch)
 
     assert modello.chiamate == []
+
+
+# — i tipi che decidi tu entrano nel giro (pezzo 6) ——————
+
+
+def test_un_tipo_creato_da_te_entra_nel_prompt_e_viene_scritto(
+    conn: sqlite3.Connection,
+    impostazioni: Settings,
+    calendario: _CalendarioDiTest,
+    google: FintoGoogle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Il giro completo del pezzo 6, dal database al modello e ritorno.
+
+    Non basta che l'API accetti un tipo nuovo: deve arrivare al modello, con la
+    sua descrizione, ed essere accettato quando torna indietro. Se lo schema o
+    il prompt restassero fermi ai quattro di prima, il tipo nuovo sarebbe un
+    valore «inventato» e finirebbe in `altro` senza che niente lo segnali.
+    """
+    dom.crea_tag(
+        conn,
+        nome="Spesa",
+        descrizione="il supermercato, non le uscite di denaro in generale.",
+        ora=ADESSO,
+    )
+    google.stato.eventi = [_voce("g-1", "Carrefour", OGGI, 17)]
+    modello = ModelloFinto({"Carrefour": "spesa"})
+
+    _giro(impostazioni, calendario, modello, monkeypatch=monkeypatch)
+
+    assert (
+        "- **spesa** — il supermercato, non le uscite di denaro in generale." in modello.sistemi[0]
+    )
+    assert _tipi(conn) == {"Carrefour": "spesa"}
+    (evento,) = _eventi(conn)
+    assert evento.tag_proposto_il is not None
+    assert evento.tag_confermato_da_te is False
+
+
+def test_un_tipo_archiviato_non_viene_piu_proposto(
+    conn: sqlite3.Connection,
+    impostazioni: Settings,
+    calendario: _CalendarioDiTest,
+    google: FintoGoogle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Archiviare vuol dire «non proporlo più», e lo decide l'elenco che parte.
+
+    Il modello qui prova comunque a rispondere «palestra»: senza che l'enum lo
+    escluda, quel tag verrebbe scritto su un evento — cioè archiviare non
+    servirebbe a niente finché il worker gira.
+    """
+    dom.modifica_tag(conn, "palestra", attivo=False)
+    google.stato.eventi = [_voce("g-1", "Palestra", OGGI, 18)]
+    modello = ModelloFinto({"Palestra": "palestra"})
+
+    _giro(impostazioni, calendario, modello, monkeypatch=monkeypatch)
+
+    assert "- **palestra**" not in modello.sistemi[0]
+    assert "- **lezione**" in modello.sistemi[0]
+    # La risposta non è leggibile per nessuna voce: è un guasto, non una
+    # classificazione, quindi la coda resta intatta per il giro dopo.
+    assert _tipi(conn) == {"Palestra": "altro"}
+    (evento,) = _eventi(conn)
+    assert evento.tag_proposto_il is None
+
+
+def test_il_modello_vede_le_descrizioni_e_non_i_nomi(
+    conn: sqlite3.Connection,
+    impostazioni: Settings,
+    calendario: _CalendarioDiTest,
+    google: FintoGoogle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rinominare un tipo non cambia lo slug che il modello deve scrivere.
+
+    Quello che cambia è la **descrizione**, che è la riga su cui il modello
+    decide davvero — ed è anche l'unica manopola per aggiustare il tiro quando
+    classifica male. Il nome nuovo invece non gli arriva affatto: gli darebbe
+    due parole fra cui scegliere per dire la stessa cosa.
+    """
+    dom.modifica_tag(
+        conn, "palestra", nome="Allenamento", descrizione="corsa, piscina, pesi, partite."
+    )
+    google.stato.eventi = [_voce("g-1", "Pesi", OGGI, 18)]
+    modello = ModelloFinto({"Pesi": "palestra"})
+
+    _giro(impostazioni, calendario, modello, monkeypatch=monkeypatch)
+
+    assert "- **palestra** — corsa, piscina, pesi, partite." in modello.sistemi[0]
+    assert "Allenamento" not in modello.sistemi[0]
+    assert _tipi(conn) == {"Pesi": "palestra"}
+
+
+def test_un_tipo_cancellato_mentre_il_modello_risponde_non_rompe_il_giro(
+    conn: sqlite3.Connection,
+    impostazioni: Settings,
+    calendario: _CalendarioDiTest,
+    google: FintoGoogle,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fra il prompt e la risposta passano dei secondi, e in mezzo puoi cancellare.
+
+    Senza il controllo in `applica_tag` arriverebbe qui una `IntegrityError` di
+    SQLite: un'eccezione cruda nel mezzo del giro del worker, che si porterebbe
+    via anche il backup notturno. Deve invece valere come guasto passeggero —
+    la coda torna al giro dopo, dove l'elenco sarà quello nuovo.
+    """
+    dom.crea_tag(conn, nome="Spesa", descrizione="il supermercato.", ora=ADESSO)
+    google.stato.eventi = [_voce("g-1", "Carrefour", OGGI, 17)]
+    # Il modello risponde «spesa» su un tipo che a quel punto non c'è più.
+    modello = ModelloFinto(risposta_fissa={"tag": [{"n": 1, "tipo": "spesa"}]})
+    conn.execute("DELETE FROM calendar_tags WHERE slug = 'spesa'")
+    conn.commit()
+
+    _giro(impostazioni, calendario, modello, monkeypatch=monkeypatch)
+
+    assert _tipi(conn) == {"Carrefour": "altro"}
+    (evento,) = _eventi(conn)
+    assert evento.tag_proposto_il is None

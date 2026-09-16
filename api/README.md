@@ -19,16 +19,26 @@ identica anche il bot Telegram.
 Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
 `PATCH`), `/api/lista-spesa` (+ `POST`, `PATCH`, `svuota-presi`),
 `/api/diario` (+ `approva`, `scarta`), `/api/spese` (+ `POST`, `PATCH`, `DELETE`, `conferma`, `categorie`),
-`/api/abitudini` (+ `POST`, `PATCH`, `log`, `proposta/accetta|rifiuta`), e
-`GET /api/health` per lo smoke test post-deploy (§10).
+`/api/abitudini` (+ `POST`, `PATCH`, `log`, `proposta/accetta|rifiuta`),
+`/api/calendario` (+ `PATCH` per correggere un tag, e `tipi` in `POST`,
+`PATCH`, `DELETE`), `/api/assistente/messaggio`, e `GET /api/health` per lo
+smoke test post-deploy (§10).
 
-Tutto il resto risponde `501` finché non arriva il suo modulo (§8.10-§8.13).
+Restano a `501` le regole di contesto (`/api/regole`, §8.10), le impostazioni
+(`/api/impostazioni`, §8) e i corsi (`/api/lezioni`, §8.11).
 
 Le abitudini (§8.6) sono l'unico modulo che si *gestisce* da qui e non da
 Telegram: aggiungerne una vuole un nome e un numero scelti con calma, segnarla
 capita ogni giorno e costa una frase al bot. Nessun numero della pagina passa da
 un modello — aderenza, strisce e costanza sono aritmetica su insiemi di date,
 in `custode_core.dominio.abitudini`.
+
+I **tipi di evento** del calendario (§8.10, pezzo 6) sono l'altro modulo che si
+gestisce da qui: `POST|PATCH|DELETE /api/calendario/tipi`. Stanno sotto
+`/api/calendario` e non sotto le impostazioni perché i tipi si guardano dove si
+vedono gli impegni — è nel menu di correzione che ci si accorge che ne manca
+uno. Lo `slug` nell'URL è l'identificatore, e non cambia mai: rinominare un tipo
+è un `PATCH` che tocca una riga sola e nessun evento.
 
 Diario e spese si *riempiono* da Telegram, non da qui (§8.1): queste rotte
 servono a rileggerli e a smaltire quello che è rimasto in sospeso — le bozze da
