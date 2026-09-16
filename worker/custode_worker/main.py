@@ -27,6 +27,7 @@ from custode_calendario.google import ClientGoogle
 from custode_core.config import Settings, get_settings
 from custode_core.db import connessione
 from custode_core.dominio import abitudini as dom_abitudini
+from custode_core.dominio import impostazioni as dom_impostazioni
 from custode_core.formato import adesso
 from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
@@ -284,8 +285,21 @@ def _giro_settimanale(
     router: Router,
     telegram: ClientTelegram,
 ) -> None:
-    ore, minuti = worker.ora_e_minuto()
-    lunedi = settimana_dovuta(ora, giorno=worker.giorno_riepilogo, ore=ore, minuti=minuti)
+    # Giorno e ora si rileggono **in cima a ogni giro**, non all'avvio: è tutto
+    # il meccanismo con cui un cambio dalla pagina Impostazioni è attivo senza
+    # riavviare il container (§8). Il `.env` resta il punto di partenza — è il
+    # `default` che si passa — e dal primo salvataggio vince la tabella.
+    #
+    # Costa una connessione in più per giro, aperta e chiusa: su SQLite è
+    # un'operazione locale, e il giro gira ogni cinque minuti. Tenerne una
+    # aperta per risparmiarla vorrebbe dire stato condiviso fra job che oggi non
+    # si conoscono.
+    with connessione(impostazioni.db_path) as conn:
+        giorno = dom_impostazioni.RIEPILOGO_GIORNO.leggi(conn, default=worker.giorno_riepilogo)
+        orario = dom_impostazioni.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo)
+
+    ore, minuti = dom_impostazioni.ore_e_minuti(orario)
+    lunedi = settimana_dovuta(ora, giorno=giorno, ore=ore, minuti=minuti)
     if lunedi is None:
         return
 

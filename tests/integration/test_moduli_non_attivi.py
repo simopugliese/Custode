@@ -10,7 +10,6 @@ pytestmark = pytest.mark.integration
 PAGINE = [
     ("/api/lezioni", "lezioni e corsi"),
     ("/api/regole", "regole di contesto"),
-    ("/api/impostazioni", "impostazioni"),
 ]
 
 
@@ -36,6 +35,8 @@ def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
         "/api/spese",
         "/api/diario",
         "/api/abitudini",
+        "/api/calendario",
+        "/api/impostazioni",
         "/api/health",
     ):
         assert client.get(percorso).status_code == 200

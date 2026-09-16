@@ -173,7 +173,9 @@ def test_la_009_non_perde_un_evento_ne_un_tag(db_path: Path) -> None:
     _riempi_calendario(conn)
     prima = [dict(r) for r in conn.execute("SELECT * FROM calendar_events ORDER BY id")]
 
-    assert migrazioni.migra(conn) == ["009_tag_calendario_miei.sql"]
+    # Da qui in poi ne arrivano altre: si controlla che la 009 sia quella
+    # applicata per prima, non che sia l'unica.
+    assert migrazioni.migra(conn)[0] == "009_tag_calendario_miei.sql"
 
     dopo = [dict(r) for r in conn.execute("SELECT * FROM calendar_events ORDER BY id")]
     assert dopo == prima

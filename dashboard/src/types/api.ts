@@ -432,29 +432,58 @@ export interface RegoleData {
   scartate: { nome: string; dataLabel: string }[];
 }
 
-// — Impostazioni —
+// — Impostazioni (§8) —
 
+/**
+ * Le impostazioni che si cambiano senza riavviare niente.
+ *
+ * **Ci sono solo le manopole che girano qualcosa.** Il contratto aveva da
+ * sempre più campi di quanti moduli esistessero — digest mattutino (§8.13), ora
+ * della voce di diario, ore di silenzio, le quattro approvazioni, il primo
+ * giorno della settimana — e nessuno di quelli è cablato a niente. Si omettono,
+ * che è la regola già scritta in cima ad API.md: un campo il cui modulo non è
+ * ancora attivo si **omette**, non si mette a zero. Torneranno, uno alla volta,
+ * col modulo che li legge.
+ *
+ * I **segreti** non passano di qui (§9): restano nel `.env` del Pi, e da questa
+ * pagina si vede solo se ci sono.
+ */
 export interface ImpostazioniData {
-  botStatoLabel: string; // "@custode_bot · ultimo messaggio 22 minuti fa"
-  apiStatoLabel: string; // "API online · sync 08:40"
+  botStatoLabel: string; // se il bot è configurato — vivo non è osservabile da qui
+  apiStatoLabel: string; // "API online · 08:41"
   orari: {
-    digestMattutino: string;
-    checkInMinutiDopo: number;
-    voceDiarioOra: string;
     riepilogoSettimanaleGiorno: 'domenica' | 'lunedi';
-    oreSilenzio: { inizio: string; fine: string };
+    riepilogoSettimanaleOra: string; // HH:MM
+    /**
+     * Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
+     * Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,
+     * come `calendar_events.tipo` esisteva prima del tagging.
+     */
+    checkInMinutiDopo: number;
   };
-  approvazioni: {
-    vociDiario: 'chiedi' | 'automatico';
-    nuoveRegole: 'chiedi' | 'automatico';
-    categorieSpesa: 'chiedi' | 'automatico';
-    scontrini: 'chiedi' | 'automatico';
-  };
-  connessioni: { nome: string; dettaglio: string; stato: 'collegato' | 'attiva' | 'non_collegato' }[];
-  primaSettimana: 'lunedi' | 'domenica';
-  budget: { settimanale: number; mensile: number; sogliaAvvisoPercento: number };
-  dati: { vociDiario: number; speseRegistrate: number; messaggiBot: number; ultimoBackupLabel: string };
+  /**
+   * `settimanale` è **assente** finché non l'hai mai impostato, né qui né nel
+   * `.env`: allora la Home omette il blocco delle spese, perché una barra ha
+   * bisogno di un tetto (§8.5).
+   */
+  budget: { settimanale?: number };
+  connessioni: { nome: string; dettaglio: string; stato: 'collegato' | 'non_collegato' }[];
+  dati: { vociDiario: number; speseRegistrate: number; ultimoBackupLabel: string };
   sistema: { apiOnline: boolean; ultimoSyncCalendarioLabel: string; versione: string };
+  /** Cosa vale ancora dal `.env` perché non l'hai mai deciso da qui. */
+  notaLabel?: string;
+}
+
+/**
+ * Corpo di `PATCH /api/impostazioni`: solo i blocchi che vuoi cambiare.
+ *
+ * `budget.settimanale: null` **cancella** il budget; un campo che non mandi è
+ * un campo che non volevi toccare. Sono due cose diverse, e il backend le
+ * distingue da quali chiavi arrivano, non dal loro valore.
+ */
+export interface ModificaImpostazioni {
+  orari?: Partial<ImpostazioniData['orari']>;
+  budget?: { settimanale?: number | string | null };
 }
 
 // — assistente ("A Custode") —

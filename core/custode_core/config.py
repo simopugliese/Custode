@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -16,6 +17,20 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Ambiente = Literal["development", "test", "production"]
+
+
+def versione() -> str:
+    """La versione del pacchetto installato, o un segnaposto dai sorgenti.
+
+    Sta in `core` e non nell'API perché la chiedono in due: `GET /api/health`
+    per lo smoke test post-deploy (§10) e la pagina Impostazioni, che la mostra
+    accanto allo stato dell'API. Tenerla nell'API avrebbe voluto dire una rotta
+    che importa `main`, cioè il modulo che importa lei.
+    """
+    try:
+        return version("custode")
+    except PackageNotFoundError:  # eseguito da sorgenti, senza installazione
+        return "0.0.0+dev"
 
 
 class Settings(BaseSettings):

@@ -21,11 +21,12 @@ Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
 `/api/diario` (+ `approva`, `scarta`), `/api/spese` (+ `POST`, `PATCH`, `DELETE`, `conferma`, `categorie`),
 `/api/abitudini` (+ `POST`, `PATCH`, `log`, `proposta/accetta|rifiuta`),
 `/api/calendario` (+ `PATCH` per correggere un tag, e `tipi` in `POST`,
-`PATCH`, `DELETE`), `/api/assistente/messaggio`, e `GET /api/health` per lo
-smoke test post-deploy (§10).
+`PATCH`, `DELETE`), `/api/impostazioni` (+ `PATCH`),
+`/api/assistente/messaggio`, e `GET /api/health` per lo smoke test post-deploy
+(§10).
 
-Restano a `501` le regole di contesto (`/api/regole`, §8.10), le impostazioni
-(`/api/impostazioni`, §8) e i corsi (`/api/lezioni`, §8.11).
+Restano a `501` le regole di contesto (`/api/regole`, §8.10) e i corsi
+(`/api/lezioni`, §8.11).
 
 Le abitudini (§8.6) sono l'unico modulo che si *gestisce* da qui e non da
 Telegram: aggiungerne una vuole un nome e un numero scelti con calma, segnarla
@@ -39,6 +40,12 @@ gestisce da qui: `POST|PATCH|DELETE /api/calendario/tipi`. Stanno sotto
 vedono gli impegni — è nel menu di correzione che ci si accorge che ne manca
 uno. Lo `slug` nell'URL è l'identificatore, e non cambia mai: rinominare un tipo
 è un `PATCH` che tocca una riga sola e nessun evento.
+
+Le **impostazioni** (§8) mandano solo le manopole che girano qualcosa: il
+contratto ne ha di più — digest mattutino, ore di silenzio, approvazioni — ma
+nessuno di quei moduli esiste, e un interruttore che non interrompe è peggio di
+uno assente. Nessun segreto passa di qui: `connessioni` dice cosa è collegato e
+quale variabile manca quando non lo è, mai il suo valore.
 
 Diario e spese si *riempiono* da Telegram, non da qui (§8.1): queste rotte
 servono a rileggerli e a smaltire quello che è rimasto in sospeso — le bozze da

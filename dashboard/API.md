@@ -43,10 +43,10 @@ file ne descrive solo la forma a endpoint per endpoint.
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
 **Diario**, **Spese**, **Abitudini**, **Calendario** — con i suoi tipi di evento,
-che da §8.10 pezzo 6 si creano e si modificano da lì — e la barra
-**«A Custode»**.
-Tutti gli altri endpoint qui sotto rispondono `501` finché non arriva il loro
-modulo — vedi la roadmap in `../ARCHITECTURE.md` §12.
+che da §8.10 pezzo 6 si creano e si modificano da lì — **Impostazioni** e la
+barra **«A Custode»**.
+Restano a `501` le **regole di contesto** (§8.10) e i **corsi** (§8.11) — vedi
+la roadmap in `../ARCHITECTURE.md` §12.
 
 C'è inoltre `GET /api/health`, non consumato dalla dashboard: serve allo smoke
 test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
@@ -459,7 +459,66 @@ worker non ne ha scritto uno: campo assente ≠ campo vuoto.
 ## Impostazioni
 
 `GET /api/impostazioni` → `ImpostazioniData`
-`PATCH /api/impostazioni` body `Partial<ImpostazioniData>` → `ImpostazioniData`
+`PATCH /api/impostazioni` body `ModificaImpostazioni` → `ImpostazioniData`
+
+**Ci sono solo le manopole che girano qualcosa.** Questo contratto aveva da
+sempre più campi di quanti moduli esistessero: il digest mattutino (§8.13),
+l'ora della voce di diario, le ore di silenzio, le quattro approvazioni, il
+primo giorno della settimana, il tetto mensile e la soglia d'avviso. Nessuno di
+quelli è cablato a niente, e mandarli vorrebbe dire un interruttore che non
+interrompe — lo giri, non succede nulla, e da lì in poi non ti fidi più nemmeno
+di quelli che funzionano. Si omettono, che è la regola scritta in cima a questo
+file: un campo il cui modulo non è ancora attivo si **omette**. Torneranno, uno
+alla volta, col modulo che li legge.
+
+L'unica eccezione è `orari.checkInMinutiDopo`, il margine di «sei probabilmente
+a casa»: §8.10 lo vuole esplicitamente configurabile, e si salva già adesso come
+`calendar_events.tipo` esisteva prima del tagging. Chi lo legge arriva dopo.
+
+**Il `.env` del Pi è il punto di partenza, non una seconda fonte di verità.**
+Finché non hai mai salvato un campo, quello che vedi è il valore con cui
+l'installazione è nata (`CUSTODE_BUDGET_SETTIMANALE`, `WORKER_GIORNO_RIEPILOGO`,
+`WORKER_ORA_RIEPILOGO`). Dal primo salvataggio vince il database e la variabile
+smette di contare. `notaLabel` dice quante ne vengono ancora da lì, ed è l'unica
+domanda a cui il `.env` da solo non sa rispondere — se un valore l'hai scelto tu
+o te l'ha dato l'installazione.
+
+**Un cambio è attivo senza riavviare niente.** Non c'è nessun meccanismo, ed è il
+punto: l'API apre una connessione per richiesta, quindi la Home vede un budget
+nuovo al ricaricamento successivo; il worker rilegge giorno e ora **in cima a
+ogni giro**, quindi al più tardi fra cinque minuti. Nessun segnale, nessuna
+cache, nessun `docker compose restart`.
+
+**Nei segreti non si entra** (§9). `connessioni` dice cosa è collegato e — quando
+non lo è — **quale variabile manca**, che è la sola cosa che permette di
+rimetterla a posto senza cercare nei log del Pi. Il valore di quella variabile
+non esce mai da qui, e `PATCH` non ne accetta nessuno: le credenziali stanno nel
+`.env`, come ogni altra del progetto.
+
+`PATCH` accetta **solo i blocchi che vuoi cambiare**, e guarda quali chiavi
+arrivano invece del loro valore. La differenza conta per il budget:
+`{"budget": {"settimanale": null}}` **cancella** il budget — e la Home smette di
+disegnare il blocco delle spese — mentre un `budget` che non arriva è un budget
+che non volevi toccare. Se i due casi si confondessero, cambiare un orario
+cancellerebbe il budget. Una stringa vuota vale come `null`, perché è quello che
+manda un campo di testo svuotato a mano.
+
+La `PATCH` è **atomica**: con due campi di cui il secondo storto non si salva
+niente e la risposta è `422` col motivo in italiano. Senza, il riepilogo
+resterebbe spostato a un giorno che non hai scelto mentre la risposta dice che
+non è cambiato nulla.
+
+`sistema.ultimoSyncCalendarioLabel` è il caso che §8.10 lascia scoperto: a worker
+fermo la pagina Calendario dice «niente in programma», che rispetto all'archivio
+è pure vero — solo che l'archivio è di tre giorni fa. Qui si legge «3 giorni fa»,
+o «mai» se non ha mai sincronizzato. Stessa scala per `dati.ultimoBackupLabel`.
+
+`botStatoLabel` dice se il bot è **configurato**, non se è vivo — e la frase lo
+dice. Vivo non si può sapere da qui: il bot non lascia una traccia periodica come
+fa il worker con `job_runs`, e contare i frammenti di diario darebbe un numero
+che sembra una risposta senza esserlo (una giornata in cui non hai raccontato
+niente si leggerebbe come un bot morto). Per la stessa ragione `dati` non porta
+`messaggiBot`.
 
 ## Assistente ("A Custode")
 
