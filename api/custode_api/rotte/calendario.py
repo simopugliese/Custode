@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Response
 from custode_api import schemi
 from custode_api.dipendenze import CalendarioDip, ConnDip, OraDip, RouterDip
 from custode_api.rotte.presentazione import evento_calendario_taggato
+from custode_core.db import transazione
 from custode_core.dominio import calendario as dom
 from custode_core.formato import (
     etichetta_giorno,
@@ -435,15 +436,22 @@ def modifica_tipo(
     **Rinominare non tocca nessun evento.** Gli impegni portano lo slug e
     l'etichetta la cercano nella tabella dei tipi: cambiare nome è una riga
     sola, e la pagina la mostra nuova su tutti gli eventi appena si ricarica.
+
+    **Tutto o niente**, come la `PATCH` delle impostazioni: i tre campi si
+    scrivono con tre `UPDATE`, ognuno validato appena prima, e senza una
+    transazione un corpo come `{nome, attivo: false}` su «Altro» rispondeva
+    `409` *dopo* aver rinominato il tipo — la pagina diceva che non era
+    cambiato niente e intanto il nome era cambiato.
     """
     try:
-        tag = dom.modifica_tag(
-            conn,
-            slug,
-            nome=corpo.nome,
-            descrizione=corpo.descrizione,
-            attivo=corpo.attivo,
-        )
+        with transazione(conn):
+            tag = dom.modifica_tag(
+                conn,
+                slug,
+                nome=corpo.nome,
+                descrizione=corpo.descrizione,
+                attivo=corpo.attivo,
+            )
     except dom.TagInesistente as errore:
         raise HTTPException(status_code=404, detail=f"Il tipo «{slug}» non esiste.") from errore
     except dom.TagDiSistema as errore:

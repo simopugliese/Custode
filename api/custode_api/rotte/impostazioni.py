@@ -42,6 +42,7 @@ from custode_api.dipendenze import (
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings, versione
+from custode_core.db import transazione
 from custode_core.dominio import impostazioni as dom
 from custode_core.formato import etichetta_da_quando
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, ultima_esecuzione
@@ -222,21 +223,15 @@ def aggiorna(
     # senza questa transazione una `PATCH` con due campi di cui il secondo è
     # storto salverebbe il primo e rifiuterebbe la richiesta: il riepilogo
     # resterebbe spostato a un giorno che non hai scelto, e la risposta direbbe
-    # che non è cambiato niente. È lo stesso ragionamento del runner delle
-    # migrazioni, e qui costa due righe.
-    conn.execute("BEGIN IMMEDIATE")
+    # che non è cambiato niente.
     try:
-        if corpo.orari is not None:
-            _scrivi_orari(conn, corpo.orari, ora)
-        if corpo.budget is not None:
-            _scrivi_budget(conn, corpo.budget, ora)
+        with transazione(conn):
+            if corpo.orari is not None:
+                _scrivi_orari(conn, corpo.orari, ora)
+            if corpo.budget is not None:
+                _scrivi_budget(conn, corpo.budget, ora)
     except dom.ValoreNonValido as errore:
-        conn.execute("ROLLBACK")
         raise HTTPException(status_code=422, detail=f"{errore}.") from errore
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
-    conn.execute("COMMIT")
 
     return _leggi(conn, ora, settings, calendario, instradatore, bot)
 

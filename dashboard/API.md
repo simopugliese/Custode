@@ -22,6 +22,14 @@ non rispondono con dati reali.
   (compatibile con FastAPI di default). In particolare **`501`** significa "il
   modulo dietro a questo endpoint non esiste ancora", col nome del modulo nel
   `detail`: la dashboard mostra il suo stato d'errore con scritto il motivo.
+- **Una `PATCH` che scrive più campi è tutto o niente**: o passano tutti, o non
+  ne passa nessuno e la risposta dice perché. Vale per `/api/impostazioni`,
+  `/api/calendario/tipi/:slug`, `/api/abitudini/:id` e `/api/spese/:id` — tutte
+  rotte che validano ogni campo appena prima di scriverlo, quindi tutte capaci
+  di fermarsi a metà. Senza questa regola un corpo con due campi di cui il
+  secondo storto rispondeva con un errore **dopo** aver salvato il primo: la
+  pagina si ricaricava con un nome, un importo o un giorno che non avevi mai
+  confermato, e la risposta che avevi appena letto diceva il contrario.
 - **Campi assenti vs vuoti**: un campo opzionale il cui modulo non è ancora
   attivo viene **omesso** dalla risposta, non messo a zero o a lista vuota — la
   pagina non disegna quel blocco. Una lista *vuota* significa invece "il modulo
@@ -207,7 +215,10 @@ database — sta negli eventi, nel contratto, nell'enum che riceve il modello �
 e cambiarlo vorrebbe dire rincorrerlo in tutti quei posti insieme. `attivo:
 false` **archivia**: il tipo esce dal menu e dal prompt del modello, ma resta
 addosso agli impegni che ce l'hanno. Un tipo che non esiste → `404`; un nome già
-di un altro → `422`; archiviare «Altro» → `409`.
+di un altro → `422`; archiviare «Altro» → `409`. Ed è **tutto o niente** (vedi
+Convenzioni): un `{nome, attivo: false}` su «Altro» risponde `409` e il nome
+resta quello di prima, invece di cambiarlo mentre la risposta dice che non è
+successo niente.
 
 `DELETE /api/calendario/tipi/:slug` cancella davvero, e **solo** un tipo che
 nessun impegno usa: il caso dell'hai appena creato e non ti serve. Per tutti gli
@@ -503,10 +514,10 @@ che non volevi toccare. Se i due casi si confondessero, cambiare un orario
 cancellerebbe il budget. Una stringa vuota vale come `null`, perché è quello che
 manda un campo di testo svuotato a mano.
 
-La `PATCH` è **atomica**: con due campi di cui il secondo storto non si salva
-niente e la risposta è `422` col motivo in italiano. Senza, il riepilogo
-resterebbe spostato a un giorno che non hai scelto mentre la risposta dice che
-non è cambiato nulla.
+La `PATCH` è **atomica**, come tutte le altre che scrivono più campi (vedi
+Convenzioni): con due campi di cui il secondo storto non si salva niente e la
+risposta è `422` col motivo in italiano. Senza, il riepilogo resterebbe spostato
+a un giorno che non hai scelto mentre la risposta dice che non è cambiato nulla.
 
 `sistema.ultimoSyncCalendarioLabel` è il caso che §8.10 lascia scoperto: a worker
 fermo la pagina Calendario dice «niente in programma», che rispetto all'archivio

@@ -611,6 +611,40 @@ def test_altro_non_si_archivia_e_la_pagina_lo_dice_prima(client: TestClient) -> 
     assert risposta.status_code == 409
 
 
+def test_un_rifiuto_non_lascia_scritto_niente(client: TestClient) -> None:
+    """Tutto o niente, come la `PATCH` delle impostazioni.
+
+    I tre campi si scrivono con tre `UPDATE`, ognuno validato appena prima:
+    senza transazione questo corpo rispondeva `409` **dopo** aver rinominato
+    «Altro», e la pagina diceva che non era cambiato niente mentre il nome era
+    cambiato. È il caso peggiore perché il `409` è quello che la pagina si
+    aspetta — il bottone «archivia» su «Altro» non c'è nemmeno — quindi
+    nessuno sarebbe andato a controllare.
+    """
+    prima = _tipo(client, "altro")["label"]
+
+    risposta = client.patch("/api/calendario/tipi/altro", json={"nome": "Varie", "attivo": False})
+
+    assert risposta.status_code == 409
+    assert _tipo(client, "altro")["label"] == prima
+
+
+def test_un_campo_storto_non_salva_quello_buono_che_lo_precede(client: TestClient) -> None:
+    """Stessa regola, dall'altro verso: la descrizione vuota annulla il rename."""
+    prima = _tipo(client, "palestra")
+    assert prima["label"] == "Palestra"
+
+    risposta = client.patch(
+        "/api/calendario/tipi/palestra",
+        json={"nome": "Allenamento", "descrizione": "   "},
+    )
+
+    assert risposta.status_code == 422
+    dopo = _tipo(client, "palestra")
+    assert dopo["label"] == prima["label"]
+    assert dopo["descrizione"] == prima["descrizione"]
+
+
 def test_un_tipo_che_nessuno_usa_si_cancella(client: TestClient) -> None:
     client.post("/api/calendario/tipi", json={"nome": "Spesa", "descrizione": "il supermercato."})
 

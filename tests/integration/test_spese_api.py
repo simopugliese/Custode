@@ -443,6 +443,26 @@ def test_eliminare_una_spesa(client: TestClient) -> None:
     assert client.get("/api/spese?periodo=mese").json()["movimenti"] == []
 
 
+def test_una_correzione_rifiutata_non_lascia_scritto_l_importo(client: TestClient) -> None:
+    """Tutto o niente, come le altre `PATCH` che scrivono più campi.
+
+    Importo e descrizione sono due `UPDATE` distinti, validati uno alla volta:
+    senza transazione questo corpo rispondeva `422` con l'importo nuovo già nei
+    conti — e una spesa sbagliata che la risposta dichiara non salvata è la
+    peggiore delle due.
+    """
+    movimento = _registra(client)
+
+    risposta = client.patch(
+        f"/api/spese/{movimento['id']}", json={"importo": 71.0, "descrizione": "   "}
+    )
+
+    assert risposta.status_code == 422
+    invariato = client.patch(f"/api/spese/{movimento['id']}", json={}).json()
+    assert invariato["importo"] == 17.0
+    assert invariato["descrizione"] == "spesa xyz"
+
+
 def test_correggere_o_eliminare_qualcosa_che_non_esiste(client: TestClient) -> None:
     assert client.patch("/api/spese/999", json={"importo": 3.0}).status_code == 404
     assert client.delete("/api/spese/999").status_code == 404
