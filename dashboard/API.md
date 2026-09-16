@@ -494,6 +494,15 @@ smette di contare. `notaLabel` dice quante ne vengono ancora da lì, ed è l'uni
 domanda a cui il `.env` da solo non sa rispondere — se un valore l'hai scelto tu
 o te l'ha dato l'installazione.
 
+*Il valore di partenza è quello vero, non un default scritto due volte.* Giorno
+e ora arrivano qui dalle stesse `WORKER_*` che legge il worker in cima a ogni
+giro: è la sola forma in cui la pagina e il job possono dire la stessa cosa.
+Leggere invece il default del registro (`domenica`, `21:00`) faceva mostrare
+quelle due costanti a un'installazione che nel `.env` aveva scritto altro, con
+`notaLabel` ad assicurare che il valore venisse proprio dal `.env`. Fa eccezione
+`checkInMinutiDopo`, che una variabile d'ambiente non ce l'ha: nasce qui, quindi
+il suo valore di partenza è quello del registro (40).
+
 **Un cambio è attivo senza riavviare niente.** Non c'è nessun meccanismo, ed è il
 punto: l'API apre una connessione per richiesta, quindi la Home vede un budget
 nuovo al ricaricamento successivo; il worker rilegge giorno e ora **in cima a

@@ -130,6 +130,12 @@ partenza**: da §8 giorno e ora si cambiano dalla pagina Impostazioni, e da lì 
 poi vale quello che hai scelto. Il worker li rilegge in cima a ogni giro, quindi
 un cambio è attivo entro cinque minuti — **niente `docker compose restart`**.
 
+Finché non li hai mai salvati da lì, la pagina Impostazioni mostra proprio
+questi due valori del `.env`, con una nota in fondo che lo dice. Se leggi
+«domenica alle 21:00» mentre nel `.env` hai scritto altro, non è il `.env` a non
+essere stato letto: è la pagina, e la versione che stai facendo girare è
+anteriore a questa correzione — aggiorna (§6).
+
 `/profilo` mostra cosa Custode ha capito di te e quanti segnali sono in attesa.
 All'inizio è vuoto: si riempie da solo con quello che gli racconti.
 

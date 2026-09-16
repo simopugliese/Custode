@@ -36,6 +36,7 @@ from custode_core.db import connessione, db_raggiungibile
 from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
 from custode_router import Router
+from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 
 
 class StatoSalute(BaseModel):
@@ -53,12 +54,14 @@ def crea_app(
     router: Router | None = None,
     calendario: ImpostazioniCalendario | None = None,
     bot: ImpostazioniBot | None = None,
+    worker: ImpostazioniWorker | None = None,
 ) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
     instradatore = router or Router()
     calendario_impostazioni = calendario or get_impostazioni_calendario()
     bot_impostazioni = bot or get_impostazioni_bot()
+    worker_impostazioni = worker or get_impostazioni_worker()
     configura_log(impostazioni.log_level)
     log = logging.getLogger("custode.api")
 
@@ -138,6 +141,10 @@ def crea_app(
     app.state.router = instradatore
     app.state.calendario = calendario_impostazioni
     app.state.bot = bot_impostazioni
+    # Non per farci girare i job, ma per sapere da dove parte un'impostazione
+    # calda che non hai mai salvato: giorno e ora del riepilogo nascono nel
+    # `.env` del worker, ed è quello che la pagina deve mostrare (§8).
+    app.state.worker = worker_impostazioni
 
     return app
 

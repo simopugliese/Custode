@@ -38,6 +38,7 @@ from custode_api.dipendenze import (
     ImpostazioniDip,
     OraDip,
     RouterDip,
+    WorkerDip,
 )
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
@@ -48,6 +49,7 @@ from custode_core.formato import etichetta_da_quando
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, ultima_esecuzione
 from custode_router import Router
 from custode_router.compiti import Compito
+from custode_worker.config import ImpostazioniWorker
 
 router = APIRouter(prefix="/api/impostazioni", tags=["impostazioni"])
 
@@ -153,6 +155,7 @@ def _leggi(
     calendario: ImpostazioniCalendario,
     instradatore: Router,
     bot: ImpostazioniBot,
+    worker: ImpostazioniWorker,
 ) -> schemi.ImpostazioniData:
     sync = ultima_esecuzione(conn, SYNC_CALENDARIO)
     return schemi.ImpostazioniData(
@@ -162,8 +165,20 @@ def _leggi(
             # Il default non è una costante di questo modulo: è il valore del
             # `.env`, cioè la configurazione con cui l'installazione è nata.
             # Dal primo salvataggio vince la riga in tabella.
-            riepilogoSettimanaleGiorno=dom.RIEPILOGO_GIORNO.leggi(conn),
-            riepilogoSettimanaleOra=dom.RIEPILOGO_ORA.leggi(conn),
+            #
+            # Gli stessi due default che legge il worker in cima a ogni giro
+            # (`custode_worker.main._giro_settimanale`), e devono restare gli
+            # stessi: leggere qui la costante del registro voleva dire una
+            # pagina che diceva «domenica alle 21:00» mentre il job partiva il
+            # lunedì alle 08:30, con `notaLabel` ad assicurare che il valore
+            # mostrato venisse dal `.env`.
+            riepilogoSettimanaleGiorno=dom.RIEPILOGO_GIORNO.leggi(
+                conn, default=worker.giorno_riepilogo
+            ),
+            riepilogoSettimanaleOra=dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo),
+            # Nessun `default`: questa manopola non ha una variabile d'ambiente
+            # dietro — nasce qui (§8.10 la vuole configurabile, e chi la userà
+            # arriva dopo), quindi il valore di partenza è quello del registro.
             checkInMinutiDopo=dom.CHECK_IN_MINUTI_DOPO.leggi(conn),
         ),
         budget=schemi.BudgetImpostazioni(
@@ -192,8 +207,9 @@ def pagina_impostazioni(
     calendario: CalendarioDip,
     instradatore: RouterDip,
     bot: BotDip,
+    worker: WorkerDip,
 ) -> schemi.ImpostazioniData:
-    return _leggi(conn, ora, settings, calendario, instradatore, bot)
+    return _leggi(conn, ora, settings, calendario, instradatore, bot, worker)
 
 
 @router.patch("", response_model=schemi.ImpostazioniData, response_model_exclude_none=True)
@@ -205,6 +221,7 @@ def aggiorna(
     calendario: CalendarioDip,
     instradatore: RouterDip,
     bot: BotDip,
+    worker: WorkerDip,
 ) -> schemi.ImpostazioniData:
     """Cambia solo i campi che arrivano, e risponde con la pagina intera.
 
@@ -233,7 +250,7 @@ def aggiorna(
     except dom.ValoreNonValido as errore:
         raise HTTPException(status_code=422, detail=f"{errore}.") from errore
 
-    return _leggi(conn, ora, settings, calendario, instradatore, bot)
+    return _leggi(conn, ora, settings, calendario, instradatore, bot, worker)
 
 
 def _scrivi_orari(conn: sqlite3.Connection, orari: schemi.ModificaOrari, ora: datetime) -> None:

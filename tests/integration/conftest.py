@@ -16,6 +16,7 @@ from custode_api.main import crea_app
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
+from custode_worker.config import ImpostazioniWorker
 
 CAMPI_MESSAGGIO = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
 
@@ -109,6 +110,29 @@ def bot() -> ImpostazioniBot:
     return _BotDiTest()
 
 
+class _WorkerDiTest(ImpostazioniWorker):
+    """Ignora il `.env` dello sviluppatore, come `_CalendarioDiTest` e `_BotDiTest`.
+
+    L'API legge da qui il valore di partenza di giorno e ora del riepilogo (§8):
+    senza questa sottoclasse, un `.env` locale con `WORKER_ORA_RIEPILOGO=08:30`
+    farebbe passare o fallire i test della pagina Impostazioni a seconda di cosa
+    c'è sul computer di chi li lancia.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="WORKER_", env_file=None, extra="ignore")
+
+
+@pytest.fixture
+def worker() -> ImpostazioniWorker:
+    """Le manopole del worker com'è nata l'installazione: domenica alle 21:00.
+
+    Un test che vuole vedere la pagina Impostazioni con un `.env` diverso
+    ridefinisce questa fixture — è l'unico modo di provare che il valore
+    mostrato è quello del `.env` e non una costante del registro.
+    """
+    return _WorkerDiTest()
+
+
 @pytest.fixture
 def client(
     fai_settings: Callable[..., Settings],
@@ -118,6 +142,7 @@ def client(
     budget: float | None,
     calendario: ImpostazioniCalendario,
     bot: ImpostazioniBot,
+    worker: ImpostazioniWorker,
 ) -> Iterator[TestClient]:
     """API completa su un DB temporaneo, con "adesso" fissato.
 
@@ -129,6 +154,7 @@ def client(
         router=modello,  # type: ignore[arg-type]
         calendario=calendario,
         bot=bot,
+        worker=worker,
     )
     # L'ora è iniettata: senza, le etichette ("oggi", "giovedì") e la sezione
     # in cui finisce un task dipenderebbero da quando girano i test.

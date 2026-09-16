@@ -27,7 +27,9 @@ from pydantic_settings import SettingsConfigDict
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.db import connessione
+from custode_core.dominio import impostazioni as dom
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, segna_eseguito
+from custode_worker.config import ImpostazioniWorker
 
 pytestmark = pytest.mark.integration
 
@@ -100,6 +102,68 @@ def test_le_connessioni_dicono_cosa_si_perde_quando_manca(client: TestClient) ->
 
 
 # — il `.env` come punto di partenza —————————————————————
+
+
+class TestConOrariNelEnv:
+    """Un'installazione nata con giorno e ora del riepilogo scelti nel `.env`.
+
+    Il budget aveva già questo test; giorno e ora no, e il valore di partenza
+    ce l'hanno anche loro (§8, `dashboard/API.md`). Senza questa classe la
+    pagina poteva mostrare le costanti del registro — «domenica alle 21:00» —
+    mentre il worker faceva scattare il job il lunedì alle 08:30, e la suite
+    restava verde perché i default coincidevano con le costanti.
+    """
+
+    @pytest.fixture
+    def worker(self) -> ImpostazioniWorker:
+        class _DalEnv(ImpostazioniWorker):
+            model_config = SettingsConfigDict(env_prefix="WORKER_", env_file=None, extra="ignore")
+
+        return _DalEnv(giorno_riepilogo="lunedi", ora_riepilogo="08:30")
+
+    def test_gli_orari_del_env_si_vedono_finche_non_scegli(self, client: TestClient) -> None:
+        corpo = _get(client)
+        assert corpo["orari"]["riepilogoSettimanaleGiorno"] == "lunedi"
+        assert corpo["orari"]["riepilogoSettimanaleOra"] == "08:30"
+        assert "viene dal .env" in corpo["notaLabel"]
+
+    def test_sono_gli_stessi_che_legge_il_worker(
+        self, client: TestClient, db_path: Path, worker: ImpostazioniWorker
+    ) -> None:
+        """Il test che lega le due letture, ed è il solo che conta.
+
+        Una pagina che mostra un orario e un job che ne usa un altro sono due
+        bug diversi finché li si guarda separatamente: qui la stessa domanda si
+        fa alla pagina e alla riga del worker
+        (`custode_worker.main._giro_settimanale`), e le due risposte devono
+        coincidere. Prima non coincidevano.
+        """
+        pagina = _get(client)["orari"]
+
+        with connessione(db_path) as conn:
+            giorno = dom.RIEPILOGO_GIORNO.leggi(conn, default=worker.giorno_riepilogo)
+            orario = dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo)
+
+        assert pagina["riepilogoSettimanaleGiorno"] == giorno
+        assert pagina["riepilogoSettimanaleOra"] == orario
+
+    def test_dal_primo_salvataggio_vince_quello_che_scegli(
+        self, client: TestClient, db_path: Path, worker: ImpostazioniWorker
+    ) -> None:
+        _patch(client, {"orari": {"riepilogoSettimanaleGiorno": "domenica"}})
+
+        corpo = _get(client)
+        assert corpo["orari"]["riepilogoSettimanaleGiorno"] == "domenica"
+        # E il worker vede il cambio senza riavviare niente: rilegge dalla
+        # stessa tabella, col `.env` che da qui in poi non conta più.
+        with connessione(db_path) as conn:
+            assert dom.RIEPILOGO_GIORNO.leggi(conn, default=worker.giorno_riepilogo) == "domenica"
+        # L'ora, che non hai toccato, viene ancora dal `.env`.
+        assert corpo["orari"]["riepilogoSettimanaleOra"] == "08:30"
+
+    def test_il_margine_del_check_in_non_ha_un_env_dietro(self, client: TestClient) -> None:
+        """Nasce qui (§8.10), quindi il suo valore di partenza è quello del registro."""
+        assert _get(client)["orari"]["checkInMinutiDopo"] == 40
 
 
 class TestConBudgetNelEnv:
