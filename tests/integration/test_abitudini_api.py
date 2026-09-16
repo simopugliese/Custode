@@ -239,6 +239,27 @@ def test_un_nome_vuoto_e_422(client: TestClient) -> None:
     )
 
 
+def test_un_rifiuto_non_lascia_scritto_il_campo_che_lo_precede(client: TestClient) -> None:
+    """Tutto o niente, come le altre `PATCH` che scrivono più campi.
+
+    `nome` e `targetSettimanale` sono due `UPDATE` distinti, ognuno validato
+    appena prima: senza transazione questo corpo rispondeva `422` **dopo** aver
+    rinominato l'abitudine, e la pagina si ricaricava con un nome che non
+    avevi mai confermato.
+    """
+    creata = _crea(client, "Corsa", 3)
+
+    risposta = client.patch(
+        f"/api/abitudini/{creata['id']}",
+        json={"nome": "Corsetta", "targetSettimanale": 99},
+    )
+
+    assert risposta.status_code == 422
+    (riga,) = client.get("/api/abitudini").json()["abitudini"]
+    assert riga["nome"] == "Corsa"
+    assert riga["frequenzaLabel"] == "3 volte a settimana"
+
+
 def test_modificare_qualcosa_che_non_esiste_e_404(client: TestClient) -> None:
     assert client.patch("/api/abitudini/999", json={"attiva": False}).status_code == 404
 

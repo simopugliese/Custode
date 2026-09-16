@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Response
 
 from custode_api import schemi
 from custode_api.dipendenze import ConnDip, OraDip
+from custode_core.db import transazione
 from custode_core.dominio import abitudini as dom
 from custode_core.formato import etichetta_mese, inizio_settimana, plurale
 
@@ -332,15 +333,22 @@ def crea_abitudine(
 def modifica_abitudine(
     abitudine_id: int, corpo: schemi.ModificaAbitudine, conn: ConnDip, ora: OraDip
 ) -> schemi.AbitudineDettaglio:
-    """Nome, target o attivazione. §8.6: tutto modificabile in qualsiasi momento."""
+    """Nome, target o attivazione. §8.6: tutto modificabile in qualsiasi momento.
+
+    **Tutto o niente**, come la `PATCH` delle impostazioni e quella dei tipi di
+    evento: i tre campi si scrivono uno per volta, validati appena prima, e
+    senza transazione un target fuori intervallo rispondeva `422` *dopo* aver
+    rinominato l'abitudine.
+    """
     try:
-        dom.modifica(
-            conn,
-            abitudine_id,
-            nome=corpo.nome,
-            target_settimanale=corpo.targetSettimanale,
-            attiva=corpo.attiva,
-        )
+        with transazione(conn):
+            dom.modifica(
+                conn,
+                abitudine_id,
+                nome=corpo.nome,
+                target_settimanale=corpo.targetSettimanale,
+                attiva=corpo.attiva,
+            )
     except dom.AbitudineInesistente as errore:
         raise HTTPException(status_code=404, detail="Abitudine non trovata.") from errore
     except ValueError as errore:

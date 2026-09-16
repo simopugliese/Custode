@@ -38,15 +38,18 @@ from custode_api.dipendenze import (
     ImpostazioniDip,
     OraDip,
     RouterDip,
+    WorkerDip,
 )
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings, versione
+from custode_core.db import transazione
 from custode_core.dominio import impostazioni as dom
 from custode_core.formato import etichetta_da_quando
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, ultima_esecuzione
 from custode_router import Router
 from custode_router.compiti import Compito
+from custode_worker.config import ImpostazioniWorker
 
 router = APIRouter(prefix="/api/impostazioni", tags=["impostazioni"])
 
@@ -152,6 +155,7 @@ def _leggi(
     calendario: ImpostazioniCalendario,
     instradatore: Router,
     bot: ImpostazioniBot,
+    worker: ImpostazioniWorker,
 ) -> schemi.ImpostazioniData:
     sync = ultima_esecuzione(conn, SYNC_CALENDARIO)
     return schemi.ImpostazioniData(
@@ -161,8 +165,20 @@ def _leggi(
             # Il default non è una costante di questo modulo: è il valore del
             # `.env`, cioè la configurazione con cui l'installazione è nata.
             # Dal primo salvataggio vince la riga in tabella.
-            riepilogoSettimanaleGiorno=dom.RIEPILOGO_GIORNO.leggi(conn),
-            riepilogoSettimanaleOra=dom.RIEPILOGO_ORA.leggi(conn),
+            #
+            # Gli stessi due default che legge il worker in cima a ogni giro
+            # (`custode_worker.main._giro_settimanale`), e devono restare gli
+            # stessi: leggere qui la costante del registro voleva dire una
+            # pagina che diceva «domenica alle 21:00» mentre il job partiva il
+            # lunedì alle 08:30, con `notaLabel` ad assicurare che il valore
+            # mostrato venisse dal `.env`.
+            riepilogoSettimanaleGiorno=dom.RIEPILOGO_GIORNO.leggi(
+                conn, default=worker.giorno_riepilogo
+            ),
+            riepilogoSettimanaleOra=dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo),
+            # Nessun `default`: questa manopola non ha una variabile d'ambiente
+            # dietro — nasce qui (§8.10 la vuole configurabile, e chi la userà
+            # arriva dopo), quindi il valore di partenza è quello del registro.
             checkInMinutiDopo=dom.CHECK_IN_MINUTI_DOPO.leggi(conn),
         ),
         budget=schemi.BudgetImpostazioni(
@@ -191,8 +207,9 @@ def pagina_impostazioni(
     calendario: CalendarioDip,
     instradatore: RouterDip,
     bot: BotDip,
+    worker: WorkerDip,
 ) -> schemi.ImpostazioniData:
-    return _leggi(conn, ora, settings, calendario, instradatore, bot)
+    return _leggi(conn, ora, settings, calendario, instradatore, bot, worker)
 
 
 @router.patch("", response_model=schemi.ImpostazioniData, response_model_exclude_none=True)
@@ -204,6 +221,7 @@ def aggiorna(
     calendario: CalendarioDip,
     instradatore: RouterDip,
     bot: BotDip,
+    worker: WorkerDip,
 ) -> schemi.ImpostazioniData:
     """Cambia solo i campi che arrivano, e risponde con la pagina intera.
 
@@ -222,23 +240,17 @@ def aggiorna(
     # senza questa transazione una `PATCH` con due campi di cui il secondo è
     # storto salverebbe il primo e rifiuterebbe la richiesta: il riepilogo
     # resterebbe spostato a un giorno che non hai scelto, e la risposta direbbe
-    # che non è cambiato niente. È lo stesso ragionamento del runner delle
-    # migrazioni, e qui costa due righe.
-    conn.execute("BEGIN IMMEDIATE")
+    # che non è cambiato niente.
     try:
-        if corpo.orari is not None:
-            _scrivi_orari(conn, corpo.orari, ora)
-        if corpo.budget is not None:
-            _scrivi_budget(conn, corpo.budget, ora)
+        with transazione(conn):
+            if corpo.orari is not None:
+                _scrivi_orari(conn, corpo.orari, ora)
+            if corpo.budget is not None:
+                _scrivi_budget(conn, corpo.budget, ora)
     except dom.ValoreNonValido as errore:
-        conn.execute("ROLLBACK")
         raise HTTPException(status_code=422, detail=f"{errore}.") from errore
-    except Exception:
-        conn.execute("ROLLBACK")
-        raise
-    conn.execute("COMMIT")
 
-    return _leggi(conn, ora, settings, calendario, instradatore, bot)
+    return _leggi(conn, ora, settings, calendario, instradatore, bot, worker)
 
 
 def _scrivi_orari(conn: sqlite3.Connection, orari: schemi.ModificaOrari, ora: datetime) -> None:

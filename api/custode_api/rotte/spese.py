@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from custode_api import schemi
 from custode_api.dipendenze import ConnDip, OraDip
+from custode_core.db import transazione
 from custode_core.dominio import spese as dom
 from custode_core.formato import (
     etichetta_giorno,
@@ -370,7 +371,12 @@ def unisci_categoria(categoria_id: int, corpo: schemi.UnisciCategoria, conn: Con
     if categoria_id == destinazione:
         raise HTTPException(status_code=422, detail="Una categoria non si unisce a sé stessa.")
 
-    dom.unisci_categorie(conn, categoria_id, destinazione)
+    # Due scritture — le spese passano di categoria, la vecchia si archivia —
+    # e a metà strada ci sarebbero spese spostate sotto una categoria ancora
+    # attiva e vuota. Qui non è un errore di validazione a poter interrompere,
+    # è il processo che muore: costa una riga tenerle insieme.
+    with transazione(conn):
+        dom.unisci_categorie(conn, categoria_id, destinazione)
     return Response(status_code=204)
 
 
@@ -406,18 +412,23 @@ def modifica_spesa(
     È la strada per l'errore che si scopre dopo: un importo letto male, una
     data sbagliata, la categoria che non è quella. Prima di questa rotta
     l'unica uscita era «Annulla» sul messaggio Telegram appena ricevuto.
+
+    **Tutto o niente**, come le altre `PATCH` che scrivono più campi: ognuno si
+    valida appena prima di scriverlo, e senza transazione una descrizione vuota
+    rispondeva `422` con l'importo nuovo già nei conti.
     """
     try:
-        spesa = dom.modifica(
-            conn,
-            spesa_id,
-            ora,
-            centesimi=dom.in_centesimi(corpo.importo) if corpo.importo is not None else None,
-            descrizione=corpo.descrizione,
-            giorno=_giorno(corpo.data, ora.date()),
-            luogo=corpo.luogo,
-            categoria=corpo.categoria,
-        )
+        with transazione(conn):
+            spesa = dom.modifica(
+                conn,
+                spesa_id,
+                ora,
+                centesimi=dom.in_centesimi(corpo.importo) if corpo.importo is not None else None,
+                descrizione=corpo.descrizione,
+                giorno=_giorno(corpo.data, ora.date()),
+                luogo=corpo.luogo,
+                categoria=corpo.categoria,
+            )
     except dom.SpesaInesistente as errore:
         raise HTTPException(status_code=404, detail="Spesa non trovata.") from errore
     except ValueError as errore:

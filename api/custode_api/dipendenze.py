@@ -20,6 +20,7 @@ from custode_core.config import Settings
 from custode_core.db import connect
 from custode_core.formato import adesso
 from custode_router import Router
+from custode_worker.config import ImpostazioniWorker
 
 
 def prendi_settings(request: Request) -> Settings:
@@ -59,6 +60,28 @@ def prendi_bot(request: Request) -> ImpostazioniBot:
 
 
 BotDip = Annotated[ImpostazioniBot, Depends(prendi_bot)]
+
+
+def prendi_worker(request: Request) -> ImpostazioniWorker:
+    """Le manopole del worker, per sapere **da dove parte** un'impostazione calda.
+
+    L'API non fa girare nessun job — quelli stanno nel worker — ma la pagina
+    Impostazioni deve mostrare il valore con cui l'installazione è nata finché
+    non l'hai mai salvato, e per giorno e ora del riepilogo quel valore è
+    `WORKER_GIORNO_RIEPILOGO` / `WORKER_ORA_RIEPILOGO` (§8). Senza questo, la
+    pagina mostrava le costanti del registro e il worker ne usava altre: due
+    orari diversi per lo stesso job, e una nota che assicurava che quello
+    mostrato venisse dal `.env`.
+
+    Passa da qui e non da `get_impostazioni_worker()` per la ragione delle
+    altre: quella funzione legge il `.env` della macchina, e un test finirebbe
+    col dipendere da cosa c'è sul computer di chi lo lancia.
+    """
+    worker: ImpostazioniWorker = request.app.state.worker
+    return worker
+
+
+WorkerDip = Annotated[ImpostazioniWorker, Depends(prendi_worker)]
 
 
 def prendi_router(request: Request) -> Router:
