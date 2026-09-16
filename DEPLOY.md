@@ -49,7 +49,7 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `CUSTODE_DB_PATH` | `/data/custode.db` (percorso **dentro** il container) |
 | `CUSTODE_TIMEZONE` | `Europe/Rome` |
 | `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard su Pages, es. `https://custode.pages.dev` |
-| `CUSTODE_BUDGET_SETTIMANALE` | quanto conti di spendere in una settimana, in euro. **Lasciala vuota** se non ne vuoi uno: la Home non disegna il blocco «Spese · settimana», e il totale speso resta comunque visibile |
+| `CUSTODE_BUDGET_SETTIMANALE` | quanto conti di spendere in una settimana, in euro. È il **valore di partenza**: dal primo salvataggio nella pagina Impostazioni vale quello, e questa variabile smette di contare (§8). **Lasciala vuota** se non ne vuoi uno: la Home non disegna il blocco «Spese · settimana», e il totale speso resta comunque visibile |
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
@@ -123,8 +123,12 @@ salvato: si riprova dopo aver messo la chiave, senza aver perso niente.
 ### Provare il profilo e il job settimanale
 
 Il worker (`docker compose logs -f worker`) dice all'avvio quando farà scattare
-il riepilogo — di norma la domenica alle 21:00, configurabile con
-`WORKER_GIORNO_RIEPILOGO` e `WORKER_ORA_RIEPILOGO`.
+il riepilogo — di norma la domenica alle 21:00.
+
+`WORKER_GIORNO_RIEPILOGO` e `WORKER_ORA_RIEPILOGO` restano il **punto di
+partenza**: da §8 giorno e ora si cambiano dalla pagina Impostazioni, e da lì in
+poi vale quello che hai scelto. Il worker li rilegge in cima a ogni giro, quindi
+un cambio è attivo entro cinque minuti — **niente `docker compose restart`**.
 
 `/profilo` mostra cosa Custode ha capito di te e quanti segnali sono in attesa.
 All'inizio è vuoto: si riempie da solo con quello che gli racconti.

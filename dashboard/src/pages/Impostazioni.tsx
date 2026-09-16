@@ -1,24 +1,26 @@
-import { CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle } from 'lucide-react';
 import { PageHeader } from '../components/PageHeader';
 import { AsyncState } from '../components/AsyncState';
 import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
-import { Icon } from '../lib/icons';
 import { useTheme } from '../theme/ThemeContext';
+import { messaggioErrore } from '../lib/apiClient';
 import { useAggiornaImpostazioni, useImpostazioni } from '../hooks/useImpostazioni';
 import type { ImpostazioniData } from '../types/api';
 
-const APPROVAZIONE_OPTIONS = [
-  { value: 'chiedi', label: 'Chiedi' },
-  { value: 'automatico', label: 'Automatico' },
-] as const;
-
-type Approvazione = 'chiedi' | 'automatico';
-
+/**
+ * La pagina mostra **solo** le manopole che girano qualcosa (§8).
+ *
+ * Il prototipo ne aveva molte di più — digest mattutino, ora della voce di
+ * diario, ore di silenzio, le quattro approvazioni, il primo giorno della
+ * settimana — e il backend non le manda perché nessun modulo le legge ancora.
+ * Disegnarle comunque vorrebbe dire un interruttore che non interrompe: lo
+ * giri, non succede niente, e da lì in poi non ti fidi più nemmeno di quelli
+ * che funzionano. Torneranno col modulo che le legge.
+ */
 const CONNESSIONE_LABEL: Record<ImpostazioniData['connessioni'][number]['stato'], string> = {
   collegato: 'collegato',
-  attiva: 'attiva',
   non_collegato: 'non collegato',
 };
 
@@ -26,18 +28,20 @@ export default function Impostazioni() {
   const { data, isLoading, error, refetch } = useImpostazioni();
   const aggiorna = useAggiornaImpostazioni();
   const { theme } = useTheme();
+  const botCollegato =
+    data?.connessioni.find((c) => c.nome === 'Telegram')?.stato === 'collegato';
 
   function patchOrari(partial: Partial<ImpostazioniData['orari']>) {
-    if (!data) return;
-    aggiorna.mutate({ orari: { ...data.orari, ...partial } });
+    aggiorna.mutate({ orari: partial });
   }
-  function patchApprovazioni(partial: Partial<ImpostazioniData['approvazioni']>) {
-    if (!data) return;
-    aggiorna.mutate({ approvazioni: { ...data.approvazioni, ...partial } });
-  }
-  function patchBudget(partial: Partial<ImpostazioniData['budget']>) {
-    if (!data) return;
-    aggiorna.mutate({ budget: { ...data.budget, ...partial } });
+
+  /**
+   * Il budget è l'unico campo in cui «vuoto» è una scelta e non un errore: lo
+   * si manda come stringa vuota, e il backend lo legge come «nessun tetto» —
+   * da lì la Home smette di disegnare il blocco delle spese (§8.5).
+   */
+  function patchBudget(testo: string) {
+    aggiorna.mutate({ budget: { settimanale: testo.trim() === '' ? null : testo } });
   }
 
   return (
@@ -47,11 +51,27 @@ export default function Impostazioni() {
       <AsyncState isLoading={isLoading} error={error} onRetry={refetch}>
         {data && (
           <>
+            {/* L'icona segue lo stato vero del bot: una spunta verde accanto a
+                «non configurato» è la riga che ti fa scorrere oltre senza
+                leggerla, ed è proprio quella da leggere. */}
             <div className="row" style={{ padding: '13px 0', borderBottom: '1px solid var(--color-rule)', gap: 10 }}>
-              <CheckCircle size={15} color="var(--color-accent)" />
+              {botCollegato ? (
+                <CheckCircle size={15} color="var(--color-accent)" />
+              ) : (
+                <AlertCircle size={15} className="cu-muted" />
+              )}
               <span style={{ fontSize: 13 }}>{data.botStatoLabel}</span>
               <span className="cu-muted cu-mono" style={{ marginLeft: 'auto', fontSize: 12 }}>{data.apiStatoLabel}</span>
             </div>
+
+            {/* L'esito nei due versi. Quello che manca fa più danno dell'altro:
+                senza il ramo d'errore, una PATCH rifiutata lascia il campo come
+                l'hai scritto e la pagina identica a prima. */}
+            {aggiorna.isError && (
+              <div className="state-msg is-error" style={{ marginTop: 12 }} role="alert">
+                Non salvato — {messaggioErrore(aggiorna.error)}
+              </div>
+            )}
 
             <div className="cols">
               <div className="colL">
@@ -60,121 +80,72 @@ export default function Impostazioni() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
                     <div className="row">
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>Digest mattutino</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>Meteo, lezioni, task e spesa</div>
-                      </div>
-                      <input
-                        className="input cu-mono"
-                        style={{ width: 96, flex: 'none', textAlign: 'center' }}
-                        defaultValue={data.orari.digestMattutino}
-                        onBlur={(e) => patchOrari({ digestMattutino: e.target.value })}
-                      />
-                    </div>
-                    <div className="row">
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>Check-in serale lezioni</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>Minuti dopo l'ultima lezione</div>
-                      </div>
-                      <input
-                        className="input cu-mono"
-                        type="number"
-                        style={{ width: 96, flex: 'none', textAlign: 'center' }}
-                        defaultValue={data.orari.checkInMinutiDopo}
-                        onBlur={(e) => patchOrari({ checkInMinutiDopo: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div className="row">
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>Voce di diario</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>Quando Custode prepara il riassunto del giorno</div>
-                      </div>
-                      <input
-                        className="input cu-mono"
-                        style={{ width: 96, flex: 'none', textAlign: 'center' }}
-                        defaultValue={data.orari.voceDiarioOra}
-                        onBlur={(e) => patchOrari({ voceDiarioOra: e.target.value })}
-                      />
-                    </div>
-                    <div className="row">
-                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>Riepilogo settimanale</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>Giorno</div>
+                        <div className="cu-muted" style={{ fontSize: 12 }}>
+                          Quando Custode chiude la settimana del diario e ti manda il riepilogo
+                        </div>
                       </div>
-                      <div style={{ flex: 'none' }}>
+                      <div className="row" style={{ flex: 'none', gap: 8 }}>
                         <SegmentedControl
                           name="sett"
                           options={[{ value: 'domenica', label: 'Domenica' }, { value: 'lunedi', label: 'Lunedì' }]}
                           value={data.orari.riepilogoSettimanaleGiorno}
                           onChange={(v) => patchOrari({ riepilogoSettimanaleGiorno: v as 'domenica' | 'lunedi' })}
                         />
+                        <input
+                          className="input cu-mono"
+                          style={{ width: 82, flex: 'none', textAlign: 'center' }}
+                          aria-label="Ora del riepilogo settimanale"
+                          defaultValue={data.orari.riepilogoSettimanaleOra}
+                          key={data.orari.riepilogoSettimanaleOra}
+                          onBlur={(e) => patchOrari({ riepilogoSettimanaleOra: e.target.value })}
+                        />
                       </div>
                     </div>
+
                     <div className="row">
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 600 }}>Ore di silenzio</div>
-                        <div className="cu-muted" style={{ fontSize: 12 }}>Nessun messaggio in questa fascia</div>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>Margine dopo l'ultima lezione</div>
+                        <div className="cu-muted" style={{ fontSize: 12 }}>
+                          Minuti prima che Custode ti consideri a casa. Lo userà il check-in serale
+                          (§8.10), che non c'è ancora: intanto il numero è tuo.
+                        </div>
                       </div>
-                      <div className="row" style={{ flex: 'none', gap: 8 }}>
-                        <input
-                          className="input cu-mono"
-                          style={{ width: 82, textAlign: 'center' }}
-                          defaultValue={data.orari.oreSilenzio.inizio}
-                          onBlur={(e) => patchOrari({ oreSilenzio: { ...data.orari.oreSilenzio, inizio: e.target.value } })}
-                        />
-                        <span className="cu-muted">–</span>
-                        <input
-                          className="input cu-mono"
-                          style={{ width: 82, textAlign: 'center' }}
-                          defaultValue={data.orari.oreSilenzio.fine}
-                          onBlur={(e) => patchOrari({ oreSilenzio: { ...data.orari.oreSilenzio, fine: e.target.value } })}
-                        />
-                      </div>
+                      <input
+                        className="input cu-mono"
+                        type="number"
+                        min={0}
+                        max={720}
+                        style={{ width: 96, flex: 'none', textAlign: 'center' }}
+                        aria-label="Minuti dopo l'ultima lezione"
+                        defaultValue={data.orari.checkInMinutiDopo}
+                        key={data.orari.checkInMinutiDopo}
+                        onBlur={(e) => patchOrari({ checkInMinutiDopo: Number(e.target.value) })}
+                      />
                     </div>
                   </div>
                 </div>
 
                 <div>
-                  <h5 style={{ marginBottom: 14 }}>Approvazioni</h5>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    {(
-                      [
-                        { key: 'vociDiario', titolo: 'Voci di diario', nota: 'Se disattivi, entrano nel diario senza chiedere' },
-                        { key: 'nuoveRegole', titolo: 'Nuove regole di contesto', nota: 'Consigliato: chiedi sempre' },
-                        { key: 'categorieSpesa', titolo: 'Categorie di spesa nuove', nota: 'Quando Custode ne inventa una' },
-                        { key: 'scontrini', titolo: 'Scontrini letti da foto', nota: 'Importo e categoria dedotti dall\'immagine' },
-                      ] as const
-                    ).map((row) => (
-                      <div className="row" key={row.key}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600 }}>{row.titolo}</div>
-                          <div className="cu-muted" style={{ fontSize: 12 }}>{row.nota}</div>
-                        </div>
-                        <div style={{ flex: 'none' }}>
-                          <SegmentedControl
-                            name={`ap-${row.key}`}
-                            options={[...APPROVAZIONE_OPTIONS]}
-                            value={data.approvazioni[row.key]}
-                            onChange={(v) => patchApprovazioni({ [row.key]: v as Approvazione })}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h5 style={{ marginBottom: 14 }}>Connessioni</h5>
+                  <h5 style={{ marginBottom: 6 }}>Connessioni</h5>
+                  <p className="cu-muted" style={{ fontSize: 12, marginBottom: 10, lineHeight: 1.6 }}>
+                    Le credenziali stanno nel <code>.env</code> del Pi e da qui non si toccano (§9):
+                    questa lista dice solo cosa è collegato, e cosa smette di funzionare se non lo è.
+                  </p>
                   <div>
                     {data.connessioni.map((c) => (
-                      <div className="listrow" style={{ padding: '14px 0' }} key={c.nome}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 15, fontWeight: 600 }}>{c.nome}</div>
-                          <div className="cu-muted" style={{ fontSize: 12 }}>{c.dettaglio}</div>
+                      <div className="listrow" style={{ padding: '14px 0', display: 'block' }} key={c.nome}>
+                        <div className="row">
+                          <span style={{ fontSize: 15, fontWeight: 600 }}>{c.nome}</span>
+                          <span style={{ marginLeft: 'auto' }}>
+                            <Tag variant={c.stato === 'non_collegato' ? 'outline' : 'accent'}>
+                              {CONNESSIONE_LABEL[c.stato]}
+                            </Tag>
+                          </span>
                         </div>
-                        <Tag variant={c.stato === 'non_collegato' ? 'outline' : 'accent'}>{CONNESSIONE_LABEL[c.stato]}</Tag>
-                        <button className="btn btn-ghost" style={{ marginLeft: 10 }}>
-                          {c.stato === 'non_collegato' ? 'Collega' : 'Gestisci'}
-                        </button>
+                        <div className="cu-muted" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+                          {c.dettaglio}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -183,54 +154,34 @@ export default function Impostazioni() {
 
               <div className="colR">
                 <div>
-                  <h5 style={{ marginBottom: 14 }}>Aspetto</h5>
-                  <div className="row" style={{ marginBottom: 14 }}>
-                    <span style={{ flex: 1, fontSize: 14 }}>Tema</span>
-                    <span className="cu-muted" style={{ fontSize: 13 }}>{theme === 'giorno' ? 'Giorno' : 'Notte'}</span>
-                  </div>
+                  <h5 style={{ marginBottom: 14 }}>Budget</h5>
                   <div className="row">
-                    <span style={{ flex: 1, fontSize: 14 }}>Prima settimana</span>
-                    <div style={{ flex: 'none' }}>
-                      <SegmentedControl
-                        name="wk"
-                        options={[{ value: 'lunedi', label: 'Lunedì' }, { value: 'domenica', label: 'Domenica' }]}
-                        value={data.primaSettimana}
-                        onChange={(v) => aggiorna.mutate({ primaSettimana: v as 'lunedi' | 'domenica' })}
-                      />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14 }}>Settimanale</div>
+                      <div className="cu-muted" style={{ fontSize: 12 }}>
+                        Vuoto = nessun tetto, e la Home non disegna il blocco delle spese
+                      </div>
                     </div>
+                    <input
+                      className="input cu-mono"
+                      style={{ width: 110, flex: 'none', textAlign: 'right' }}
+                      aria-label="Budget settimanale in euro"
+                      placeholder="—"
+                      // `key` rimonta il campo quando il valore cambia davvero:
+                      // `defaultValue` da solo non si aggiorna dopo un salvataggio,
+                      // e dopo averlo svuotato il campo mostrerebbe ancora il vecchio.
+                      key={String(data.budget.settimanale)}
+                      defaultValue={data.budget.settimanale?.toFixed(2) ?? ''}
+                      onBlur={(e) => patchBudget(e.target.value)}
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <h5 style={{ marginBottom: 14 }}>Budget</h5>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    <div className="row">
-                      <span style={{ flex: 1, fontSize: 14 }}>Settimanale</span>
-                      <input
-                        className="input cu-mono"
-                        style={{ width: 110, flex: 'none', textAlign: 'right' }}
-                        defaultValue={data.budget.settimanale.toFixed(2)}
-                        onBlur={(e) => patchBudget({ settimanale: Number(e.target.value.replace(',', '.')) || data.budget.settimanale })}
-                      />
-                    </div>
-                    <div className="row">
-                      <span style={{ flex: 1, fontSize: 14 }}>Mensile</span>
-                      <input
-                        className="input cu-mono"
-                        style={{ width: 110, flex: 'none', textAlign: 'right' }}
-                        defaultValue={data.budget.mensile.toFixed(2)}
-                        onBlur={(e) => patchBudget({ mensile: Number(e.target.value.replace(',', '.')) || data.budget.mensile })}
-                      />
-                    </div>
-                    <div className="row">
-                      <span style={{ flex: 1, fontSize: 14 }}>Soglia di avviso</span>
-                      <input
-                        className="input cu-mono"
-                        style={{ width: 110, flex: 'none', textAlign: 'right' }}
-                        defaultValue={data.budget.sogliaAvvisoPercento}
-                        onBlur={(e) => patchBudget({ sogliaAvvisoPercento: Number(e.target.value) || data.budget.sogliaAvvisoPercento })}
-                      />
-                    </div>
+                  <h5 style={{ marginBottom: 14 }}>Aspetto</h5>
+                  <div className="row">
+                    <span style={{ flex: 1, fontSize: 14 }}>Tema</span>
+                    <span className="cu-muted" style={{ fontSize: 13 }}>{theme === 'giorno' ? 'Giorno' : 'Notte'}</span>
                   </div>
                 </div>
 
@@ -246,20 +197,9 @@ export default function Impostazioni() {
                       <span className="cu-mono cu-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{data.dati.speseRegistrate}</span>
                     </div>
                     <div className="listrow" style={{ padding: '11px 0' }}>
-                      <span style={{ fontSize: 14 }}>Messaggi al bot</span>
-                      <span className="cu-mono cu-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{data.dati.messaggiBot}</span>
-                    </div>
-                    <div className="listrow" style={{ padding: '11px 0' }}>
                       <span style={{ fontSize: 14 }}>Ultimo backup</span>
                       <span className="cu-mono cu-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{data.dati.ultimoBackupLabel}</span>
                     </div>
-                  </div>
-                  <div className="row" style={{ gap: 6, marginTop: 14 }}>
-                    <button className="btn btn-secondary">
-                      <Icon name="download" size={15} />
-                      Esporta tutto
-                    </button>
-                    <button className="btn btn-ghost">Cancella un periodo</button>
                   </div>
                 </div>
 
@@ -272,6 +212,9 @@ export default function Impostazioni() {
                         <Tag variant={data.sistema.apiOnline ? 'accent' : 'outline'}>{data.sistema.apiOnline ? 'online' : 'offline'}</Tag>
                       </span>
                     </div>
+                    {/* L'unico posto da cui si vede che il worker è fermo: la
+                        pagina Calendario direbbe «niente in programma», che
+                        rispetto all'archivio è pure vero (§8.10). */}
                     <div className="listrow" style={{ padding: '9px 0' }}>
                       <span style={{ fontSize: 14 }}>Ultimo sync calendario</span>
                       <span className="cu-mono cu-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{data.sistema.ultimoSyncCalendarioLabel}</span>
@@ -281,6 +224,11 @@ export default function Impostazioni() {
                       <span className="cu-mono cu-muted" style={{ marginLeft: 'auto', fontSize: 13 }}>{data.sistema.versione}</span>
                     </div>
                   </div>
+                  {data.notaLabel && (
+                    <div className="cu-muted" style={{ fontSize: 12, marginTop: 12, lineHeight: 1.6 }}>
+                      {data.notaLabel}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -288,7 +236,7 @@ export default function Impostazioni() {
         )}
       </AsyncState>
 
-      <AskBar placeholder="«manda il digest alle 7 invece che alle 7:30»" />
+      <AskBar placeholder="«manda il riepilogo il lunedì invece che la domenica»" />
     </>
   );
 }

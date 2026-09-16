@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
 from custode_core.formato import (
+    etichetta_da_quando,
     etichetta_data_lunga,
     etichetta_data_ora,
     etichetta_giorno,
@@ -92,3 +93,51 @@ def test_inizio_settimana(giorno: date, atteso: date) -> None:
 def test_etichetta_quando(giorno: date, atteso: str) -> None:
     """La preposizione segue l'etichetta: «di ieri» ma «del 26 ago»."""
     assert etichetta_quando(giorno, ORA.date()) == atteso
+
+
+# — «da quanto?» (§8) —
+
+
+@pytest.mark.parametrize(
+    ("indietro", "atteso"),
+    [
+        (timedelta(0), "adesso"),
+        (timedelta(seconds=59), "adesso"),
+        (timedelta(minutes=1), "1 minuto fa"),
+        (timedelta(minutes=22), "22 minuti fa"),
+        (timedelta(minutes=59), "59 minuti fa"),
+        # Oltre l'ora si dice l'ora: si confronta con l'orologio senza sottrarre.
+        (timedelta(hours=2), "oggi alle 08:00"),
+        (timedelta(hours=26), "ieri alle 08:00"),
+        # Oltre il giorno si contano i giorni: è la scala in cui ci si accorge
+        # che il worker è fermo (§8.10).
+        (timedelta(days=3), "3 giorni fa"),
+        (timedelta(days=30), "30 giorni fa"),
+        (timedelta(days=45), "il 2 ago"),
+    ],
+)
+def test_etichetta_da_quando(indietro: timedelta, atteso: str) -> None:
+    ora = datetime(2026, 9, 16, 10, 0)
+    assert etichetta_da_quando(ora - indietro, ora) == atteso
+
+
+def test_da_quando_un_istante_nel_futuro_vale_adesso() -> None:
+    """Orologio del Pi spostato indietro, o una riga scritta a mano.
+
+    È un'assurdità che non deve diventare una frase assurda in pagina («fra -3
+    giorni»): vale «adesso», che è il minimo che si possa dire di vero.
+    """
+    ora = datetime(2026, 9, 16, 10, 0)
+    assert etichetta_da_quando(ora + timedelta(hours=5), ora) == "adesso"
+
+
+def test_da_quando_il_confine_dei_giorni_e_il_giorno_di_calendario() -> None:
+    """«Ieri alle 23:50» visto alle 00:10 è ieri, anche se sono venti minuti.
+
+    Contare le 24 ore direbbe «20 minuti fa», che è vero ma risponde a un'altra
+    domanda: chi legge sta cercando l'ultima volta che è successo, e la cerca
+    nei giorni del calendario.
+    """
+    ora = datetime(2026, 9, 16, 0, 10)
+    assert etichetta_da_quando(datetime(2026, 9, 15, 23, 50), ora) == "20 minuti fa"
+    assert etichetta_da_quando(datetime(2026, 9, 15, 22, 0), ora) == "ieri alle 22:00"

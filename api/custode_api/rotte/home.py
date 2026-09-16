@@ -16,6 +16,7 @@ from custode_api import schemi
 from custode_api.dipendenze import CalendarioDip, ConnDip, ImpostazioniDip, OraDip
 from custode_api.rotte.presentazione import evento_calendario, task_item, voce_spesa
 from custode_core.dominio import calendario as dom_calendario
+from custode_core.dominio import impostazioni as dom_impostazioni
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
@@ -136,6 +137,15 @@ def home(
         calendarioNotaVuoto=nota_calendario,
         listaSpesa=[voce_spesa(v) for v in da_prendere[:MAX_VOCI_SPESA]],
         speseSettimana=_spese_settimana(
-            della_settimana, impostazioni.budget_settimanale, scontrini_in_attesa
+            della_settimana,
+            # Il budget viene dalla tabella delle impostazioni se l'hai scelto
+            # tu dalla pagina, altrimenti dal `.env` — che resta il punto di
+            # partenza di un'installazione, non una seconda fonte di verità
+            # (§8). Si rilegge ad ogni richiesta, quindi un cambio si vede al
+            # ricaricamento successivo e non al riavvio del container.
+            dom_impostazioni.BUDGET_SETTIMANALE.leggi(
+                conn, default=impostazioni.budget_settimanale
+            ),
+            scontrini_in_attesa,
         ),
     )

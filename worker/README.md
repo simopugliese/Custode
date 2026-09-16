@@ -20,6 +20,12 @@ regole di contesto approvate (§8.10), backup cifrato del DB (§9).
   passa al router: un tipo che crei dalla pagina Calendario entra nella
   classificazione del giro dopo, senza riavviare niente.
 - `backup.py` — il backup giornaliero del database e il suo ripristino (§9).
+
+Giorno e ora del riepilogo si rileggono da `impostazioni` **in cima a ogni
+giro**, non all'avvio (§8): è tutto il meccanismo con cui un cambio dalla pagina
+Impostazioni è attivo entro cinque minuti senza riavviare il container. Il
+`.env` (`WORKER_GIORNO_RIEPILOGO`, `WORKER_ORA_RIEPILOGO`) resta il valore di
+partenza.
 - `ripristino.py` — il comando del runbook: `python -m custode_worker.ripristino`.
 - `telegram.py` — mandare un messaggio, una chiamata HTTP e basta.
 - `main.py` — il ciclo: sveglia, «cosa è dovuto?», dormi.

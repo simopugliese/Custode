@@ -13,6 +13,7 @@ from pydantic_settings import SettingsConfigDict
 
 from custode_api.dipendenze import prendi_ora
 from custode_api.main import crea_app
+from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 
@@ -88,6 +89,26 @@ def calendario() -> ImpostazioniCalendario:
     return _CalendarioDiTest()
 
 
+class _BotDiTest(ImpostazioniBot):
+    """Ignora il `.env` dello sviluppatore, come `_CalendarioDiTest`.
+
+    Senza, un `.env` locale con `TELEGRAM_BOT_TOKEN` farebbe risultare il bot
+    collegato in macchina e scollegato in CI — cioè un test che dipende da cosa
+    c'è sul computer di chi lo lancia.
+    """
+
+    model_config = SettingsConfigDict(env_prefix="TELEGRAM_", env_file=None, extra="ignore")
+
+
+@pytest.fixture
+def bot() -> ImpostazioniBot:
+    """Bot non configurato: è come nasce un'installazione.
+
+    Un test che vuole vederlo collegato ridefinisce questa fixture.
+    """
+    return _BotDiTest()
+
+
 @pytest.fixture
 def client(
     fai_settings: Callable[..., Settings],
@@ -96,6 +117,7 @@ def client(
     modello: RouterFinto,
     budget: float | None,
     calendario: ImpostazioniCalendario,
+    bot: ImpostazioniBot,
 ) -> Iterator[TestClient]:
     """API completa su un DB temporaneo, con "adesso" fissato.
 
@@ -106,6 +128,7 @@ def client(
         fai_settings(ambiente="test", db_path=db_path, budget_settimanale=budget),
         router=modello,  # type: ignore[arg-type]
         calendario=calendario,
+        bot=bot,
     )
     # L'ora è iniettata: senza, le etichette ("oggi", "giovedì") e la sezione
     # in cui finisce un task dipenderebbero da quando girano i test.

@@ -21,7 +21,6 @@ MODULI: dict[str, tuple[list[str], str, str]] = {
     "/api/regole/{regola_id}": (["PATCH"], "regole di contesto", "§8.10"),
     "/api/regole/{regola_id}/approva": (["POST"], "regole di contesto", "§8.10"),
     "/api/regole/{regola_id}/scarta": (["POST"], "regole di contesto", "§8.10"),
-    "/api/impostazioni": (["GET", "PATCH"], "impostazioni", "§8"),
 }
 
 

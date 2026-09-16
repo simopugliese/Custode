@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 
 from fastapi import FastAPI
@@ -29,19 +28,14 @@ from custode_api.rotte import (
     task,
 )
 from custode_api.rotte import calendario as rotta_calendario
+from custode_api.rotte import impostazioni as rotta_impostazioni
+from custode_bot.config import ImpostazioniBot, get_impostazioni_bot
 from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
-from custode_core.config import Settings, get_settings
+from custode_core.config import Settings, get_settings, versione
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
 from custode_router import Router
-
-
-def _versione() -> str:
-    try:
-        return version("custode")
-    except PackageNotFoundError:  # eseguito da sorgenti, senza installazione
-        return "0.0.0+dev"
 
 
 class StatoSalute(BaseModel):
@@ -58,11 +52,13 @@ def crea_app(
     settings: Settings | None = None,
     router: Router | None = None,
     calendario: ImpostazioniCalendario | None = None,
+    bot: ImpostazioniBot | None = None,
 ) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
     instradatore = router or Router()
     calendario_impostazioni = calendario or get_impostazioni_calendario()
+    bot_impostazioni = bot or get_impostazioni_bot()
     configura_log(impostazioni.log_level)
     log = logging.getLogger("custode.api")
 
@@ -90,7 +86,7 @@ def crea_app(
     app = FastAPI(
         lifespan=ciclo_di_vita,
         title="Custode API",
-        version=_versione(),
+        version=versione(),
         # In produzione l'API sta dietro Cloudflare Access, ma non c'è motivo
         # di pubblicare comunque lo schema: superficie in meno (§9).
         docs_url=None if in_produzione else "/docs",
@@ -115,7 +111,7 @@ def crea_app(
         sano = db_ok and migrazioni_ok
         corpo = StatoSalute(
             stato="ok" if sano else "degradato",
-            versione=_versione(),
+            versione=versione(),
             ambiente=impostazioni.ambiente,
             db="ok" if db_ok else "irraggiungibile",
             migrazioni="ok" if migrazioni_ok else "fallite",
@@ -132,6 +128,7 @@ def crea_app(
     app.include_router(lista_spesa.router)
     app.include_router(spese.router)
     app.include_router(abitudini.router)
+    app.include_router(rotta_impostazioni.router)
     # Per ultimo: i moduli non ancora attivi non devono coprire una rotta vera.
     app.include_router(non_attivi.router)
 
@@ -140,6 +137,7 @@ def crea_app(
     app.state.settings = impostazioni
     app.state.router = instradatore
     app.state.calendario = calendario_impostazioni
+    app.state.bot = bot_impostazioni
 
     return app
 

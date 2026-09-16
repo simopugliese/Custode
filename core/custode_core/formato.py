@@ -171,6 +171,36 @@ def euro(centesimi: int) -> str:
     return f"{centesimi / 100:.2f}".replace(".", ",") + " €"
 
 
+def etichetta_da_quando(momento: datetime, ora: datetime) -> str:
+    """ "adesso", "22 minuti fa", "oggi alle 08:40", "ieri alle 21:00", "3 giorni fa".
+
+    Risponde a «è ancora vivo?», non a «quando è successo»: per questo entro
+    l'ora conta i minuti — è la scala in cui si guarda un job che gira ogni
+    cinque — e oltre il giorno conta i giorni, che è la scala in cui ci si
+    accorge che il worker è fermo (§8.10). In mezzo dice l'ora, perché «oggi
+    alle 08:40» si confronta con l'orologio senza fare sottrazioni.
+
+    Un momento nel futuro — orologio del Pi spostato indietro, o una riga
+    scritta a mano — vale «adesso» invece di «fra -3 giorni»: è un'assurdità
+    che non deve diventare una frase assurda in pagina.
+    """
+    secondi = (ora - momento).total_seconds()
+    if secondi < 60:
+        return "adesso"
+    minuti = int(secondi // 60)
+    if minuti < 60:
+        return f"{plurale(minuti, 'minuto', 'minuti')} fa"
+
+    giorni = (ora.date() - momento.date()).days
+    if giorni == 0:
+        return f"oggi alle {etichetta_ora(momento)}"
+    if giorni == 1:
+        return f"ieri alle {etichetta_ora(momento)}"
+    if giorni <= 30:
+        return f"{plurale(giorni, 'giorno', 'giorni')} fa"
+    return f"il {etichetta_giorno(momento.date(), ora.date())}"
+
+
 def plurale(quantita: int, singolare: str, plurale_: str) -> str:
     """ "1 task" / "3 task" — evita di scrivere ogni volta lo stesso ternario."""
     return f"{quantita} {singolare if quantita == 1 else plurale_}"

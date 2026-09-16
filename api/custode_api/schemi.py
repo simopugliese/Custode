@@ -441,6 +441,101 @@ class TipoEventoSalvato(BaseModel):
     label: str
 
 
+# — Impostazioni (§8) —
+
+
+class Connessione(BaseModel):
+    """Un pezzo di mondo esterno, e se è collegato.
+
+    In sola lettura: le credenziali stanno nel `.env` (§9) e da qui non si
+    toccano. Serve a rispondere alla domanda che si fa davanti a una pagina
+    vuota — «l'ho collegato o no?» — senza entrare sul Pi a leggere un file.
+    """
+
+    nome: str
+    dettaglio: str
+    stato: str
+    """'collegato' | 'non_collegato'."""
+
+
+class OrariImpostazioni(BaseModel):
+    """Quando Custode fa le cose che fa da solo.
+
+    Ci sono **solo** gli orari che qualcuno legge davvero. Il digest mattutino
+    (§8.13), l'ora della voce di diario e le ore di silenzio erano nel contratto
+    da prima dei loro moduli: mandarli adesso vorrebbe dire una manopola che non
+    gira niente, e una manopola così è peggio di una assente — la giri, non
+    succede nulla, e smetti di fidarti della pagina.
+    """
+
+    riepilogoSettimanaleGiorno: str
+    """'domenica' | 'lunedi' — quando chiudere la settimana del diario (§8.4)."""
+    riepilogoSettimanaleOra: str
+    """HH:MM. Sta accanto al giorno perché mezzo interruttore non è un
+    interruttore: poter scegliere il giorno e non l'ora vuol dire tornare sul Pi
+    comunque."""
+    checkInMinutiDopo: int
+    """Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
+    Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,
+    come `calendar_events.tipo` esisteva prima del tagging."""
+
+
+class BudgetImpostazioni(BaseModel):
+    settimanale: float | None = None
+    """In euro. **Assente** quando non l'hai mai impostato, e allora la Home
+    omette il blocco delle spese: una barra ha bisogno di un tetto (§8.5)."""
+
+
+class DatiImpostazioni(BaseModel):
+    """Quanto c'è dentro, e quando è stato messo al sicuro l'ultima volta."""
+
+    vociDiario: int
+    speseRegistrate: int
+    ultimoBackupLabel: str
+
+
+class SistemaImpostazioni(BaseModel):
+    apiOnline: bool
+    ultimoSyncCalendarioLabel: str
+    """Da quanto il calendario non si aggiorna. È l'unico posto da cui si vede
+    che il worker è fermo da giorni (§8.10): la pagina Calendario direbbe
+    «niente in programma», che rispetto all'archivio è pure vero."""
+    versione: str
+
+
+class ImpostazioniData(BaseModel):
+    botStatoLabel: str
+    apiStatoLabel: str
+    orari: OrariImpostazioni
+    budget: BudgetImpostazioni
+    connessioni: list[Connessione]
+    dati: DatiImpostazioni
+    sistema: SistemaImpostazioni
+    notaLabel: str | None = None
+    """Cosa vale ancora dal `.env` perché non l'hai mai deciso da qui. Assente
+    quando hai deciso tutto."""
+
+
+class ModificaOrari(BaseModel):
+    riepilogoSettimanaleGiorno: str | None = None
+    riepilogoSettimanaleOra: str | None = None
+    checkInMinutiDopo: int | None = None
+
+
+class ModificaBudget(BaseModel):
+    settimanale: float | str | None = None
+    """`null` **cancella** il budget e riporta la Home a non disegnare il
+    blocco; una stringa vuota vale come `null`, perché è quello che manda un
+    campo di testo svuotato a mano."""
+
+
+class ModificaImpostazioni(BaseModel):
+    """Corpo di `PATCH /api/impostazioni`: solo i blocchi che vuoi cambiare."""
+
+    orari: ModificaOrari | None = None
+    budget: ModificaBudget | None = None
+
+
 # — corpi delle richieste —
 
 

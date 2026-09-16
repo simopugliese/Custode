@@ -14,6 +14,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 from custode_core.db import connect
@@ -42,6 +43,22 @@ def prendi_calendario(request: Request) -> ImpostazioniCalendario:
 
 
 CalendarioDip = Annotated[ImpostazioniCalendario, Depends(prendi_calendario)]
+
+
+def prendi_bot(request: Request) -> ImpostazioniBot:
+    """La configurazione del bot, per dire se è collegato (§8).
+
+    L'API non parla con Telegram e non deve: di questo oggetto guarda soltanto
+    se un token c'è, mai cosa contiene. Passa da qui e non da
+    `get_impostazioni_bot()` per la stessa ragione delle altre — quella funzione
+    legge il `.env` della macchina, e un test finirebbe col dipendere da cosa
+    c'è sul computer di chi lo lancia.
+    """
+    bot: ImpostazioniBot = request.app.state.bot
+    return bot
+
+
+BotDip = Annotated[ImpostazioniBot, Depends(prendi_bot)]
 
 
 def prendi_router(request: Request) -> Router:
