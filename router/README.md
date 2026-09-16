@@ -76,6 +76,11 @@ target. Gli altri compiti della
 tabella hanno il provider già deciso e il client pronto, ma nessun modulo li
 chiama ancora.
 
+Entrambi i provider sono **provati sul Pi con le chiavi vere**, non solo contro
+i trasporti finti dei test: rispondono in esercizio. È una verifica diversa da
+quella che fa la suite — lì si prova come la richiesta è costruita, qui che il
+fornitore risponde da quella macchina, con quella chiave, attraverso quella rete.
+
 Perché la categoria di una spesa va a Claude e non a DeepSeek: **assegnare** una
 spesa a una categoria che già esiste viaggia nella stessa chiamata che
 interpreta il messaggio, e non costa niente in più; **crearne una nuova** è la

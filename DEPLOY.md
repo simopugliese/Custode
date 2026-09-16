@@ -180,6 +180,10 @@ docker compose build --build-arg WHISPER_MODEL=small-q5_1 whisper
 
 ### Se una trascrizione esce storta
 
+Capita, ed è la cosa da tarare: sul Pi la trascrizione funziona, ma ogni tanto
+non capisce bene. Le leve sotto sono in ordine di quanto costano, non di quanto
+rendono — la terza è quella che sposta davvero l'ago.
+
 Il bot manda a Whisper i **nomi che usi davvero** — abitudini, categorie di
 spesa, reparti, task aperti — come prompt iniziale: sono le parole che Whisper
 indovina peggio dal suono, ed esattamente quelle che poi servono per agganciare
