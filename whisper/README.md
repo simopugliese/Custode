@@ -25,6 +25,13 @@ l'accuratezza è già solida — i modelli più grandi servirebbero soprattutto 
 compensare rumore di fondo. Si cambia con `WHISPER_MODELLO` e l'argomento
 `WHISPER_MODEL` del build.
 
+**Sul Pi vero, l'ultima frase regge solo a metà.** Un vocale si trascrive, nei
+tempi previsti, ma a volte il testo non è quello che è stato detto. Era in parte
+prevedibile — `base` è addestrato quasi tutto su inglese — e la taratura è un
+lavoro aperto: le tre leve, e il modo di provarne una alla volta, stanno in
+DEPLOY.md, «Se una trascrizione esce storta». Cambiarne due insieme non dice
+quale ha funzionato.
+
 ## Il vocabolario di chi parla
 
 `POST /trascrivi` accetta, oltre al file, un campo `contesto`: i nomi che il

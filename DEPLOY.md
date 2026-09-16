@@ -55,7 +55,8 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
 | `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: riassunto del diario, riepilogo settimanale, profilo (§8.4), categorie e lettura degli scontrini (§8.5) |
 
-Il token del tunnel resta commentato finché non arriva la sua fase.
+Il token del tunnel resta commentato finché non arriva la fase 1 di §12 — cioè
+il § 4 qui sotto, l'unico pezzo dello scheletro ancora da fare.
 
 Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
 perdono il linguaggio libero (DeepSeek) e tutto ciò che passa da Claude —
@@ -178,6 +179,10 @@ docker compose build --build-arg WHISPER_MODEL=small-q5_1 whisper
 ```
 
 ### Se una trascrizione esce storta
+
+Capita, ed è la cosa da tarare: sul Pi la trascrizione funziona, ma ogni tanto
+non capisce bene. Le leve sotto sono in ordine di quanto costano, non di quanto
+rendono — la terza è quella che sposta davvero l'ago.
 
 Il bot manda a Whisper i **nomi che usi davvero** — abitudini, categorie di
 spesa, reparti, task aperti — come prompt iniziale: sono le parole che Whisper
@@ -339,7 +344,13 @@ sia quello dei container, cioè dopo un `docker compose up -d`.
 > un'ora. Non è un difetto — è il prezzo di non richiedere un token nuovo ad
 > ogni sincronizzazione.
 
-## 4. Cloudflare Tunnel + Access **[da fare — fase 8]**
+## 4. Cloudflare Tunnel + Access **[da fare — fase 1]**
+
+Fase 1 e non una delle ultime: in §12 il tunnel sta nello **scheletro**, ed è
+l'unico pezzo di quella fase rimasto indietro. Tutto il resto — bot, Whisper,
+router, database, Compose, CI — gira da un pezzo, e i moduli costruiti sopra
+sono arrivati fino alla fase 6. Finché questo manca, dashboard e API si
+raggiungono **solo dal Pi**: da fuori casa non c'è niente.
 
 In sintesi, quando ci arriviamo:
 
@@ -354,7 +365,7 @@ In sintesi, quando ci arriviamo:
 4. Verificare da rete esterna: senza login l'endpoint deve rispondere con la
    pagina di Access, mai con i dati.
 
-## 5. Dashboard su Cloudflare Pages **[da fare — fase 9]**
+## 5. Dashboard su Cloudflare Pages **[da fare — fase 9, «dashboard completa»]**
 
 Build da `dashboard/` (`npm run build`, output in `dist/`), progetto Pages
 collegato al repo, variabile d'ambiente `VITE_API_BASE_URL` puntata
@@ -377,7 +388,8 @@ docker compose up --build -d
 ```
 
 L'automazione di questo passaggio (deploy solo a pipeline verde + rollback
-automatico) arriva con la fase CI/CD, §10.
+automatico) è quella descritta in §10, e arriva col tunnel: senza, non c'è
+niente da cui far partire un deploy che non sia la mano su questa tastiera.
 
 ## 7. Backup e restore del database
 
