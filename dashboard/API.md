@@ -51,10 +51,10 @@ file ne descrive solo la forma a endpoint per endpoint.
 
 Attivi con dati reali su SQLite: **Home**, **Task**, **Lista della spesa**,
 **Diario**, **Spese**, **Abitudini**, **Calendario** — con i suoi tipi di evento,
-che da §8.10 pezzo 6 si creano e si modificano da lì — **Impostazioni** e la
-barra **«A Custode»**.
-Restano a `501` le **regole di contesto** (§8.10) e i **corsi** (§8.11) — vedi
-la roadmap in `../ARCHITECTURE.md` §12.
+che da §8.10 pezzo 6 si creano e si modificano da lì — **Impostazioni**, le
+**regole di contesto** dettate da te (§8.10) e la barra **«A Custode»**.
+Resta a `501` solo il modulo **corsi** (§8.11) — vedi la roadmap in
+`../ARCHITECTURE.md` §12.
 
 C'è inoltre `GET /api/health`, non consumato dalla dashboard: serve allo smoke
 test post-deploy (§10) e risponde `503` se il database non è raggiungibile.
@@ -466,6 +466,52 @@ worker non ne ha scritto uno: campo assente ≠ campo vuoto.
 `POST /api/regole/:id/approva` → `RegolaAttiva`
 `POST /api/regole/:id/scarta` → `204`
 `PATCH /api/regole/:id` body `{ stato: "attiva" | "pausa" }` → `RegolaAttiva`
+
+**Da qui non si creano.** Una regola si scrive **a parole**, dalla barra «A
+Custode» in fondo alla pagina o dal bot: è un'azione dell'interprete come
+aggiungere un task, quindi i due canali non possono divergere. Il bottone
+«Scrivine una» porta il cursore nella barra invece di aprire una form con
+cinque campi, che sarebbe un secondo modo di fare la stessa cosa da tenere
+allineato al primo per sempre. La conferma ripete cosa ha capito — «Regola
+attiva: prendi la creatina — tutti i giorni alle 19:00» — e lascia il bottone
+«Annulla» come ogni azione decisa da un modello: una regola sbagliata non si
+vede subito come un task sbagliato, si vede la prima volta che scatta all'ora
+sbagliata.
+
+**Tre tipi di trigger, non quattro.** `orario` (a un'ora del giorno, tutti i
+giorni o solo in quelli scelti), `prima_evento` e `dopo_evento` (agganciati
+allo **slug di un tipo** di impegno — «prima di ogni lezione» — con un anticipo
+in minuti). Il `pattern` che §8.10 elenca non compare né in `tipiTrigger` né nel
+database: è il trigger delle auto-proposte, e mostrarlo prometterebbe una cosa
+che non si può ancora scegliere.
+
+**`proposte` è una lista vuota, e resta un campo.** Le proposte le scriverà il
+job delle auto-proposte; finché non c'è, «il modulo c'è e non ha niente da
+dire» è una lista vuota, che è diverso da un campo omesso — la regola scritta in
+cima a questo file. Per la stessa ragione `approva` esiste e risponde `409` su
+qualunque regola che non sia una proposta: è la verità, non un errore.
+
+`regoleAttive` porta **anche quelle in pausa**, con `stato: "pausa"` e
+`attenuata: true`: sono le regole che hai, e la pausa è un interruttore su
+ognuna, non un posto diverso dove stanno. `descrizione` è quando scatta, detto a
+parole, ed è la **stessa frase** che arriva nel promemoria su Telegram — la
+compone il dominio, in un posto solo.
+
+`PATCH` mette in pausa e rimette in piedi, ed è idempotente: rimandare lo stato
+che ha già non è un errore, perché due tap sullo stesso segmento non devono dare
+un `409`. Per **togliere** una regola c'è `scarta`, che è la sola strada: la
+pausa la lascia lì. Una scartata non torna attiva (`409`) e non si cancella —
+§8.10 promette che Custode non ne riproponga una, e mantenerlo richiede che la
+riga resti.
+
+`stats.scattateSettimana` e `attivitaSettimana` arrivano da `job_runs`, la
+stessa tabella in cui il worker segna ogni scatto per non ripetersi: non c'è un
+secondo registro da tenere allineato, e il numero è letteralmente ciò che ti è
+stato mandato. La settimana è quella corrente da lunedì, come nel diario e nelle
+spese. Il totale conta anche gli scatti di regole poi scartate: risponde a
+«quanto ti ha scritto Custode questa settimana», e quella roba te l'ha scritta.
+`attivitaNota` dice *perché* l'elenco è vuoto quando hai delle regole che non
+sono ancora scattate — senza, non si distingue dal motore fermo.
 
 ## Impostazioni
 

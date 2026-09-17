@@ -17,10 +17,6 @@ MODULI: dict[str, tuple[list[str], str, str]] = {
     "/api/lezioni": (["GET"], "lezioni e corsi", "§8.11"),
     "/api/lezioni/piani/{piano_id}/rigenera": (["POST"], "lezioni e corsi", "§8.11"),
     "/api/lezioni/piani/{piano_id}/manda-al-bot": (["POST"], "lezioni e corsi", "§8.11"),
-    "/api/regole": (["GET"], "regole di contesto", "§8.10"),
-    "/api/regole/{regola_id}": (["PATCH"], "regole di contesto", "§8.10"),
-    "/api/regole/{regola_id}/approva": (["POST"], "regole di contesto", "§8.10"),
-    "/api/regole/{regola_id}/scarta": (["POST"], "regole di contesto", "§8.10"),
 }
 
 

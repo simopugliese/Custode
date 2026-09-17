@@ -6,7 +6,11 @@ import { AskBar } from '../components/AskBar';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { Tag } from '../components/Tag';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
 import { useApprovaRegola, useImpostaStatoRegola, useRegole, useScartaRegola } from '../hooks/useRegole';
+
+// La barra in fondo alla pagina: «Scrivine una» ci porta il cursore.
+const ASK_ID = 'regole-ask';
 
 const STATO_OPTIONS = [
   { value: 'attiva', label: 'Attiva' },
@@ -36,6 +40,12 @@ export default function Regole() {
                 { label: 'In pausa', value: data.stats.inPausa },
               ]}
             />
+
+            {(impostaStato.isError || scarta.isError) && (
+              <AvvisoRow icon="info" iconAccent>
+                {messaggioErrore(impostaStato.error ?? scarta.error)}
+              </AvvisoRow>
+            )}
 
             <div className="cols">
               <div className="colL">
@@ -74,7 +84,11 @@ export default function Regole() {
                 <div>
                   <div className="row" style={{ marginBottom: 6 }}>
                     <h5>Regole attive</h5>
-                    <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={() => document.getElementById(ASK_ID)?.focus()}
+                    >
                       <Icon name="plus" size={14} />
                       Scrivine una
                     </button>
@@ -96,6 +110,16 @@ export default function Regole() {
                               onChange={(v) => impostaStato.mutate({ id: r.id, stato: v as 'attiva' | 'pausa' })}
                             />
                           </div>
+                          {/* La pausa la lascia lì: senza questo, una regola
+                              scritta per sbaglio non si toglierebbe più. */}
+                          <button
+                            className="btn btn-ghost"
+                            style={{ marginLeft: 8 }}
+                            onClick={() => scarta.mutate(r.id)}
+                            disabled={scarta.isPending}
+                          >
+                            Scarta
+                          </button>
                         </div>
                         <div className="cu-muted" style={{ fontSize: 13, marginTop: 8 }}>{r.descrizione}</div>
                       </div>
@@ -154,7 +178,10 @@ export default function Regole() {
         )}
       </AsyncState>
 
-      <AskBar placeholder="«ogni domenica sera chiedimi cosa voglio fare la settimana prossima»" />
+      <AskBar
+        id={ASK_ID}
+        placeholder="«ogni domenica sera chiedimi cosa voglio fare la settimana prossima»"
+      />
     </>
   );
 }

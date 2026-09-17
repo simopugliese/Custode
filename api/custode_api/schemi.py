@@ -13,6 +13,8 @@ niente da dire" — es. la lista della spesa davvero vuota.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -439,6 +441,83 @@ class TipoEventoSalvato(BaseModel):
 
     tipo: TipoEvento
     label: str
+
+
+# — Regole di contesto (§8.10) —
+
+
+class RegolaProposta(BaseModel):
+    """Una regola che Custode propone, e che tu approvi o scarti.
+
+    Nessuna riga può essere in questo stato finché non esiste il job delle
+    auto-proposte: il campo c'è perché il contratto e la pagina lo hanno da
+    prima, e una lista vuota è la risposta onesta — «il modulo c'è e non ha
+    niente da dire», che è diverso da un campo omesso.
+    """
+
+    id: str
+    triggerTipo: str
+    confidenza: str
+    testo: str
+    motivazione: str
+
+
+class RegolaAttiva(BaseModel):
+    """Una regola che vale, o che hai messo in pausa."""
+
+    id: str
+    triggerTipo: str
+    nome: str
+    """Il messaggio che manda: è il modo in cui la riconosci, e non c'è un
+    secondo nome da inventare."""
+    stato: Literal["attiva", "pausa"]
+    descrizione: str
+    """Quando scatta, detto a parole — la stessa frase del promemoria."""
+    attenuata: bool | None = None
+    """Vero per una regola in pausa: la pagina la disegna più in sordina,
+    perché è lì ma non fa niente."""
+
+
+class VoceAttivita(BaseModel):
+    nome: str
+    conteggio: int
+
+
+class TipoTrigger(BaseModel):
+    tipo: str
+    descrizione: str
+
+
+class RegolaScartata(BaseModel):
+    nome: str
+    dataLabel: str
+
+
+class StatsRegole(BaseModel):
+    attive: int
+    daApprovare: int
+    scattateSettimana: int
+    inPausa: int
+
+
+class RegoleData(BaseModel):
+    """Corpo di `GET /api/regole`."""
+
+    titolo: str
+    spiegazione: str
+    stats: StatsRegole
+    proposte: list[RegolaProposta] = []
+    regoleAttive: list[RegolaAttiva] = []
+    attivitaSettimana: list[VoceAttivita] = []
+    attivitaNota: str | None = None
+    tipiTrigger: list[TipoTrigger] = []
+    scartate: list[RegolaScartata] = []
+
+
+class ModificaRegola(BaseModel):
+    """Corpo di `PATCH /api/regole/:id`: metterla in pausa, o rimetterla in piedi."""
+
+    stato: Literal["attiva", "pausa"]
 
 
 # — Impostazioni (§8) —

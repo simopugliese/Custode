@@ -7,9 +7,11 @@ from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
 
+# Resta solo §8.11. Le regole di contesto (§8.10) stavano qui fino al pezzo che
+# le ha costruite: da lì in poi la pagina risponde 200, e `test_regole_api` è il
+# posto dove si prova cosa dice.
 PAGINE = [
     ("/api/lezioni", "lezioni e corsi"),
-    ("/api/regole", "regole di contesto"),
 ]
 
 
@@ -22,8 +24,8 @@ def test_pagine_non_attive(client: TestClient, percorso: str, modulo: str) -> No
 
 
 def test_le_mutazioni_dei_moduli_assenti(client: TestClient) -> None:
-    assert client.patch("/api/regole/1", json={}).status_code == 501
-    assert client.post("/api/regole/1/approva").status_code == 501
+    assert client.post("/api/lezioni/piani/1/rigenera").status_code == 501
+    assert client.post("/api/lezioni/piani/1/manda-al-bot").status_code == 501
 
 
 def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
@@ -37,6 +39,7 @@ def test_le_rotte_attive_non_sono_coperte(client: TestClient) -> None:
         "/api/abitudini",
         "/api/calendario",
         "/api/impostazioni",
+        "/api/regole",
         "/api/health",
     ):
         assert client.get(percorso).status_code == 200

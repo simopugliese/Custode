@@ -21,6 +21,7 @@ from custode_calendario.evento import Evento
 from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import regole as dom_regole
 from custode_core.registro_job import (
     BACKUP,
     RIEPILOGO_SETTIMANALE,
@@ -295,3 +296,41 @@ def test_il_backup_recupera_il_giorno_prima(
 
     # Il file porta la data di *adesso*, ma copre il giorno rimasto scoperto.
     assert gia_eseguito(conn, BACKUP, date(2026, 9, 5))
+
+
+# — le regole di contesto (§8.10) —
+
+
+def test_una_regola_dovuta_scatta_dentro_il_giro(
+    impostazioni: Settings,
+    conn: Any,
+    ora: datetime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Il collegamento fra `giro` e il motore delle regole.
+
+    `test_worker_regole` prova il job da solo; questo prova che qualcuno lo
+    chiami davvero — il modo in cui un job finito resta spento per sempre è che
+    nessuno lo abbia agganciato al ciclo.
+    """
+    dom_regole.crea_a_orario(conn, ora="20:00", messaggio="prendi la creatina", creata_il=ora)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, datetime(2026, 9, 6, 20, 0), telegram, monkeypatch)
+
+    assert any("prendi la creatina" in m.testo for m in telegram.mandati)
+
+
+def test_senza_regole_il_giro_non_manda_niente_in_piu(
+    impostazioni: Settings,
+    conn: Any,
+    ora: datetime,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Il motore acceso non deve aggiungere rumore a chi non ha scritto regole."""
+    segna_eseguito(conn, RIEPILOGO_SETTIMANALE, LUNEDI_PRIMA, ora)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, datetime(2026, 9, 6, 20, 0), telegram, monkeypatch)
+
+    assert telegram.mandati == []

@@ -48,6 +48,7 @@ from custode_router.compiti import Compito
 from custode_worker import abitudini as worker_abitudini
 from custode_worker import backup, settimanale
 from custode_worker import calendario as worker_calendario
+from custode_worker import regole as worker_regole
 from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 from custode_worker.pianificazione import (
     MINUTI_SYNC_CALENDARIO,
@@ -56,7 +57,7 @@ from custode_worker.pianificazione import (
     mese_dovuto,
     settimana_dovuta,
 )
-from custode_worker.telegram import ClientTelegram, InvioNonRiuscito
+from custode_worker.telegram import ClientTelegram, InvioNonRiuscito, Spedizioniere
 
 log = logging.getLogger("custode.worker")
 
@@ -83,6 +84,7 @@ def giro(
     _giro_backup(impostazioni, worker, ora)
     _giro_calendario(impostazioni, calendario, ora, sorgente=sorgente_calendario, telegram=telegram)
     _giro_tag_calendario(impostazioni, ora, router=router)
+    _giro_regole(impostazioni, ora, telegram=telegram)
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
 
@@ -248,6 +250,35 @@ def _giro_tag_calendario(impostazioni: Settings, ora: datetime, *, router: Route
         esito.righe,
         f", {esito.non_letti} senza risposta leggibile" if esito.non_letti else "",
         f", {esito.rimasti} al prossimo giro" if esito.rimasti else "",
+    )
+
+
+def _giro_regole(impostazioni: Settings, ora: datetime, *, telegram: Spedizioniere) -> None:
+    """Le regole di contesto dettate da te (§8.10), valutate ad ogni giro.
+
+    **Dopo il calendario nell'ordine, e non per caso**: una regola «trenta
+    minuti prima di lezione» guarda gli eventi in archivio, e valutarla prima
+    del sync vorrebbe dire valutarla su una fotografia di cinque minuti fa —
+    proprio nei cinque minuti in cui una lezione spostata stamattina non c'è
+    ancora. Non dipende però dall'**esito** del sync: se Google è irraggiungibile
+    l'archivio è vecchio ma non vuoto, e i promemoria a orario non c'entrano
+    niente con Google.
+
+    Nessun registro di fascia come per il sync: la finestra di cinque minuti è
+    già dentro la valutazione, e a non ripetersi ci pensa `job_runs` scatto per
+    scatto. Su nessuna regola attiva il giro costa una `SELECT` sull'indice
+    parziale, che è il caso di quasi tutti i giri finché non ne scrivi una.
+    """
+    with connessione(impostazioni.db_path) as conn:
+        esito = worker_regole.esegui(conn, ora, telegram=telegram)
+
+    if not esito.qualcosa_da_dire:
+        return
+    log.info(
+        "regole: %d scattate%s%s",
+        esito.scattate,
+        f", {esito.non_spedite} non spedite" if esito.non_spedite else "",
+        f", {esito.gia_fatte} già fatte" if esito.gia_fatte else "",
     )
 
 

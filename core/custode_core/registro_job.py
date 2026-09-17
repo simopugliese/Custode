@@ -99,6 +99,29 @@ def dimentica_prima_di(conn: sqlite3.Connection, nome: str, limite: date | datet
     return cursore.rowcount
 
 
+def conteggi_da(conn: sqlite3.Connection, prefisso: str, da: datetime) -> dict[str, int]:
+    """Quante volte hanno girato, da `da` in poi, i job il cui nome comincia così.
+
+    Serve alla pagina Regole: «scattate questa settimana», e il conto di ognuna.
+    Una query sola invece di una per regola, perché il numero di regole cresce
+    con quello che ti viene in mente e le letture di una pagina no.
+
+    Il prefisso, e non un elenco di nomi: gli scatti di una regola stanno in
+    `job_runs` sotto `regola:<id>` (vedi `custode_core.dominio.regole.nome_job`),
+    quindi chiedere «tutti i job che sono scatti di regole» è chiedere un
+    prefisso. `LIKE` con `ESCAPE` perché un prefisso che contenesse `%` o `_`
+    li farebbe leggere come caratteri jolly.
+    """
+    schermato = prefisso.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    righe = conn.execute(
+        "SELECT nome, count(*) AS quanti FROM job_runs"
+        " WHERE nome LIKE ? ESCAPE '\\' AND eseguito_il >= ?"
+        " GROUP BY nome",
+        (f"{schermato}%", da.isoformat(timespec="seconds")),
+    )
+    return {riga["nome"]: riga["quanti"] for riga in righe}
+
+
 def ultima_esecuzione(conn: sqlite3.Connection, nome: str) -> datetime | None:
     """Quando il job è stato eseguito l'ultima volta, o `None` se mai.
 

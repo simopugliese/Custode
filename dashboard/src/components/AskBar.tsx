@@ -7,7 +7,14 @@ import { useAssistente } from '../hooks/useAssistente';
  * parlare a Custode dal PC, come richiesto nel brief originale (§ risposte
  * al form: "Un campo di input in stile chat anche qui").
  */
-export function AskBar({ placeholder }: { placeholder: string }) {
+/**
+ * `id` serve a chi vuole mandarci qualcuno: la pagina Regole ha un bottone
+ * «Scrivine una» che porta qui invece di aprire una form con cinque campi.
+ * Sarebbe un secondo modo di creare la stessa cosa, da tenere allineato al
+ * primo per sempre — mentre la barra accetta già «ricordami la creatina tutti
+ * i giorni alle 19», che è come lo diresti.
+ */
+export function AskBar({ placeholder, id }: { placeholder: string; id?: string }) {
   const [testo, setTesto] = useState('');
   const { mutate, data, isPending, isError } = useAssistente();
 
@@ -44,6 +51,7 @@ export function AskBar({ placeholder }: { placeholder: string }) {
           A Custode
         </span>
         <input
+          id={id}
           className="input"
           placeholder={placeholder}
           value={testo}

@@ -61,7 +61,8 @@ via anche l'altra.
 
 Instradati e in uso, su DeepSeek: parsing della lista, CRUD dei task,
 riconoscimento del materiale da diario, **log delle abitudini da testo libero**
-(§8.6) e rilevazione dei segnali per il profilo
+(§8.6), **creazione di una regola di contesto** dettata a parole (§8.10) e
+rilevazione dei segnali per il profilo
 — tutti e cinque **nella stessa chiamata**, perché sono compiti diversi di §6
 ma con lo stesso provider, e farne cinque giri costerebbe cinque volte tanto
 su ogni messaggio — più l'estrazione di una spesa detta a parole, **col giorno
