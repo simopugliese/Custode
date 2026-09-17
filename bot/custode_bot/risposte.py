@@ -22,6 +22,7 @@ from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import regole as dom_regole
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_core.formato import (
@@ -1015,3 +1016,40 @@ def _imposta_scadenza(
     aggiornato = dom_task.leggi(conn, task_id)
     etichetta = etichetta_scadenza(aggiornato.scadenza, ora) or ""
     return Risposta(testo=f"<b>{escape(task.titolo)}</b> — scade {escape(etichetta)}.")
+
+
+# — le regole di contesto (§8.10) —
+
+
+def _perche(regola: dom_regole.Regola) -> str:
+    """La riga che dice *da dove arriva* questo messaggio.
+
+    Serve perché una regola scatta a distanza di giorni da quando l'hai
+    scritta: senza, un promemoria di due parole arriva senza contesto e non si
+    capisce quale delle regole l'abbia mandato — né quale mettere in pausa se
+    ha rotto le scatole.
+    """
+    if regola.trigger is dom_regole.Trigger.ORARIO:
+        return f"regola: {dom_regole.etichetta_giorni(regola.giorni)} alle {regola.ora}"
+
+    tipo = f"un impegno di tipo «{regola.tipo_evento}»"
+    prima = regola.trigger is dom_regole.Trigger.PRIMA_EVENTO
+    if not regola.minuti:
+        return f"regola: {'quando comincia' if prima else 'appena finisce'} {tipo}"
+    quanto = plurale(regola.minuti, "minuto", "minuti")
+    return f"regola: {quanto} {'prima di' if prima else 'dopo'} {tipo}"
+
+
+def promemoria_regola(regola: dom_regole.Regola) -> Risposta:
+    """Il messaggio che una regola manda quando scatta.
+
+    Nessun bottone «Annulla», al contrario delle azioni decise da un modello
+    (§8.1): qui non c'è niente da disfare — nessuna riga è stata scritta e
+    nessun dato è cambiato. C'è al massimo una regola da mettere in pausa, e
+    quello si fa dalla pagina, con calma.
+
+    Il testo è **tuo**: passa comunque da `escape()` come tutto ciò che arriva
+    dal database, perché una regola che contiene un `<` non deve rompere il
+    messaggio.
+    """
+    return Risposta(testo=f"⏰ {escape(regola.messaggio)}\n<i>{escape(_perche(regola))}</i>")

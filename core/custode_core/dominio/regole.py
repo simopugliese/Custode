@@ -353,12 +353,19 @@ def _minuti(minuti: int) -> int:
 
 
 def etichetta_giorni(giorni: tuple[int, ...]) -> str:
-    """«tutti i giorni», «il lunedì», «lunedì e giovedì», «lun, mer e ven»."""
+    """«tutti i giorni», «il lunedì», «la domenica», «lunedì, mercoledì e venerdì».
+
+    L'articolo lo prende solo il giorno singolo, e segue il genere: in italiano
+    la domenica è l'unica femminile della settimana, e «il domenica» è il tipo
+    di stonatura che nessun test prende e che si legge ogni volta che la regola
+    scatta.
+    """
     if not giorni:
         return "tutti i giorni"
     nomi = [GIORNI[g - 1] for g in giorni]
     if len(nomi) == 1:
-        return f"il {nomi[0]}"
+        articolo = "la" if giorni[0] == 7 else "il"
+        return f"{articolo} {nomi[0]}"
     return f"{', '.join(nomi[:-1])} e {nomi[-1]}"
 
 

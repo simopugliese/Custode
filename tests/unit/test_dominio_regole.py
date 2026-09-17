@@ -399,3 +399,9 @@ def test_etichetta_dei_giorni() -> None:
     assert dom.etichetta_giorni((1,)) == "il lunedì"
     assert dom.etichetta_giorni((1, 4)) == "lunedì e giovedì"
     assert dom.etichetta_giorni((1, 3, 5)) == "lunedì, mercoledì e venerdì"
+
+
+def test_la_domenica_e_femminile() -> None:
+    """«il domenica» non lo prende nessun test di logica, e si legge ogni volta
+    che quella regola scatta."""
+    assert dom.etichetta_giorni((7,)) == "la domenica"

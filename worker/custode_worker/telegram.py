@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from typing import Any, Protocol
 
 import httpx
 
@@ -26,6 +26,19 @@ log = logging.getLogger("custode.worker")
 
 class InvioNonRiuscito(RuntimeError):
     """Telegram non ha accettato il messaggio."""
+
+
+class Spedizioniere(Protocol):
+    """Chi sa mandare una `Risposta`, senza dire come.
+
+    `ClientTelegram` lo soddisfa per forma, come `custode_calendario.Evento`
+    soddisfa `EventoEsterno`: è la stessa idea, applicata al verso dell'uscita
+    invece che dell'entrata. Serve a un job per dichiarare l'unica cosa che gli
+    serve davvero — spedire — invece di pretendere la classe intera, e a un test
+    per passargli un finto senza silenziare il controllo dei tipi.
+    """
+
+    def manda(self, risposta: Risposta) -> None: ...
 
 
 class ClientTelegram:
