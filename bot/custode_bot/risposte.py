@@ -964,6 +964,8 @@ def esegui_azione(
             return _azione_spesa(conn, ora, azione.nome, int(azione.argomento))
         elif azione.dominio == "a":
             return _azione_abitudine(conn, ora, azione.nome, int(azione.argomento))
+        elif azione.dominio == "r" and azione.nome in ("approva", "scarta"):
+            return _azione_regola(conn, int(azione.argomento), azione.nome)
         elif azione.dominio == "x" and azione.nome == "annulla":
             return _annulla(conn, ora, azione.argomento)
         elif azione.dominio == "x" and azione.nome == "svuota":
@@ -977,6 +979,7 @@ def esegui_azione(
         dom_diario.VoceInesistente,
         dom_profilo.CandidatoInesistente,
         dom_spese.SpesaInesistente,
+        dom_regole.RegolaInesistente,
     ):
         # Capita col messaggio vecchio in cronologia, dopo aver cancellato la riga.
         return Risposta(testo="Quella voce non esiste più.")
@@ -1046,3 +1049,63 @@ def promemoria_regola(regola: dom_regole.Regola) -> Risposta:
     messaggio.
     """
     return Risposta(testo=f"⏰ {escape(regola.messaggio)}\n<i>{escape(_perche(regola))}</i>")
+
+
+def proposta_regola(regola: dom_regole.Regola) -> Risposta:
+    """La proposta che Custode ti fa quando ha trovato un pattern (§8.10).
+
+    Arriva su Telegram e non solo in dashboard perché §8.10 la vuole «subito,
+    non solo nel report settimanale», e perché una coda che nessuno annuncia è
+    la coda che si smette di guardare. Per la stessa ragione i bottoni sono
+    **qui dentro**: senza, l'unico posto per rispondere sarebbe una pagina che
+    finché manca Cloudflare Access si apre solo dal Pi.
+
+    Due bottoni e non tre. Il terzo gesto di §8.10 — modificarla — su Telegram
+    si fa **riscrivendola**, che è già il modo in cui le regole si creano da
+    qui, e la riga sotto i bottoni lo dice. Una form di correzione sarebbe un
+    secondo canale da tenere allineato al primo per sempre, che è esattamente
+    ciò che il contratto rifiuta per le regole.
+    """
+    return Risposta(
+        testo=(
+            f"💡 <b>Ti propongo una regola</b>\n"
+            f"{escape(regola.messaggio)}\n"
+            f"<i>{escape(dom_regole.descrizione(regola))}</i>\n\n"
+            f"{escape(regola.motivazione or '')}\n\n"
+            "<i>Se non va bene così, riscrivimela come la vuoi.</i>"
+        ),
+        bottoni=[
+            [
+                Bottone("✅ Approva", azioni.regola("approva", regola.id)),
+                Bottone("Scarta", azioni.regola("scarta", regola.id)),
+            ]
+        ],
+    )
+
+
+def _azione_regola(conn: sqlite3.Connection, regola_id: int, nome: str) -> Risposta:
+    """Il tap su «Approva» o «Scarta» di una proposta.
+
+    Passa dalla stessa macchina a stati della pagina — `imposta_stato` — e non
+    da una `UPDATE` scritta qui: è quella che impedisce a una scartata di
+    tornare attiva, ed è la promessa di §8.10 che Custode non riproponga una
+    regola due volte.
+
+    Un secondo tap sullo stesso messaggio, che in cronologia resta lì per
+    sempre, trova la regola già decisa: `TransizioneNonValida` diventa una frase
+    e non un errore, perché non è successo niente di male — hai solo premuto due
+    volte.
+    """
+    stato = dom_regole.Stato.ATTIVA if nome == "approva" else dom_regole.Stato.SCARTATA
+    regola = dom_regole.per_id(conn, regola_id)
+    if regola.stato is not dom_regole.Stato.PROPOSTA:
+        return Risposta(testo="Questa proposta l'hai già decisa.")
+    aggiornata = dom_regole.imposta_stato(conn, regola_id, stato)
+    if aggiornata.stato is dom_regole.Stato.SCARTATA:
+        return Risposta(testo="Scartata. Non te la ripropongo.")
+    return Risposta(
+        testo=(
+            f"✅ <b>Regola attiva</b>\n{escape(aggiornata.messaggio)}\n"
+            f"<i>{escape(dom_regole.descrizione(aggiornata))}</i>"
+        )
+    )

@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 
 from custode_bot import azioni, risposte
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import regole as dom_regole
 from custode_core.dominio import task as dom_task
 
 
@@ -214,3 +215,78 @@ def test_aiuto_elenca_i_comandi() -> None:
     testo = risposte.aiuto().testo
     for comando in ("/oggi", "/task", "/nuovo", "/lista", "/aggiungi", "/svuota"):
         assert comando in testo
+
+
+# — le proposte di regole, decise da Telegram (§8.10) —
+
+
+def _proposta(conn: sqlite3.Connection) -> dom_regole.Regola:
+    return dom_regole.crea_da_evento(
+        conn,
+        trigger=dom_regole.Trigger.DOPO_EVENTO,
+        tipo_evento="palestra",
+        minuti=0,
+        messaggio="prendi la creatina",
+        creata_il=datetime(2026, 9, 14, 21, 0),
+        origine=dom_regole.Origine.IA,
+        stato=dom_regole.Stato.PROPOSTA,
+        confidenza=dom_regole.Confidenza.ALTA,
+        motivazione="15 giornate con palestra su 16.",
+    )
+
+
+def test_la_proposta_dice_cosa_fara_quando_e_perche(conn: sqlite3.Connection) -> None:
+    """Le tre cose che servono a decidere: il promemoria, quando scatterà, e i
+    numeri che l'hanno fatta nascere. Senza il perché, «Approva» è un bottone da
+    premere al buio."""
+    risposta = risposte.proposta_regola(_proposta(conn))
+
+    assert "prendi la creatina" in risposta.testo
+    assert "appena finisce" in risposta.testo
+    assert "15 giornate con palestra su 16." in risposta.testo
+    # Il terzo gesto di §8.10 non ha un bottone: si riscrive.
+    assert "riscrivimela" in risposta.testo
+
+
+def test_approvare_da_telegram_rende_la_regola_attiva(conn: sqlite3.Connection) -> None:
+    proposta = _proposta(conn)
+
+    risposta = risposte.esegui_azione(
+        conn, datetime(2026, 9, 15, 9, 0), azioni.regola("approva", proposta.id)
+    )
+
+    assert dom_regole.per_id(conn, proposta.id).stato is dom_regole.Stato.ATTIVA
+    assert "Regola attiva" in risposta.testo
+
+
+def test_scartare_da_telegram_la_toglie_di_mezzo(conn: sqlite3.Connection) -> None:
+    proposta = _proposta(conn)
+
+    risposta = risposte.esegui_azione(
+        conn, datetime(2026, 9, 15, 9, 0), azioni.regola("scarta", proposta.id)
+    )
+
+    assert dom_regole.per_id(conn, proposta.id).stato is dom_regole.Stato.SCARTATA
+    assert "Non te la ripropongo" in risposta.testo
+
+
+def test_un_secondo_tap_sul_messaggio_vecchio_non_e_un_errore(conn: sqlite3.Connection) -> None:
+    """Il messaggio resta in cronologia per sempre: premerlo due volte non è
+    successo niente di male, e non deve sembrare un guasto."""
+    proposta = _proposta(conn)
+    ora = datetime(2026, 9, 15, 9, 0)
+    risposte.esegui_azione(conn, ora, azioni.regola("approva", proposta.id))
+
+    seconda = risposte.esegui_azione(conn, ora, azioni.regola("scarta", proposta.id))
+
+    assert seconda.testo == "Questa proposta l'hai già decisa."
+    # E soprattutto: non l'ha scartata.
+    assert dom_regole.per_id(conn, proposta.id).stato is dom_regole.Stato.ATTIVA
+
+
+def test_il_bottone_di_una_regola_cancellata_non_esplode(conn: sqlite3.Connection) -> None:
+    risposta = risposte.esegui_azione(
+        conn, datetime(2026, 9, 15, 9, 0), azioni.regola("approva", 999)
+    )
+
+    assert risposta.testo == "Quella voce non esiste più."

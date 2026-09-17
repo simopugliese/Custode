@@ -21,6 +21,9 @@ BACKUP = "backup"
 REPORT_MENSILE_ABITUDINI = "report_mensile_abitudini"
 SYNC_CALENDARIO = "sync_calendario"
 AVVISO_CALENDARIO_FERMO = "avviso_calendario_fermo"
+PROPOSTE_REGOLE = "proposte_regole"
+"""Il job che cerca pattern e ti propone una regola (§8.10). Il periodo è un
+**giorno**: gira una volta al giorno, all'ora che dicono le impostazioni."""
 
 SENZA_PERIODO = "-"
 """La chiave delle cose che il registro ricorda ma che non hanno un periodo.

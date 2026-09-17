@@ -34,6 +34,7 @@ from custode_core.migrazioni import migra
 from custode_core.registro_job import (
     AVVISO_CALENDARIO_FERMO,
     BACKUP,
+    PROPOSTE_REGOLE,
     REPORT_MENSILE_ABITUDINI,
     RIEPILOGO_SETTIMANALE,
     SENZA_PERIODO,
@@ -48,6 +49,7 @@ from custode_router.compiti import Compito
 from custode_worker import abitudini as worker_abitudini
 from custode_worker import backup, settimanale
 from custode_worker import calendario as worker_calendario
+from custode_worker import proposte as worker_proposte
 from custode_worker import regole as worker_regole
 from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 from custode_worker.pianificazione import (
@@ -86,6 +88,7 @@ def giro(
     _giro_tag_calendario(impostazioni, ora, router=router)
     _giro_regole(impostazioni, ora, telegram=telegram)
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
+    _giro_proposte(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
 
 
@@ -358,6 +361,69 @@ def _giro_settimanale(
             "sì" if esito.riepilogo_scritto else "no",
             esito.candidati_da_rivedere,
         )
+
+
+def _giro_proposte(
+    impostazioni: Settings,
+    worker: ImpostazioniWorker,
+    ora: datetime,
+    *,
+    router: Router,
+    telegram: ClientTelegram,
+) -> None:
+    """Le auto-proposte di regole (§8.10), una volta al giorno.
+
+    **Dopo il riepilogo settimanale nell'ordine, e non per caso.** Sono i due
+    job che possono scriverti alla stessa ora, e il riepilogo della domenica è
+    quello che aspettavi: una proposta che gli arriva davanti lo farebbe leggere
+    per secondo. Non dipende invece dal suo *esito*, che riguarda il diario e
+    non le regole.
+
+    L'ora si rilegge **in cima a ogni giro**, come per il riepilogo, ed è tutto
+    il meccanismo con cui un cambio dalla pagina Impostazioni vale senza
+    riavviare il container (§8). Il suo default è l'ora del riepilogo già in
+    vigore, non una costante: finché non la sposti, le due restano allineate —
+    che è quello che serve, perché la ragione di avere un'ora invece della notte
+    è la stessa per tutti e due, cioè che un messaggio di Custode arrivi quando
+    lo puoi leggere.
+    """
+    with connessione(impostazioni.db_path) as conn:
+        orario_riepilogo = dom_impostazioni.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo)
+        orario = dom_impostazioni.PROPOSTE_ORA.leggi(conn, default=orario_riepilogo)
+
+    ore, minuti = dom_impostazioni.ore_e_minuti(orario)
+    giorno = giorno_dovuto(ora, ore=ore, minuti=minuti)
+
+    with connessione(impostazioni.db_path) as conn:
+        if gia_eseguito(conn, PROPOSTE_REGOLE, giorno):
+            return
+
+        esito = worker_proposte.esegui(conn, ora, router=router, telegram=telegram)
+
+        if esito.spento:
+            # Nessuna chiave: il modulo è spento, non rotto. Non si segna il
+            # giorno, così la sera in cui la metti il job parte davvero invece
+            # di aspettare domani. La scadenza delle proposte vecchie è già
+            # passata comunque, e non ha bisogno di nessun modello.
+            return
+
+        if esito.errore is not None:
+            # Non si segna: al prossimo giro si riprova. Un pattern non scade
+            # come un promemoria — lo storico da cui esce c'è ancora domani.
+            log.warning("proposte di regole non riuscite, riproverò: %s", esito.errore)
+            return
+
+        segna_eseguito(conn, PROPOSTE_REGOLE, giorno, ora)
+
+    if not esito.qualcosa_da_dire:
+        return
+    log.info(
+        "proposte: %s%s%s%s",
+        f"scritta la regola {esito.proposta.id}" if esito.proposta else "niente da proporre",
+        f", {esito.candidati} candidati" if esito.candidati else "",
+        f", {esito.gia_visti} già visti" if esito.gia_visti else "",
+        f", {esito.scadute} scadute" if esito.scadute else "",
+    )
 
 
 def _giro_mensile_abitudini(
