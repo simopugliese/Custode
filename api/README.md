@@ -29,7 +29,11 @@ Resta a `501` solo il modulo dei corsi (`/api/lezioni`, §8.11).
 
 Le regole di contesto (§8.10) non si **creano** da qui: si scrivono a parole,
 dalla barra «A Custode» o dal bot, perché è lo stesso interprete. Questa rotta
-serve a guardare cosa c'è, metterlo in pausa e toglierlo.
+serve a guardare cosa c'è, metterlo in pausa e toglierlo — e a decidere le
+**proposte** che il worker scrive da solo: `approva` risponde `409` su tutto
+quello che non è una proposta, perché approvare una cosa già attiva non vuol
+dire niente. Nemmeno una proposta si modifica da qui: si riscrive a parole, che
+è di nuovo lo stesso interprete.
 
 Le abitudini (§8.6) sono l'unico modulo che si *gestisce* da qui e non da
 Telegram: aggiungerne una vuole un nome e un numero scelti con calma, segnarla

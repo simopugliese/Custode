@@ -138,6 +138,37 @@ essere stato letto: è la pagina, e la versione che stai facendo girare è
 anteriore a questa correzione — aggiorna (§6).
 
 `/profilo` mostra cosa Custode ha capito di te e quanti segnali sono in attesa.
+
+### Provare le auto-proposte di regole (§8.10)
+
+Il job gira **una volta al giorno, all'ora del riepilogo**, e finché non lo
+sposti non ha una variabile sua: l'ora si cambia dalla pagina Impostazioni
+(«Proposte di regole») e finché non la tocchi segue quella del riepilogo.
+
+Serve `ROUTER_ANTHROPIC_API_KEY`: senza, il job non è rotto, è **spento** — le
+proposte vecchie scadono lo stesso, perché la scadenza non chiede niente a
+nessun modello, e il giorno in cui metti la chiave il job parte al giro dopo
+invece di aspettare domani.
+
+Non c'è niente da proporre finché non c'è storico: servono almeno quattro
+occasioni in otto settimane, e una copertura di tre volte su quattro. Nei log:
+
+```bash
+docker compose logs worker | grep proposte
+```
+
+Se una proposta esce, arriva su Telegram con «Approva» e «Scarta», e sta nella
+pagina Regole. Per vederla in archivio:
+
+```bash
+sqlite3 /percorso/custode.db \
+  "SELECT id, stato, confidenza, messaggio FROM context_rules WHERE origine = 'ia';"
+```
+
+Al massimo una proposta per giro e tre in attesa insieme: se ne hai già tre non
+decise, il job **non chiama nemmeno Claude** finché non ne decidi una o finché
+non scadono (quattordici giorni, e passano fra le scartate). Un giro che non dà
+niente non è quindi un guasto: quasi tutte le sere è il comportamento giusto.
 All'inizio è vuoto: si riempie da solo con quello che gli racconti.
 
 Per non aspettare domenica, si può spostare l'orario avanti di qualche minuto
