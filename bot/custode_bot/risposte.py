@@ -1027,17 +1027,10 @@ def _perche(regola: dom_regole.Regola) -> str:
     Serve perché una regola scatta a distanza di giorni da quando l'hai
     scritta: senza, un promemoria di due parole arriva senza contesto e non si
     capisce quale delle regole l'abbia mandato — né quale mettere in pausa se
-    ha rotto le scatole.
+    ha rotto le scatole. La frase la compone il dominio, che la dice uguale
+    anche nella conferma e nella pagina.
     """
-    if regola.trigger is dom_regole.Trigger.ORARIO:
-        return f"regola: {dom_regole.etichetta_giorni(regola.giorni)} alle {regola.ora}"
-
-    tipo = f"un impegno di tipo «{regola.tipo_evento}»"
-    prima = regola.trigger is dom_regole.Trigger.PRIMA_EVENTO
-    if not regola.minuti:
-        return f"regola: {'quando comincia' if prima else 'appena finisce'} {tipo}"
-    quanto = plurale(regola.minuti, "minuto", "minuti")
-    return f"regola: {quanto} {'prima di' if prima else 'dopo'} {tipo}"
+    return f"regola: {dom_regole.descrizione(regola)}"
 
 
 def promemoria_regola(regola: dom_regole.Regola) -> Risposta:

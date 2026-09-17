@@ -27,9 +27,11 @@ from enum import StrEnum
 from typing import Any
 
 from custode_core.dominio import abitudini as dom_abitudini
+from custode_core.dominio import calendario as dom_calendario
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import regole as dom_regole
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_core.formato import (
@@ -55,6 +57,7 @@ class Azione(StrEnum):
     ANNOTA_DIARIO = "annota_diario"
     REGISTRA_SPESA = "registra_spesa"
     SEGNA_ABITUDINI = "segna_abitudini"
+    CREA_REGOLA = "crea_regola"
     NESSUNA = "nessuna"
 
 
@@ -73,8 +76,10 @@ SCHEMA_AZIONE: dict[str, Any] = {
         "titolo": {
             "type": "string",
             "description": (
-                "Titolo del task da creare, il nome della voce della spesa, oppure"
-                " la frase da annotare nel diario, ripulita ma non riassunta."
+                "Titolo del task da creare, il nome della voce della spesa, la"
+                " frase da annotare nel diario (ripulita ma non riassunta),"
+                " oppure — per crea_regola — il messaggio che Custode dovrà"
+                " mandarti quando la regola scatta."
             ),
         },
         "riferimento": {
@@ -148,6 +153,48 @@ SCHEMA_AZIONE: dict[str, Any] = {
             "description": (
                 "Per segna_abitudini: quelle che il messaggio dice di NON aver"
                 " fatto («ma non ho letto»), copiate dallo stesso elenco."
+            ),
+        },
+        # — crea_regola (§8.10). I campi hanno tutti il prefisso `regola_`: non
+        # è verbosità, è che `giorni` esiste già e vuol dire i giorni di rinvio
+        # di un task. Due campi con lo stesso nome e due significati diversi
+        # sono un errore che il modello farebbe per primo.
+        "regola_trigger": {
+            "type": "string",
+            "enum": [t.value for t in dom_regole.Trigger],
+            "description": (
+                "Per crea_regola: «orario» se il messaggio dice un'ora del"
+                " giorno, «prima_evento» o «dopo_evento» se si aggancia a un"
+                " tipo di impegno del calendario."
+            ),
+        },
+        "regola_ora": {
+            "type": "string",
+            "description": ("Per crea_regola con trigger «orario»: l'ora in formato HH:MM."),
+        },
+        "regola_giorni": {
+            "type": "array",
+            "items": {"type": "integer"},
+            "description": (
+                "Per crea_regola con trigger «orario»: i giorni della settimana"
+                " in cui vale, 1 = lunedì … 7 = domenica. Lista VUOTA se il"
+                " messaggio non li limita: vuol dire tutti i giorni."
+            ),
+        },
+        "regola_tipo_evento": {
+            "type": "string",
+            "description": (
+                "Per crea_regola con trigger «prima_evento» o «dopo_evento»: il"
+                " tipo di impegno, copiato esattamente dall'elenco dei tipi di"
+                " evento che trovi nel contesto. Non inventarne."
+            ),
+        },
+        "regola_minuti": {
+            "type": "integer",
+            "description": (
+                "Per crea_regola con trigger «prima_evento» o «dopo_evento»:"
+                " quanti minuti prima dell'inizio o dopo la fine. 0 se il"
+                " messaggio dice «appena finisce» o «quando comincia»."
             ),
         },
     },
@@ -242,6 +289,23 @@ Regole:
   «ieri ho studiato tutto il pomeriggio», «sabato sono stato male» — metti quel
   giorno in `data`, come per le spese: ci finisce tutto il racconto, non solo
   la prima frase. Senza indicazioni è la giornata di oggi, e `data` resta vuota.
+- Il messaggio chiede di essere avvisato **d'ora in poi, ogni volta** che si
+  ripresenta un momento — «ricordami la creatina tutti i giorni alle 19»,
+  «ogni domenica sera chiedimi cosa voglio fare la settimana prossima», «mezz'ora
+  prima di lezione dimmi di prendere il portatile», «appena finisco la palestra
+  ricordami di bere» → crea_regola, con `titolo` = il messaggio da mandare,
+  scritto come lo diresti a te stesso («prendi la creatina», non «ricordami la
+  creatina»).
+  La differenza con un task è **la ripetizione**: «ricordami di chiamare
+  l'officina» è una cosa sola da fare una volta, quindi è aggiungi_task;
+  «ricordamelo tutti i lunedì» è una regola. Nel dubbio è un task: un task
+  dimenticato si ritrova nella lista, una regola sbagliata scatta per sempre.
+  Per un'ora del giorno metti `regola_trigger` = «orario», `regola_ora` in
+  HH:MM e `regola_giorni` con i giorni indicati (vuota = tutti i giorni).
+  Per un aggancio al calendario metti «prima_evento» o «dopo_evento»,
+  `regola_tipo_evento` copiato dall'elenco dei tipi nel contesto e
+  `regola_minuti`. Se il tipo che serve non è nell'elenco, non inventarlo:
+  usa «nessuna».
 - Se il messaggio non chiede nessuna di queste cose e non racconta niente (un
   saluto, una domanda, un «ok»), rispondi con una sola azione «nessuna»: è una
   risposta corretta, non un fallimento.
@@ -299,6 +363,11 @@ class Intenzione:
     categoria: str = ""
     abitudini_fatte: tuple[str, ...] = ()
     abitudini_non_fatte: tuple[str, ...] = ()
+    regola_trigger: str = ""
+    regola_ora: str = ""
+    regola_giorni: tuple[int, ...] = ()
+    regola_tipo_evento: str = ""
+    regola_minuti: int = 0
 
 
 # Quante azioni si accettano da un messaggio solo. Non è un limite di prodotto:
@@ -358,6 +427,8 @@ class Esito:
     """
     giorni: int = 1
     """Giorni di rinvio applicati, per poterli togliere se si annulla."""
+    regola_id: int | None = None
+    """La regola appena creata, da cancellare se si annulla (§8.10)."""
     candidato_id: int | None = None
     """Il candidato per il profilo pescato da questo messaggio, se c'era (§8.4)."""
     domanda_chiarimento: str = ""
@@ -376,6 +447,7 @@ class Esito:
             self.frammento_id,
             self.spesa_id,
             self.istante_log,
+            self.regola_id,
         ):
             if valore is not None:
                 return valore
@@ -419,6 +491,12 @@ def _contesto(conn: sqlite3.Connection, ora: datetime) -> str:
         "Categorie di spesa già in uso: "
         + ("; ".join(categorie) if categorie else "nessuna, non hai ancora registrato spese")
     )
+    # I tipi di evento servono a `crea_regola` (§8.10): una regola agganciata al
+    # calendario punta a uno **slug**, e senza l'elenco il modello ne
+    # inventerebbe uno plausibile («universita») che la chiave esterna
+    # rifiuterebbe. Solo gli attivi: uno archiviato non si propone più.
+    tipi = [tag.slug for tag in dom_calendario.elenco_tag(conn, solo_attivi=True)]
+    righe.append("Tipi di impegno del calendario: " + ("; ".join(tipi) if tipi else "nessuno"))
     return "\n".join(righe)
 
 
@@ -516,7 +594,32 @@ def _leggi_intenzione(dati: dict[str, Any]) -> Intenzione:
         categoria=str(dati.get("categoria") or "").strip(),
         abitudini_fatte=_leggi_nomi(dati.get("abitudini_fatte")),
         abitudini_non_fatte=_leggi_nomi(dati.get("abitudini_non_fatte")),
+        regola_trigger=str(dati.get("regola_trigger") or "").strip(),
+        regola_ora=str(dati.get("regola_ora") or "").strip(),
+        regola_giorni=_leggi_giorni(dati.get("regola_giorni")),
+        regola_tipo_evento=str(dati.get("regola_tipo_evento") or "").strip(),
+        regola_minuti=_leggi_minuti(dati.get("regola_minuti")),
     )
+
+
+def _leggi_giorni(grezzi: object) -> tuple[int, ...]:
+    """I giorni della settimana, scartando quello che non è un giorno.
+
+    Scartare e non fallire: un giorno inventato in mezzo a tre buoni non deve
+    portarsi via la regola intera, e a rifiutare una lista vuota di giorni
+    *voluta* non c'è niente da rifiutare — vuota vuol dire «tutti i giorni».
+    """
+    if not isinstance(grezzi, list):
+        return ()
+    return tuple(
+        g for g in grezzi if isinstance(g, int) and not isinstance(g, bool) and 1 <= g <= 7
+    )
+
+
+def _leggi_minuti(grezzo: object) -> int:
+    if isinstance(grezzo, bool) or not isinstance(grezzo, int) or grezzo < 0:
+        return 0
+    return grezzo
 
 
 def _leggi_importo(grezzo: object) -> float:
@@ -734,7 +837,67 @@ def esegui(
             giorno=giorno,
         )
 
+    if intenzione.azione is Azione.CREA_REGOLA:
+        return _crea_regola(conn, ora, intenzione)
+
     return Esito(testo="Non ho capito cosa vuoi che faccia.")
+
+
+def _crea_regola(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> Esito:
+    """Una regola di contesto dettata a parole (§8.10).
+
+    La conferma **ripete quello che ha capito** — «tutti i giorni alle 19:00» —
+    e non è cortesia: una regola sbagliata non si vede subito come un task
+    sbagliato, si vede la prima volta che scatta all'ora sbagliata, che può
+    essere fra una settimana. Detta al momento, invece, si corregge subito col
+    bottone «Annulla».
+    """
+    if not intenzione.titolo:
+        return Esito(testo="Non ho capito cosa dovrei ricordarti.")
+    try:
+        trigger = dom_regole.Trigger(intenzione.regola_trigger)
+    except ValueError:
+        # Il modello ha chiesto una regola senza dire di che tipo: non si
+        # indovina fra «alle 19» e «prima di lezione», sono due cose diverse.
+        return Esito(testo="Non ho capito quando dovrei dirtelo.")
+
+    try:
+        if trigger is dom_regole.Trigger.ORARIO:
+            regola = dom_regole.crea_a_orario(
+                conn,
+                ora=intenzione.regola_ora,
+                giorni=intenzione.regola_giorni,
+                messaggio=intenzione.titolo,
+                creata_il=ora,
+            )
+        else:
+            regola = dom_regole.crea_da_evento(
+                conn,
+                trigger=trigger,
+                tipo_evento=intenzione.regola_tipo_evento,
+                minuti=intenzione.regola_minuti,
+                messaggio=intenzione.titolo,
+                creata_il=ora,
+            )
+    except ValueError:
+        # Un'ora storta o un messaggio vuoto: il modello ha capito a metà.
+        return Esito(testo="Non ho capito quando dovrei dirtelo.")
+    except sqlite3.IntegrityError:
+        # Il tipo di evento non esiste — la chiave esterna della 011. Succede se
+        # il modello se lo inventa nonostante l'elenco nel contesto, o se lo hai
+        # cancellato mentre scrivevi.
+        return Esito(
+            testo=(
+                f"Non ho un tipo di impegno che si chiama «{intenzione.regola_tipo_evento}»:"
+                " crealo dalla pagina Calendario e riprova."
+            )
+        )
+
+    return Esito(
+        testo=f"Regola attiva: {regola.messaggio} — {dom_regole.descrizione(regola)}",
+        azione=intenzione.azione,
+        regola_id=regola.id,
+    )
 
 
 def _registra_spesa(conn: sqlite3.Connection, ora: datetime, intenzione: Intenzione) -> Esito:
@@ -1044,6 +1207,13 @@ def annulla(
             spesa = dom_spese.leggi(conn, identificatore)
             dom_spese.elimina(conn, identificatore)
             return f"Annullata: {spesa.descrizione}, {euro(spesa.centesimi)}"
+        if azione is Azione.CREA_REGOLA:
+            # Si **cancella**, non si scarta: scartare è una decisione che resta
+            # e che la pagina mostra, mentre qui si sta disfacendo un gesto di
+            # trenta secondi fa che il modello ha capito male.
+            regola = dom_regole.per_id(conn, identificatore)
+            dom_regole.elimina(conn, identificatore)
+            return f"Annullata: «{regola.messaggio}» non è più una regola."
         if azione is Azione.SEGNA_ABITUDINI:
             # `identificatore` qui è l'istante di scrittura, non un id di riga:
             # un messaggio segna più abitudini insieme e i 64 byte del bottone
@@ -1065,6 +1235,7 @@ def annulla(
         dom_lista.VoceInesistente,
         dom_diario.FrammentoInesistente,
         dom_spese.SpesaInesistente,
+        dom_regole.RegolaInesistente,
     ):
         return "Quella voce non esiste più: niente da annullare."
     return "Non c'è niente da annullare."

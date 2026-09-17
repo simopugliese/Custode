@@ -31,7 +31,7 @@ from datetime import date, datetime, timedelta
 from enum import StrEnum
 
 from custode_core.dominio import impostazioni as dom_impostazioni
-from custode_core.formato import GIORNI
+from custode_core.formato import GIORNI, plurale
 
 FINESTRA = timedelta(minutes=5)
 """Quanto indietro guarda una valutazione: la larghezza di un giro del worker.
@@ -369,6 +369,25 @@ def etichetta_giorni(giorni: tuple[int, ...]) -> str:
     return f"{', '.join(nomi[:-1])} e {nomi[-1]}"
 
 
+def descrizione(regola: Regola) -> str:
+    """La regola detta a parole: «tutti i giorni alle 19:00», «30 minuti prima…».
+
+    Sta qui e non in chi la mostra perché la dicono in **tre** posti — il
+    promemoria che ti arriva su Telegram, la conferma quando la scrivi, e la
+    riga della pagina Regole — e tre frasi destinate a divergere sono esattamente
+    ciò che il progetto evita tenendo le etichette in un posto solo.
+    """
+    if regola.trigger is Trigger.ORARIO:
+        return f"{etichetta_giorni(regola.giorni)} alle {regola.ora}"
+
+    tipo = f"un impegno di tipo «{regola.tipo_evento}»"
+    prima = regola.trigger is Trigger.PRIMA_EVENTO
+    if not regola.minuti:
+        return f"{'quando comincia' if prima else 'appena finisce'} {tipo}"
+    quanto = plurale(regola.minuti, "minuto", "minuti")
+    return f"{quanto} {'prima di' if prima else 'dopo'} {tipo}"
+
+
 # — lettura —
 
 
@@ -533,3 +552,17 @@ def imposta_stato(conn: sqlite3.Connection, regola_id: int, stato: Stato) -> Reg
         raise TransizioneNonValida(f"una regola «{regola.stato}» non può diventare «{stato}»")
     conn.execute("UPDATE context_rules SET stato = ? WHERE id = ?", (stato.value, regola_id))
     return per_id(conn, regola_id)
+
+
+def elimina(conn: sqlite3.Connection, regola_id: int) -> None:
+    """Cancella una regola per davvero. Serve a «Annulla», e a null'altro.
+
+    Cancellare e scartare non sono la stessa cosa, ed è la stessa distinzione
+    dei tipi di evento fra archiviare e cancellare: **scartare** è una decisione
+    che resta — la pagina mostra le scartate e Custode non le ripropone —
+    mentre qui si sta disfacendo un gesto di trenta secondi fa, che il modello
+    ha capito male. Una regola nata per errore non deve lasciare traccia in un
+    elenco di scelte che non hai mai fatto.
+    """
+    if conn.execute("DELETE FROM context_rules WHERE id = ?", (regola_id,)).rowcount == 0:
+        raise RegolaInesistente(regola_id)

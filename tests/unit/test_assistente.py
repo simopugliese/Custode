@@ -17,6 +17,7 @@ from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import profilo as dom_profilo
+from custode_core.dominio import regole as dom_regole
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_router import assistente
@@ -829,6 +830,39 @@ def test_provider_giu_invita_a_riprovare(conn: sqlite3.Connection, ora: datetime
 
 
 # — annullamento —
+
+
+def test_annulla_una_regola_la_cancella_invece_di_scartarla(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    """Scartare è una decisione che resta e che la pagina mostra; qui si sta
+    disfacendo un gesto di trenta secondi fa che il modello ha capito male, e
+    una regola nata per errore non deve finire fra le scelte che non hai fatto.
+    """
+    esito = _esegui(
+        conn,
+        ora,
+        "x",
+        {
+            "azione": "crea_regola",
+            "titolo": "prendi la creatina",
+            "regola_trigger": "orario",
+            "regola_ora": "19:00",
+        },
+    )
+    assert esito.regola_id is not None
+    # L'id della regola è ciò che il bottone porta con sé.
+    assert esito.identificatore == esito.regola_id
+
+    testo = assistente.annulla(conn, ora, Azione.CREA_REGOLA, identificatore=esito.regola_id)
+
+    assert dom_regole.elenco(conn) == []
+    assert "prendi la creatina" in testo
+
+
+def test_annullare_una_regola_che_non_c_e_piu(conn: sqlite3.Connection, ora: datetime) -> None:
+    testo = assistente.annulla(conn, ora, Azione.CREA_REGOLA, identificatore=999)
+    assert "niente da annullare" in testo
 
 
 def test_annulla_una_creazione(conn: sqlite3.Connection, ora: datetime) -> None:
