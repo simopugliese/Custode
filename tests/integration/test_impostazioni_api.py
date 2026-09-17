@@ -63,6 +63,7 @@ def test_la_pagina_manda_solo_quello_che_qualcuno_legge(client: TestClient) -> N
     assert set(corpo["orari"]) == {
         "riepilogoSettimanaleGiorno",
         "riepilogoSettimanaleOra",
+        "proposteRegoleOra",
         "checkInMinutiDopo",
     }
     assert "approvazioni" not in corpo
@@ -380,3 +381,38 @@ class TestTuttoCollegato:
         """Vivo non si sa: il bot non lascia una traccia periodica come il worker."""
         assert "configurato" in _get(client)["botStatoLabel"]
         assert "42" not in _get(client)["botStatoLabel"]
+
+
+# — l'ora delle proposte segue quella del riepilogo, finché non la sposti (§8.10) —
+
+
+def test_l_ora_delle_proposte_parte_da_quella_del_riepilogo(client: TestClient) -> None:
+    """Il default non è una costante, è l'ora del riepilogo **in vigore**.
+
+    Una costante avrebbe voluto dire che spostando il riepilogo alle 22 le
+    proposte restavano alle 21 senza che niente lo dicesse — cioè due job che
+    ti scrivono a un'ora di distanza per nessuna ragione.
+    """
+    assert (
+        _get(client)["orari"]["proposteRegoleOra"]
+        == _get(client)["orari"]["riepilogoSettimanaleOra"]
+    )
+
+    _patch(client, {"orari": {"riepilogoSettimanaleOra": "22:15"}})
+
+    orari = _get(client)["orari"]
+    assert orari["riepilogoSettimanaleOra"] == "22:15"
+    assert orari["proposteRegoleOra"] == "22:15"
+
+
+def test_una_volta_spostata_l_ora_delle_proposte_e_sua(client: TestClient) -> None:
+    _patch(client, {"orari": {"proposteRegoleOra": "07:30"}})
+    _patch(client, {"orari": {"riepilogoSettimanaleOra": "22:15"}})
+
+    orari = _get(client)["orari"]
+    assert orari["riepilogoSettimanaleOra"] == "22:15"
+    assert orari["proposteRegoleOra"] == "07:30"
+
+
+def test_un_orario_storto_per_le_proposte_si_rifiuta(client: TestClient) -> None:
+    assert _patch(client, {"orari": {"proposteRegoleOra": "25:00"}}).status_code == 422

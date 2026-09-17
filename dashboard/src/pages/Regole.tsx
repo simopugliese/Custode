@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { PageHeader } from '../components/PageHeader';
 import { AvvisoRow } from '../components/AvvisoRow';
 import { StatsBar } from '../components/StatsBar';
@@ -19,6 +20,13 @@ const STATO_OPTIONS = [
 
 export default function Regole() {
   const { data, isLoading, error, refetch } = useRegole();
+  // «Riscrivila a parole»: la proposta si scarta e il suo testo finisce nella
+  // barra, da correggere e mandare. È il terzo gesto che §8.10 promette —
+  // approvo, rifiuto, **modifico** — senza aprire una form con cinque campi,
+  // che sarebbe un secondo modo di scrivere regole da tenere allineato
+  // all'interprete per sempre. La chiave cambia ad ogni tap, o due proposte
+  // riscritte di fila lascerebbero la barra ferma sulla prima.
+  const [bozza, setBozza] = useState<{ testo: string; chiave: number } | undefined>();
   const approva = useApprovaRegola();
   const scarta = useScartaRegola();
   const impostaStato = useImpostaStatoRegola();
@@ -53,7 +61,7 @@ export default function Regole() {
                   <div>
                     <div className="row" style={{ marginBottom: 10 }}>
                       <h5>Proposte</h5>
-                      <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>generate stanotte dall'analisi dei tuoi dati</span>
+                      <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>trovate da Custode nei tuoi ultimi due mesi</span>
                     </div>
                     {data.proposte.map((p, i) => (
                       <div
@@ -65,13 +73,26 @@ export default function Regole() {
                           <span className="cu-muted" style={{ fontSize: 11 }}>confidenza {p.confidenza}</span>
                         </div>
                         <div style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.4 }}>{p.testo}</div>
+                        {/* Quando scatterebbe: senza, si approva un promemoria
+                            senza sapere quando parlerà. È la stessa frase che
+                            sta sotto una regola attiva, composta dal backend. */}
+                        <div className="cu-muted" style={{ fontSize: 13 }}>{p.descrizione}</div>
                         <div className="cu-muted" style={{ fontSize: 13, lineHeight: 1.55 }}>{p.motivazione}</div>
                         <div className="row" style={{ gap: 6 }}>
                           <button className="btn btn-primary" onClick={() => approva.mutate(p.id)} disabled={approva.isPending}>
                             <Icon name="check" size={15} />
                             Approva
                           </button>
-                          <button className="btn btn-secondary">Modifica i parametri</button>
+                          <button
+                            className="btn btn-secondary"
+                            disabled={scarta.isPending}
+                            onClick={() => {
+                              scarta.mutate(p.id);
+                              setBozza({ testo: p.testo, chiave: Date.now() });
+                            }}
+                          >
+                            Riscrivila a parole
+                          </button>
                           <button className="btn btn-ghost" onClick={() => scarta.mutate(p.id)} disabled={scarta.isPending}>
                             Scarta
                           </button>
@@ -180,6 +201,7 @@ export default function Regole() {
 
       <AskBar
         id={ASK_ID}
+        bozza={bozza}
         placeholder="«ogni domenica sera chiedimi cosa voglio fare la settimana prossima»"
       />
     </>

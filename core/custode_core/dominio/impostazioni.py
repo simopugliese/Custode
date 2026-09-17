@@ -210,6 +210,25 @@ interruttore: scegliere il giorno e non poter scegliere l'ora vuol dire tornare
 sul Pi comunque.
 """
 
+PROPOSTE_ORA: Impostazione[str] = Impostazione(
+    chiave="proposte_regole_ora",
+    default="21:00",
+    valida=_orario,
+)
+"""A che ora il job cerca pattern e ti propone una regola (§8.10).
+
+**Il suo default non è questa stringa, è l'ora del riepilogo.** Chi legge passa
+`default=` l'orario del riepilogo già in vigore, quindi finché non la tocchi le
+due restano allineate anche se sposti il riepilogo — che è ciò che serve, perché
+la ragione di avere un'ora invece della notte è la stessa nei due casi: un
+messaggio di Custode deve arrivare quando lo puoi leggere. Il giorno che la
+sposti diventa indipendente, e il `21:00` qui sotto è solo l'ultima spiaggia di
+un'installazione che non ha né riga in tabella né `.env`.
+
+Il job gira **una volta al giorno** e non una volta a settimana: §8.10 chiede
+che una proposta arrivi «subito, non solo nel report settimanale».
+"""
+
 CHECK_IN_MINUTI_DOPO: Impostazione[int] = Impostazione(
     chiave="check_in_minuti_dopo",
     default=40,
@@ -228,6 +247,7 @@ REGISTRO: tuple[Impostazione[Any], ...] = (
     BUDGET_SETTIMANALE,
     RIEPILOGO_GIORNO,
     RIEPILOGO_ORA,
+    PROPOSTE_ORA,
     CHECK_IN_MINUTI_DOPO,
 )
 """Tutte le impostazioni che esistono. Serve a chi deve elencarle o ripulirle."""

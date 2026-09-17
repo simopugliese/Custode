@@ -485,11 +485,28 @@ in minuti). Il `pattern` che §8.10 elenca non compare né in `tipiTrigger` né 
 database: è il trigger delle auto-proposte, e mostrarlo prometterebbe una cosa
 che non si può ancora scegliere.
 
-**`proposte` è una lista vuota, e resta un campo.** Le proposte le scriverà il
-job delle auto-proposte; finché non c'è, «il modulo c'è e non ha niente da
-dire» è una lista vuota, che è diverso da un campo omesso — la regola scritta in
-cima a questo file. Per la stessa ragione `approva` esiste e risponde `409` su
-qualunque regola che non sia una proposta: è la verità, non un errore.
+**`proposte` adesso si riempie.** Le scrive un job che gira una volta al giorno
+(§8.10), all'ora che dicono le impostazioni: una per giro, al massimo tre in
+attesa insieme, e dopo quattordici giorni una proposta
+che non hai guardato passa fra le **scartate** — due settimane di silenzio sono
+una risposta, e quella lista è già la memoria che impedisce di riproporla.
+`approva` risponde ancora `409` su qualunque regola che non sia una proposta,
+perché approvare una cosa già attiva non vuol dire niente.
+
+Una proposta porta cinque campi e uno è nuovo: `descrizione`, cioè **quando
+scatterebbe**, detto a parole. È la stessa frase che sta sotto una regola
+attiva e dentro il promemoria su Telegram, composta dal backend in un posto
+solo; senza, si approverebbe un promemoria senza sapere quando parlerà.
+`confidenza` è `'alta' | 'media' | 'bassa'` e non un numero: nessuno l'ha
+calibrata su niente, e «0,82» prometterebbe una precisione che non c'è.
+
+**Da qui non si modificano, e il bottone lo dice.** §8.10 dà tre gesti su una
+proposta — approvo, rifiuto, modifico — e il terzo è «Riscrivila a parole»: la
+proposta si scarta e il suo testo finisce nella barra «A Custode», da correggere
+e mandare. Una form che scrivesse ora, giorni e minuti di una proposta sarebbe
+il secondo modo di creare una regola che questa sezione rifiuta due paragrafi
+più su, e la tua versione nasce comunque attiva perché scrivendola l'hai già
+approvata.
 
 `regoleAttive` porta **anche quelle in pausa**, con `stato: "pausa"` e
 `attenuata: true`: sono le regole che hai, e la pausa è un interruttore su
@@ -528,7 +545,13 @@ di quelli che funzionano. Si omettono, che è la regola scritta in cima a questo
 file: un campo il cui modulo non è ancora attivo si **omette**. Torneranno, uno
 alla volta, col modulo che li legge.
 
-L'unica eccezione è `orari.checkInMinutiDopo`, il margine di «sei probabilmente
+`orari.proposteRegoleOra` (HH:MM) dice quando gira il job delle auto-proposte
+(§8.10). Il valore che arriva è già **risolto**: finché non la sposti vale l'ora
+del riepilogo in vigore, e la pagina mostra l'ora a cui il job parte davvero
+invece di un campo vuoto da interpretare. Il giorno che la cambi diventa
+indipendente.
+
+L'altra eccezione è `orari.checkInMinutiDopo`, il margine di «sei probabilmente
 a casa»: §8.10 lo vuole esplicitamente configurabile, e si salva già adesso come
 `calendar_events.tipo` esisteva prima del tagging. Chi lo legge arriva dopo.
 

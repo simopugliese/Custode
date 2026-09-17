@@ -96,7 +96,8 @@ Fatti: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
 dei candidati per il profilo e la rifusione che ne segue; il **backup
 giornaliero** del database (§9); i **resoconti delle abitudini** settimanale e
 mensile (§8.6); la **sincronizzazione del calendario** col tag degli eventi
-nuovi e le **regole di contesto** dettate da te (§8.10).
+nuovi, le **regole di contesto** dettate da te e le **auto-proposte** di
+regole (§8.10).
 
 Il resoconto settimanale delle abitudini viaggia **dentro** il messaggio del
 riepilogo del diario invece che in uno suo: arriverebbe lo stesso giorno alla
@@ -113,9 +114,21 @@ c'entrano niente con Google. Non c'è un registro di fascia come per il sync: la
 finestra di cinque minuti sta dentro la valutazione, e a non ripetersi pensa
 `job_runs`, scatto per scatto.
 
+Le **auto-proposte** girano una volta al giorno, all'ora del riepilogo e
+**dopo** di lui: sono i due job che possono scriverti alla stessa ora, e il
+riepilogo della domenica è quello che aspettavi. L'ora è una manopola sua
+(`proposte_regole_ora`) il cui default è l'ora del riepilogo *in vigore*: finché
+non la sposti restano allineate, perché la ragione di avere un'ora invece della
+notte è la stessa per tutti e due — un messaggio di Custode deve arrivare quando
+lo puoi leggere.
+
+È l'unico job del modulo regole a chiedere un modello, e quasi tutte le sere non
+lo chiama: prima passano la scadenza delle proposte vecchie, il tetto di tre in
+attesa e la soglia del rilevatore, che è pura e gratis. Un giro senza candidati
+costa due `SELECT`.
+
 Da fare, ognuno insieme al modulo che serve: controllo delle scadenze dei task
-(§8.2), digest mattutino (§8.13), job delle **auto-proposte** di regole (§8.10),
-che è l'unico pezzo di quel modulo a chiedere un modello.
+(§8.2) e digest mattutino (§8.13).
 
 ## Provarlo
 

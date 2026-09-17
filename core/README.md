@@ -13,7 +13,17 @@ schema §7 in quattro servizi.
 - `migrazioni/` — lo schema di §7, un file `NNN_nome.sql` per volta.
 - `dominio/` — i servizi che API, bot e worker usano identici: `task.py`,
   `lista_spesa.py`, `diario.py`, `profilo.py`, `spese.py`, `abitudini.py`,
-  `calendario.py`, `impostazioni.py`, più `vocabolario.py`.
+  `calendario.py`, `impostazioni.py`, `regole.py`, `pattern.py`, più
+  `vocabolario.py`.
+
+  `regole.py` e `pattern.py` sono le due metà del motore di contesto (§8.10), e
+  nessuna delle due chiama un modello. In `regole.py` stanno l'archivio delle
+  regole, la valutazione `dovute()` — pura: le regole, un istante, gli eventi, e
+  nessun orologio — e `stessa_proposta()`, che è come si mantiene la promessa di
+  §8.10 «una scartata non si ripropone» senza pagare una seconda chiamata solo
+  per confrontare due frasi. In `pattern.py` sta il rilevatore: conta le
+  regolarità nello storico e dice quali reggono, così il modello viene chiamato
+  solo quando c'è davvero qualcosa da giudicare.
 - `registro_job.py` — `job_runs`, cioè cosa un job schedulato ha già fatto e
   quando. Sta qui e non nel worker perché da §8.10 lo legge anche l'API, per
   sapere se il calendario ha mai sincronizzato.

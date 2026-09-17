@@ -449,17 +449,28 @@ class TipoEventoSalvato(BaseModel):
 class RegolaProposta(BaseModel):
     """Una regola che Custode propone, e che tu approvi o scarti.
 
-    Nessuna riga può essere in questo stato finché non esiste il job delle
-    auto-proposte: il campo c'è perché il contratto e la pagina lo hanno da
-    prima, e una lista vuota è la risposta onesta — «il modulo c'è e non ha
-    niente da dire», che è diverso da un campo omesso.
+    I cinque campi sono quelli che il contratto aveva da prima che esistesse un
+    motore, e adesso hanno tutti dietro una colonna vera (migrazione 012). Sono
+    esattamente quello che serve a decidere senza aprire altro: cosa dirà
+    (`testo`), quando scatterà (`descrizione`), quanto Custode ci crede
+    (`confidenza`) e perché te la sta chiedendo (`motivazione`).
     """
 
     id: str
     triggerTipo: str
     confidenza: str
+    """'alta' | 'media' | 'bassa'. A parole e non come numero: «0,82» sarebbe
+    una precisione che non c'è dietro, perché nessuno ha calibrato niente."""
     testo: str
+    """Il promemoria che riceverai quando scatta."""
     motivazione: str
+    """I numeri che l'hanno fatta nascere. Senza, «Approva» è un bottone da
+    premere al buio."""
+    descrizione: str
+    """Quando scatterebbe, detto a parole — la **stessa frase** della riga di una
+    regola attiva e del promemoria su Telegram, perché la compone il dominio in
+    un posto solo. Non c'era nel contratto, e senza di lei una proposta si
+    approva senza sapere quando parlerà."""
 
 
 class RegolaAttiva(BaseModel):
@@ -553,6 +564,12 @@ class OrariImpostazioni(BaseModel):
     """HH:MM. Sta accanto al giorno perché mezzo interruttore non è un
     interruttore: poter scegliere il giorno e non l'ora vuol dire tornare sul Pi
     comunque."""
+    proposteRegoleOra: str
+    """HH:MM — quando Custode cerca pattern e ti propone una regola (§8.10).
+
+    Finché non la sposti vale l'ora del riepilogo, e il valore che arriva qui è
+    già quello risolto: la pagina mostra l'ora a cui il job **parte davvero**,
+    non un campo vuoto da interpretare."""
     checkInMinutiDopo: int
     """Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
     Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,
@@ -598,6 +615,7 @@ class ImpostazioniData(BaseModel):
 class ModificaOrari(BaseModel):
     riepilogoSettimanaleGiorno: str | None = None
     riepilogoSettimanaleOra: str | None = None
+    proposteRegoleOra: str | None = None
     checkInMinutiDopo: int | None = None
 
 

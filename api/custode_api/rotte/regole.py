@@ -10,11 +10,10 @@ la creatina tutti i giorni alle 19» sarebbe un secondo modo di fare la stessa
 cosa, da tenere allineato al primo per sempre. Qui si guarda cosa c'è e si
 decide se deve continuare a valere.
 
-**`approva` esiste e non ha ancora niente da approvare.** Le proposte le
-scriverà il job delle auto-proposte; la rotta c'è perché la transizione
-`proposta → attiva` è parte della stessa macchina a stati delle altre, e
-tenerla fuori vorrebbe dire spezzare un modulo su due file per una riga. Su una
-regola che non è una proposta risponde `409`, che è la verità.
+**`approva` adesso ha qualcosa da approvare.** Le proposte le scrive il job che gira
+una volta al giorno (`custode_worker.proposte`), e arrivano qui come regole in stato
+`proposta` con `origine = 'ia'`. Su qualunque altra regola la rotta risponde
+ancora `409`, perché approvare una cosa già attiva non vuol dire niente.
 """
 
 from __future__ import annotations
@@ -47,6 +46,27 @@ TIPI_TRIGGER: tuple[tuple[str, str], ...] = (
 """I tre che esistono. §8.10 ne elenca un quarto, `pattern`, e non compare qui
 perché non compare nemmeno nel database: sarà il trigger delle auto-proposte, e
 mostrarlo adesso prometterebbe una cosa che non si può scegliere."""
+
+
+def _proposta(regola: dom.Regola) -> schemi.RegolaProposta:
+    """Una proposta come la disegna la pagina.
+
+    `confidenza` e `motivazione` sono NOT NULL per ogni riga di origine `ia` —
+    glielo impone il CHECK della 012 — ma il tipo resta opzionale nel dominio,
+    perché una regola dettata da te non ce le ha. Il ripiego a stringa vuota non
+    succede mai e non serve a nascondere niente: serve a non far cadere la
+    pagina intera se un giorno qualcuno scrivesse una riga a mano con `sqlite3`.
+    """
+    return schemi.RegolaProposta(
+        id=str(regola.id),
+        triggerTipo=regola.trigger.value,
+        confidenza=regola.confidenza.value if regola.confidenza else "",
+        testo=regola.messaggio,
+        motivazione=regola.motivazione or "",
+        # La stessa frase della riga di una regola attiva e del promemoria su
+        # Telegram: la compone il dominio, in un posto solo.
+        descrizione=dom.descrizione(regola),
+    )
 
 
 def _attiva(regola: dom.Regola) -> schemi.RegolaAttiva:
@@ -90,9 +110,25 @@ def _attivita(
     return voci, sum(conteggi.values())
 
 
-def _titolo(attive: int, in_pausa: int) -> str:
-    """La frase in cima: dice lo stato delle cose, non un saluto."""
+def _titolo(attive: int, in_pausa: int, proposte: int = 0) -> str:
+    """La frase in cima: dice lo stato delle cose, non un saluto.
+
+    Una proposta in attesa vince sul «non hai ancora nessuna regola», ed è una
+    correzione trovata guardando la pagina vera: con una proposta e nessuna
+    regola il titolo diceva che non c'era niente mentre il numero sotto diceva
+    «da approvare: 1». Delle due, quella da leggere è la domanda che aspetta
+    una risposta — e restava l'unica riga della pagina a non nominarla.
+
+    Con delle regole attive il titolo resta il loro: quelle sono lo stato delle
+    cose, e la proposta la conta già la barra dei numeri due righe più sotto.
+    """
     if not attive and not in_pausa:
+        if proposte:
+            # Non passa da `plurale`, che antepone sempre il numero: «ti propone
+            # 1 regola» si legge come un totale di magazzino, «una regola» come
+            # una domanda.
+            quante = "una regola" if proposte == 1 else f"{proposte} regole"
+            return f"Custode ti propone {quante}."
         return "Non hai ancora nessuna regola."
     if not attive:
         return "Le tue regole sono tutte in pausa."
@@ -100,16 +136,22 @@ def _titolo(attive: int, in_pausa: int) -> str:
     return f"{quante[0].upper()}{quante[1:]}."
 
 
-def _nota_attivita(voci: list[schemi.VoceAttivita], regole: int) -> str | None:
+def _nota_attivita(voci: list[schemi.VoceAttivita], mai_attive: int) -> str | None:
     """Perché l'elenco dell'attività è vuoto, quando lo è.
 
     Due vuoti che si somigliano: nessuna regola scritta, e regole che
     semplicemente non sono ancora scattate in questa settimana. Dire il secondo
     al posto del primo lascerebbe a chiedersi se il motore stia funzionando.
+
+    Le **proposte non contano**, ed è quello che le fa restare due vuoti
+    distinti: una proposta non è mai stata attiva, quindi non può non essere
+    scattata. Contandole, una pagina con una proposta e nessuna regola direbbe
+    insieme «non hai ancora nessuna regola» e «nessuna delle tue regole è
+    scattata» — cioè il motore fermo travestito da motore che gira a vuoto.
+    Le scartate e quelle in pausa invece ci sono: hanno avuto un tempo in cui
+    potevano scattare.
     """
-    if voci:
-        return None
-    if not regole:
+    if voci or not mai_attive:
         return None
     return "Nessuna delle tue regole è scattata da lunedì."
 
@@ -125,7 +167,7 @@ def pagina_regole(conn: ConnDip, ora: OraDip) -> schemi.RegoleData:
     voci, totale = _attivita(conn, tutte, ora.date())
 
     return schemi.RegoleData(
-        titolo=_titolo(len(attive), len(in_pausa)),
+        titolo=_titolo(len(attive), len(in_pausa), len(proposte)),
         spiegazione=SPIEGAZIONE,
         stats=schemi.StatsRegole(
             attive=len(attive),
@@ -133,16 +175,15 @@ def pagina_regole(conn: ConnDip, ora: OraDip) -> schemi.RegoleData:
             scattateSettimana=totale,
             inPausa=len(in_pausa),
         ),
-        # Le proposte hanno bisogno del job che ancora non c'è: una lista vuota
-        # dice «il modulo c'è e non ha niente da dire», che è diverso da un
-        # campo omesso.
-        proposte=[],
+        # Dalla più recente, che è l'ordine di `elenco`: se ne hai più d'una in
+        # coda, quella di stanotte sta in cima.
+        proposte=[_proposta(r) for r in proposte],
         # Attive e in pausa nella stessa lista, come le disegna la pagina: sono
         # le regole che hai, e la pausa è un interruttore su ognuna, non un
         # posto diverso dove stanno.
         regoleAttive=[_attiva(r) for r in attive + in_pausa],
         attivitaSettimana=voci,
-        attivitaNota=_nota_attivita(voci, len(tutte)),
+        attivitaNota=_nota_attivita(voci, len(tutte) - len(proposte)),
         tipiTrigger=[schemi.TipoTrigger(tipo=t, descrizione=d) for t, d in TIPI_TRIGGER],
         scartate=[
             schemi.RegolaScartata(

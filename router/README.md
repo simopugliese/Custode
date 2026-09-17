@@ -106,6 +106,14 @@ La lettura degli scontrini passa da `chiedi_json_con_immagine`, non da
 immagini per la strada sbagliata (o viceversa) solleva `CompitoNonSupportato`
 invece di mandare al modello una domanda senza la cosa da guardare.
 
+Su Claude, oltre al resto: il **giudizio su un pattern** (§8.10), cioè decidere
+se una regolarità trovata nello storico valga la pena di interromperti e con che
+parole proportela. I numeri li ha già fatti `custode_core.dominio.pattern`, in
+codice puro: qui arriva solo la domanda per cui §6 lo chiama, che è di giudizio.
+La **forma** della regola non la sceglie il modello — l'ha fissata il rilevatore
+— tranne se un promemoria agganciato a un impegno serva prima o dopo, e con
+quanto scarto: quella sì è una domanda che nessun conteggio sa rispondere.
+
 §6 dice anche cosa **non** passa di qui: valutare una regola di contesto già
 approvata è logica pura, costo zero, e va tenuta così.
 

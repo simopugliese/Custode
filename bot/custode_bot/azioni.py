@@ -6,7 +6,8 @@ la stringa venga costruita a mano in un punto e letta a mano in un altro.
 
 Forma: `dominio:azione:argomento:vista`
   dominio  t = task, s = lista spesa, d = diario, p = profilo,
-           e = spese (§8.5), a = abitudini (§8.6), x = azioni di servizio
+           e = spese (§8.5), a = abitudini (§8.6), r = regole di contesto
+           (§8.10), x = azioni di servizio
   vista    da quale elenco è partito il tap, per ridisegnare quello giusto
 """
 
@@ -28,7 +29,7 @@ class AzioneNonValida(ValueError):
 
 @dataclass(frozen=True)
 class Azione:
-    dominio: Literal["t", "s", "d", "p", "e", "a", "x"]
+    dominio: Literal["t", "s", "d", "p", "e", "a", "r", "x"]
     nome: str
     argomento: str = ""
     vista: Vista = "task"
@@ -42,7 +43,10 @@ def leggi(dato: str) -> Azione:
     if len(pezzi) != 4:
         raise AzioneNonValida(dato)
     dominio, nome, argomento, sigla_vista = pezzi
-    if dominio not in ("t", "s", "d", "p", "e", "a", "x") or sigla_vista not in VISTE_PER_SIGLA:
+    if (
+        dominio not in ("t", "s", "d", "p", "e", "a", "r", "x")
+        or sigla_vista not in VISTE_PER_SIGLA
+    ):
         raise AzioneNonValida(dato)
     return Azione(
         dominio=dominio,  # type: ignore[arg-type]
@@ -82,6 +86,18 @@ def diario_giorno(giorno: date) -> str:
     resta valido anche se quella voce viene disfatta con «Annulla».
     """
     return Azione("d", "chiudi", giorno.isoformat(), "task").dato()
+
+
+def regola(nome: str, regola_id: int) -> str:
+    """Approvazione o scarto di una regola che Custode ti ha proposto (§8.10).
+
+    Solo due bottoni, e non tre: §8.10 dà tre gesti — approvo, rifiuto, modifico
+    — ma il terzo su Telegram non ha bisogno di un bottone. Per modificarla la
+    **riscrivi**, che è già il modo in cui le regole si creano da qui: l'antenata
+    la scarti, la tua nasce attiva, e non c'è un secondo canale da tenere
+    allineato al primo.
+    """
+    return Azione("r", nome, str(regola_id), "task").dato()
 
 
 def profilo(nome: str, argomento: int | str = "") -> str:

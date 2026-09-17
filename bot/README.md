@@ -180,3 +180,28 @@ dashboard — §8.6 la vuole in tutti e due i posti, e due conti diversi che
 dicono due numeri diversi sono peggio di uno solo. Il tap su un'abitudine già
 segnata **toglie** il log invece di scrivere «non fatta»: un tap per sbaglio
 deve riportare al silenzio, non affermare il contrario.
+
+## Le regole di contesto (§8.10)
+
+Le regole si **scrivono a parole**, da qui come dalla dashboard: «ricordami la
+creatina tutti i giorni alle 19», «mezz'ora prima di lezione dimmi di prendere
+il portatile». È lo stesso interprete e quindi la stessa regola, e nascono
+attive perché scrivendole le hai già approvate. Quando scattano arriva un
+messaggio col promemoria e, sotto, la riga che dice **da quale regola** viene:
+senza, un promemoria di due parole arriva a giorni di distanza da quando l'hai
+scritto e non si capisce quale mettere in pausa se ha rotto le scatole.
+
+Le **proposte** che Custode trova da solo arrivano qui, una alla volta, con due
+bottoni: «Approva» e «Scarta». Arrivano su Telegram e non solo in dashboard
+perché §8.10 le vuole «subito», e perché finché manca Cloudflare Access la
+pagina si apre solo dal Pi — una proposta annunciata e non rispondibile sarebbe
+peggio del silenzio.
+
+Due bottoni e non tre. Il terzo gesto che §8.10 promette — **modificarla** — da
+Telegram non ha bisogno di un bottone: la riscrivi come la vuoi, e quella è già
+la strada con cui le regole nascono da qui. La riga sotto i bottoni lo dice.
+
+Un tap su un messaggio vecchio, che in cronologia resta per sempre, trova la
+proposta già decisa e risponde «Questa proposta l'hai già decisa» invece di
+cambiarle stato una seconda volta: premere due volte non è successo niente di
+male, e non deve sembrare un guasto.
