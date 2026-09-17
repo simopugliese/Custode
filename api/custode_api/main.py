@@ -29,6 +29,7 @@ from custode_api.rotte import (
 )
 from custode_api.rotte import calendario as rotta_calendario
 from custode_api.rotte import impostazioni as rotta_impostazioni
+from custode_api.rotte import regole as rotta_regole
 from custode_bot.config import ImpostazioniBot, get_impostazioni_bot
 from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
 from custode_core.config import Settings, get_settings, versione
@@ -132,6 +133,7 @@ def crea_app(
     app.include_router(spese.router)
     app.include_router(abitudini.router)
     app.include_router(rotta_impostazioni.router)
+    app.include_router(rotta_regole.router)
     # Per ultimo: i moduli non ancora attivi non devono coprire una rotta vera.
     app.include_router(non_attivi.router)
 

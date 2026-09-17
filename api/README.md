@@ -21,12 +21,15 @@ Attivi con dati reali su SQLite: `GET /api/home`, `/api/task` (+ `POST`,
 `/api/diario` (+ `approva`, `scarta`), `/api/spese` (+ `POST`, `PATCH`, `DELETE`, `conferma`, `categorie`),
 `/api/abitudini` (+ `POST`, `PATCH`, `log`, `proposta/accetta|rifiuta`),
 `/api/calendario` (+ `PATCH` per correggere un tag, e `tipi` in `POST`,
-`PATCH`, `DELETE`), `/api/impostazioni` (+ `PATCH`),
+`PATCH`, `DELETE`), `/api/impostazioni` (+ `PATCH`), `/api/regole` (+ `PATCH`, `approva`, `scarta`),
 `/api/assistente/messaggio`, e `GET /api/health` per lo smoke test post-deploy
 (§10).
 
-Restano a `501` le regole di contesto (`/api/regole`, §8.10) e i corsi
-(`/api/lezioni`, §8.11).
+Resta a `501` solo il modulo dei corsi (`/api/lezioni`, §8.11).
+
+Le regole di contesto (§8.10) non si **creano** da qui: si scrivono a parole,
+dalla barra «A Custode» o dal bot, perché è lo stesso interprete. Questa rotta
+serve a guardare cosa c'è, metterlo in pausa e toglierlo.
 
 Le abitudini (§8.6) sono l'unico modulo che si *gestisce* da qui e non da
 Telegram: aggiungerne una vuole un nome e un numero scelti con calma, segnarla

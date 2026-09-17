@@ -96,7 +96,7 @@ Fatti: il **riepilogo settimanale del diario** (§8.4 punto 7), con la revisione
 dei candidati per il profilo e la rifusione che ne segue; il **backup
 giornaliero** del database (§9); i **resoconti delle abitudini** settimanale e
 mensile (§8.6); la **sincronizzazione del calendario** col tag degli eventi
-nuovi (§8.10).
+nuovi e le **regole di contesto** dettate da te (§8.10).
 
 Il resoconto settimanale delle abitudini viaggia **dentro** il messaggio del
 riepilogo del diario invece che in uno suo: arriverebbe lo stesso giorno alla
@@ -105,9 +105,17 @@ però indipendente da lui — se Claude non risponde per uno, l'altro parte
 comunque. Il mensile ha un job suo, il primo del mese: è l'unico che può
 proporre di adeguare un target, perché sette giorni non sono una tendenza.
 
+Le regole di contesto girano ad ogni giro, **dopo** la sincronizzazione del
+calendario: una regola «trenta minuti prima di lezione» guarda gli eventi in
+archivio, e valutarla prima del sync vorrebbe dire valutarla su una fotografia
+di cinque minuti fa. Non dipende però dal suo esito — i promemoria a orario non
+c'entrano niente con Google. Non c'è un registro di fascia come per il sync: la
+finestra di cinque minuti sta dentro la valutazione, e a non ripetersi pensa
+`job_runs`, scatto per scatto.
+
 Da fare, ognuno insieme al modulo che serve: controllo delle scadenze dei task
-(§8.2), digest mattutino (§8.13), valutazione delle regole di contesto approvate
-(§8.10).
+(§8.2), digest mattutino (§8.13), job delle **auto-proposte** di regole (§8.10),
+che è l'unico pezzo di quel modulo a chiedere un modello.
 
 ## Provarlo
 
