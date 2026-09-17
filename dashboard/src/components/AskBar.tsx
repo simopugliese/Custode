@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Send } from 'lucide-react';
 import { useAssistente } from '../hooks/useAssistente';
 
@@ -13,9 +13,38 @@ import { useAssistente } from '../hooks/useAssistente';
  * Sarebbe un secondo modo di creare la stessa cosa, da tenere allineato al
  * primo per sempre — mentre la barra accetta già «ricordami la creatina tutti
  * i giorni alle 19», che è come lo diresti.
+ *
+ * `bozza` è la stessa idea portata un passo più in là, e serve a «Riscrivila a
+ * parole» sulle proposte (§8.10): invece di una form per correggere i
+ * parametri di una regola proposta, la si riscrive **qui**, partendo dal testo
+ * che Custode aveva in mente. Resta un canale solo per creare regole, che è
+ * quello che il contratto impone.
+ *
+ * `chiave` cambia ad ogni richiesta e non è un dettaglio: due tap sullo stesso
+ * bottone hanno lo stesso `testo`, e senza qualcosa che cambi il secondo non
+ * riscriverebbe la barra che nel frattempo hai modificato a mano.
  */
-export function AskBar({ placeholder, id }: { placeholder: string; id?: string }) {
+export function AskBar({
+  placeholder,
+  id,
+  bozza,
+}: {
+  placeholder: string;
+  id?: string;
+  bozza?: { testo: string; chiave: number };
+}) {
   const [testo, setTesto] = useState('');
+
+  useEffect(() => {
+    if (!bozza) return;
+    setTesto(bozza.testo);
+    // Il fuoco va dove va il testo: senza, la barra si riempie in fondo alla
+    // pagina e chi ha premuto il bottone non ha idea che sia successo qualcosa.
+    document.getElementById(id ?? '')?.focus();
+    // Solo la chiave: il testo di una bozza non cambia senza che ne arrivi una
+    // nuova, e guardarlo rimetterebbe la bozza ad ogni battuta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bozza?.chiave]);
   const { mutate, data, isPending, isError } = useAssistente();
 
   function invia() {

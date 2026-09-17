@@ -176,6 +176,14 @@ def _leggi(
                 conn, default=worker.giorno_riepilogo
             ),
             riepilogoSettimanaleOra=dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo),
+            # Il default di questa è l'**ora del riepilogo già risolta**, non
+            # una costante: è la stessa catena che percorre il worker in cima a
+            # ogni giro (`_giro_proposte`), e leggerla diversamente qui darebbe
+            # una pagina che mostra un'ora mentre il job ne usa un'altra.
+            proposteRegoleOra=dom.PROPOSTE_ORA.leggi(
+                conn,
+                default=dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo),
+            ),
             # Nessun `default`: questa manopola non ha una variabile d'ambiente
             # dietro — nasce qui (§8.10 la vuole configurabile, e chi la userà
             # arriva dopo), quindi il valore di partenza è quello del registro.
@@ -258,6 +266,7 @@ def _scrivi_orari(conn: sqlite3.Connection, orari: schemi.ModificaOrari, ora: da
     for campo, voce in (
         ("riepilogoSettimanaleGiorno", dom.RIEPILOGO_GIORNO),
         ("riepilogoSettimanaleOra", dom.RIEPILOGO_ORA),
+        ("proposteRegoleOra", dom.PROPOSTE_ORA),
         ("checkInMinutiDopo", dom.CHECK_IN_MINUTI_DOPO),
     ):
         if campo in dati:

@@ -105,6 +105,24 @@ export default function Impostazioni() {
 
                     <div className="row">
                       <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>Proposte di regole</div>
+                        <div className="cu-muted" style={{ fontSize: 12 }}>
+                          Quando Custode cerca pattern nei tuoi dati e ti propone una regola
+                          (§8.10). Finché non la sposti segue l'ora del riepilogo.
+                        </div>
+                      </div>
+                      <input
+                        className="input cu-mono"
+                        style={{ width: 82, flex: 'none', textAlign: 'center' }}
+                        aria-label="Ora delle proposte di regole"
+                        defaultValue={data.orari.proposteRegoleOra}
+                        key={data.orari.proposteRegoleOra}
+                        onBlur={(e) => patchOrari({ proposteRegoleOra: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>Margine dopo l'ultima lezione</div>
                         <div className="cu-muted" style={{ fontSize: 12 }}>
                           Minuti prima che Custode ti consideri a casa. Lo userà il check-in serale

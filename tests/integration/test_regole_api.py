@@ -160,8 +160,8 @@ def test_una_scartata_smette_di_scattare(
 
 
 def test_approvare_una_regola_gia_attiva_e_409(client: TestClient, modello: RouterFinto) -> None:
-    """La rotta c'è perché la transizione fa parte della stessa macchina a
-    stati; le proposte le scriverà il job che ancora non esiste."""
+    """Approvare una cosa già attiva non vuol dire niente: la rotta serve alle
+    proposte, non alle regole che hai scritto tu."""
     regola_id = _scrivi(client, modello)
 
     assert client.post(f"/api/regole/{regola_id}/approva").status_code == 409
@@ -207,3 +207,124 @@ def test_senza_scatti_la_pagina_dice_perche_e_vuota(
 def test_senza_regole_non_c_e_nessuna_nota_da_dare(client: TestClient) -> None:
     """Due vuoti diversi: «non ne hai scritte» lo dice già il titolo."""
     assert "attivitaNota" not in _pagina(client)
+
+
+# — le proposte, che adesso si riempiono (§8.10) —
+
+
+def _proponi(db_path: Path, ora: datetime, **campi: Any) -> int:
+    """Una proposta come la scrive il job, dalla strada vera del dominio."""
+    with connessione(db_path) as conn:
+        proposta = dom.crea_da_evento(
+            conn,
+            trigger=dom.Trigger.DOPO_EVENTO,
+            tipo_evento="palestra",
+            minuti=0,
+            messaggio=campi.get("messaggio", "prendi la creatina"),
+            creata_il=campi.get("creata_il", ora),
+            origine=dom.Origine.IA,
+            stato=dom.Stato.PROPOSTA,
+            confidenza=campi.get("confidenza", dom.Confidenza.ALTA),
+            motivazione="15 giornate con palestra su 16, e quasi mai negli altri giorni.",
+        )
+        return proposta.id
+
+
+def test_una_proposta_arriva_in_pagina_con_tutto_quello_che_serve_a_decidere(
+    client: TestClient, db_path: Path, ora: datetime
+) -> None:
+    """Cosa dirà, quando scatterebbe, quanto ci crede e perché: senza uno di
+    questi, «Approva» è un bottone da premere al buio."""
+    _proponi(db_path, ora)
+
+    corpo = _pagina(client)
+
+    assert len(corpo["proposte"]) == 1
+    proposta = corpo["proposte"][0]
+    assert proposta["testo"] == "prendi la creatina"
+    assert proposta["triggerTipo"] == "dopo_evento"
+    assert proposta["confidenza"] == "alta"
+    assert "15 giornate" in proposta["motivazione"]
+    # La stessa frase che sta sotto una regola attiva e nel promemoria.
+    assert proposta["descrizione"] == "appena finisce un impegno di tipo «palestra»"
+    assert corpo["stats"]["daApprovare"] == 1
+    # Una proposta non è ancora una regola: non conta fra le attive.
+    assert corpo["stats"]["attive"] == 0
+    assert corpo["regoleAttive"] == []
+
+
+def test_approvare_una_proposta_la_rende_una_regola(
+    client: TestClient, db_path: Path, ora: datetime
+) -> None:
+    """Il `409` di prima era la verità, non un difetto: adesso che una proposta
+    esiste, la stessa rotta funziona."""
+    proposta_id = _proponi(db_path, ora)
+
+    risposta = client.post(f"/api/regole/{proposta_id}/approva")
+
+    assert risposta.status_code == 200
+    assert risposta.json()["stato"] == "attiva"
+    corpo = _pagina(client)
+    assert corpo["proposte"] == []
+    assert corpo["stats"]["attive"] == 1
+    assert corpo["regoleAttive"][0]["nome"] == "prendi la creatina"
+
+
+def test_scartare_una_proposta_la_manda_fra_le_scartate(
+    client: TestClient, db_path: Path, ora: datetime
+) -> None:
+    """Ed è lì che resta: §8.10 promette che Custode non la riproponga, e
+    mantenerlo richiede che la riga non sparisca."""
+    proposta_id = _proponi(db_path, ora)
+
+    assert client.post(f"/api/regole/{proposta_id}/scarta").status_code == 204
+
+    corpo = _pagina(client)
+    assert corpo["proposte"] == []
+    assert [s["nome"] for s in corpo["scartate"]] == ["prendi la creatina"]
+    # E non torna indietro.
+    assert client.post(f"/api/regole/{proposta_id}/approva").status_code == 409
+
+
+def test_una_proposta_da_sola_non_fa_dire_che_le_regole_non_scattano(
+    client: TestClient, db_path: Path, ora: datetime
+) -> None:
+    """Trovato guidando la pagina vera, non dai test.
+
+    Con una sola proposta la pagina diceva insieme «Non hai ancora nessuna
+    regola» e «Nessuna delle tue regole è scattata da lunedì»: il motore fermo
+    travestito da motore che gira a vuoto. Una proposta non è mai stata attiva,
+    quindi non può non essere scattata.
+    """
+    _proponi(db_path, ora)
+
+    corpo = _pagina(client)
+
+    # Il titolo nomina la domanda che aspetta: dire «non hai ancora nessuna
+    # regola» sopra un «da approvare: 1» lasciava la pagina a contraddirsi.
+    assert corpo["titolo"] == "Custode ti propone una regola."
+    assert "attivitaNota" not in corpo
+
+
+def test_una_regola_vera_che_non_e_scattata_lo_dice_ancora(
+    client: TestClient, modello: RouterFinto, db_path: Path, ora: datetime
+) -> None:
+    """L'altro verso: la nota serve, e non deve sparire insieme al difetto."""
+    _scrivi(client, modello)
+    _proponi(db_path, ora)
+
+    assert _pagina(client)["attivitaNota"] == "Nessuna delle tue regole è scattata da lunedì."
+
+
+def test_con_delle_regole_attive_il_titolo_resta_il_loro(
+    client: TestClient, modello: RouterFinto, db_path: Path, ora: datetime
+) -> None:
+    """La proposta la conta già la barra dei numeri: il titolo dice lo stato
+    delle cose, e le regole che hai sono quello."""
+    _scrivi(client, modello)
+    _proponi(db_path, ora)
+
+    corpo = _pagina(client)
+
+    assert corpo["titolo"] == "1 regola attiva."
+    assert corpo["stats"]["daApprovare"] == 1

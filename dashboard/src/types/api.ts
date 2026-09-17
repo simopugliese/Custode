@@ -403,12 +403,25 @@ export interface ModificaAbitudine {
 
 // — Regole di contesto —
 
+/**
+ * Una regola che Custode ha trovato da sé e che aspetta una tua risposta (§8.10).
+ *
+ * I cinque campi c'erano da prima che esistesse un motore; `descrizione` è
+ * arrivata con lui, e senza di lei una proposta si approverebbe senza sapere
+ * quando parlerà.
+ */
 export interface RegolaProposta {
   id: string;
   triggerTipo: string;
+  /** 'alta' | 'media' | 'bassa'. A parole: nessuno ha calibrato un numero. */
   confidenza: string;
+  /** Il promemoria che riceverai quando scatta. */
   testo: string;
+  /** I numeri che l'hanno fatta nascere. Senza, «Approva» è un bottone al buio. */
   motivazione: string;
+  /** Quando scatterebbe, detto a parole — la stessa frase della riga di una
+   *  regola attiva e del promemoria su Telegram. */
+  descrizione: string;
 }
 
 export interface RegolaAttiva {
@@ -454,6 +467,14 @@ export interface ImpostazioniData {
   orari: {
     riepilogoSettimanaleGiorno: 'domenica' | 'lunedi';
     riepilogoSettimanaleOra: string; // HH:MM
+    /**
+     * Quando Custode cerca pattern e ti propone una regola (§8.10). HH:MM.
+     *
+     * Finché non la sposti vale l'ora del riepilogo, e quello che arriva qui è
+     * già il valore risolto: la pagina mostra l'ora a cui il job **parte
+     * davvero**, non un campo vuoto da interpretare.
+     */
+    proposteRegoleOra: string; // HH:MM
     /**
      * Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
      * Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,
