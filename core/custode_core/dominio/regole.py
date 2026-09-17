@@ -1,15 +1,24 @@
-"""Le regole di contesto dettate da te (ARCHITECTURE.md §8.10).
+"""Le regole di contesto (ARCHITECTURE.md §8.10).
 
-§8.10 dà due origini alle regole. Questo modulo copre la prima: quelle che
-**detti tu** — «questa cosa dimmela alle 19», «dimmelo prima di lezione» — che
-diventano attive subito, perché scrivendole le hai già approvate. Le
-auto-proposte da pattern hanno bisogno di Claude e di uno storico su cui
-ragionare, e §12 le mette dopo.
+§8.10 dà due origini alle regole, e adesso ci sono tutte e due. Quelle che
+**detti tu** — «questa cosa dimmela alle 19», «dimmelo prima di lezione» —
+nascono attive, perché scrivendole le hai già approvate. Quelle **auto-proposte**
+nascono in stato `proposta`, con la confidenza e il perché di chi le ha
+proposte, e diventano attive solo se le approvi.
+
+**Una proposta è una regola concreta**, non un tipo di trigger a parte: ha uno
+dei tre trigger di sempre, quindi il giorno che l'approvi la fa scattare lo
+stesso `dovute()` già scritto e già provato. Quello che §8.10 chiama «trigger
+pattern» è in realtà `origine`: il pattern è come la regola è nata, non come
+scatta.
 
 **Niente modello, qui dentro né a valle.** §8.10 è esplicita: una regola già
-approvata si valuta con logica pura, costo zero. Il modello serve solo a capire
-la frase con cui la crei, e quello succede in `custode_router.assistente` — da
-lì arriva un'intenzione strutturata, e a scriverla in tabella è questo modulo.
+approvata si valuta con logica pura, costo zero. Il modello serve a capire la
+frase con cui la detti (`custode_router.assistente`) e a giudicare se un pattern
+regge abbastanza da proporlo (`custode_router.regole`); da tutti e due arriva
+roba strutturata, e a scriverla in tabella è questo modulo. Anche il confronto
+che impedisce di riproporre una regola già scartata sta qui ed è **senza
+modello**: `stessa_proposta()` è una funzione pura.
 
 **La valutazione è una funzione pura**, come «cosa è dovuto adesso?» del worker:
 `dovute()` prende le regole, un istante e gli eventi, e non tocca né database né
@@ -25,6 +34,7 @@ il worker la usa per non mandarti lo stesso promemoria due volte se riparte.
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -63,6 +73,49 @@ cioè la stessa regola direbbe due cose insieme.
 MAX_CARATTERI_MESSAGGIO = 300
 """Un promemoria è una riga. Più lungo non è un promemoria, è una voce di diario."""
 
+MAX_CARATTERI_MOTIVAZIONE = 400
+"""Il perché di una proposta sta in due righe di pagina.
+
+Più lungo non aiuta a decidere: se per spiegarti un pattern servono cinque
+righe, quel pattern non regge abbastanza da meritare un'interruzione.
+"""
+
+GIORNI_SCADENZA_PROPOSTA = 14
+"""Dopo quanto una proposta che non hai guardato passa fra le scartate.
+
+Due settimane di silenzio sono una risposta, e trattarle come tale è ciò che
+tiene corta la coda: una coda di proposte che non guardi mai è una coda che
+smetti di guardare. La scadenza **non cancella** la riga — la porta in
+`scartata`, cioè nella stessa memoria che impedisce di riproporla, che è la
+promessa di §8.10. Non c'è uno stato `scaduta` apposta: distinguerebbe il non
+deciso dal rifiutato senza cambiare niente di quello che succede dopo.
+"""
+
+MAX_PROPOSTE_IN_ATTESA = 3
+"""Quante proposte non decise possono stare in coda insieme.
+
+È la valvola: se non decidi, Custode **smette di chiedere** invece di
+accumulare. Tre insieme sono già un elenco da smaltire; il quarto candidato non
+scappa, lo storico da cui è uscito c'è ancora domani notte.
+"""
+
+SOGLIA_PAROLE_SIMILI = 0.6
+"""Quanto si devono somigliare due messaggi per essere la stessa proposta.
+
+È la frazione di parole del messaggio **più corto** che si ritrovano nell'altro,
+non un Jaccard: «prendi la creatina» e «prendi la creatina prima di uscire»
+dicono la stessa cosa, e un indice che le divide per l'unione le farebbe
+sembrare diverse man mano che una delle due si allunga.
+"""
+
+MINUTI_STESSA_ORA = 60
+"""Entro quanto due promemoria a orario parlano dello stesso momento.
+
+Serve a non fermarsi all'uguaglianza esatta: una proposta alle 19:00 e una alle
+19:30 sono la stessa idea con una manopola girata, ed è proprio il caso
+«simile ma non identico» che §8.10 chiede di non riproporre.
+"""
+
 
 class RegolaInesistente(LookupError):
     """L'id richiesto non corrisponde a nessuna regola."""
@@ -75,10 +128,11 @@ class TransizioneNonValida(ValueError):
 class Trigger(StrEnum):
     """I tipi di trigger che una regola può avere oggi.
 
-    §8.10 ne elenca un quarto, `pattern`, e qui non c'è: è il trigger di una
-    regola che il motore genera da sé, e la sua forma si conoscerà costruendo
-    quel motore. Ammetterlo adesso vorrebbe dire permettere una regola `attiva`
-    che nessun valutatore sa far scattare.
+    §8.10 ne elenca un quarto, `pattern`, e qui continua a non esserci — adesso
+    non più perché la sua forma è ignota, ma perché **non serve**: una regola
+    auto-proposta nasce già con uno di questi tre, quindi la fa scattare lo
+    stesso valutatore di tutte le altre. Il pattern è come la regola è nata, e
+    quello lo dice `Origine.IA`.
     """
 
     ORARIO = "orario"
@@ -88,7 +142,8 @@ class Trigger(StrEnum):
 
 class Stato(StrEnum):
     PROPOSTA = "proposta"
-    """Nessun codice la produce ancora: la scriverà il job delle auto-proposte."""
+    """Custode l'ha proposta e aspetta che tu decida. Ci arriva solo il job delle
+    auto-proposte, e ci resta al massimo `GIORNI_SCADENZA_PROPOSTA` giorni."""
     ATTIVA = "attiva"
     PAUSA = "pausa"
     SCARTATA = "scartata"
@@ -100,6 +155,21 @@ class Stato(StrEnum):
 class Origine(StrEnum):
     IA = "ia"
     UTENTE = "utente"
+
+
+class Confidenza(StrEnum):
+    """Quanto Custode crede alla proposta che ti sta facendo.
+
+    A parole e non come numero, ed è la forma che il contratto della dashboard
+    chiede da sempre (`RegolaProposta.confidenza` è una `string`): «0.82» sarebbe
+    una precisione che non c'è dietro — nessuno ha calibrato niente — mentre
+    «alta» dice a colpo d'occhio l'unica cosa che serve, se guardarla adesso o
+    dopo.
+    """
+
+    ALTA = "alta"
+    MEDIA = "media"
+    BASSA = "bassa"
 
 
 TUTTI_I_GIORNI: tuple[int, ...] = ()
@@ -137,8 +207,31 @@ class Regola:
     minuti: int | None = None
     """Minuti prima dell'inizio, o dopo la fine."""
 
+    confidenza: Confidenza | None = None
+    """Quanto Custode ci credeva, solo sulle regole che ha proposto lui."""
+    motivazione: str | None = None
+    """Il pattern che l'ha fatta nascere, a parole. Solo su quelle proposte.
+
+    Non si azzera quando la approvi: «questa te l'aveva proposta Custode a
+    settembre, e per questo motivo» è la risposta a «e questa da dove salta
+    fuori?» sei mesi dopo.
+    """
+
     def vale_il(self, giorno: date) -> bool:
         return not self.giorni or giorno.isoweekday() in self.giorni
+
+    def scade_il(self) -> datetime:
+        """Quando smetterà di aspettare una risposta. Ha senso solo su una proposta."""
+        return self.creata_il + timedelta(days=GIORNI_SCADENZA_PROPOSTA)
+
+    def abbozzo(self) -> Abbozzo:
+        """Come si presenta al confronto con una proposta nuova."""
+        return Abbozzo(
+            trigger=self.trigger,
+            testo=self.messaggio,
+            ora=self.ora,
+            tipo_evento=self.tipo_evento,
+        )
 
 
 @dataclass(frozen=True)
@@ -346,6 +439,20 @@ def _messaggio(testo: str) -> str:
     return pulito
 
 
+def _motivazione(testo: str | None) -> str | None:
+    if testo is None:
+        return None
+    pulito = " ".join(testo.strip().split())
+    if not pulito:
+        raise ValueError("una proposta senza il perché non si può mostrare")
+    if len(pulito) > MAX_CARATTERI_MOTIVAZIONE:
+        raise ValueError(
+            f"il perché di una proposta sta in {MAX_CARATTERI_MOTIVAZIONE} caratteri:"
+            f" questo ne ha {len(pulito)}"
+        )
+    return pulito
+
+
 def _minuti(minuti: int) -> int:
     if not 0 <= minuti <= MAX_MINUTI:
         raise ValueError(f"i minuti devono stare fra 0 e {MAX_MINUTI} (un giorno)")
@@ -388,6 +495,145 @@ def descrizione(regola: Regola) -> str:
     return f"{quanto} {'prima di' if prima else 'dopo'} {tipo}"
 
 
+# — «questa te l'ho già proposta», senza chiamare nessuno —
+
+
+@dataclass(frozen=True)
+class Abbozzo:
+    """La forma di una proposta, ridotta a ciò che la rende «la stessa».
+
+    Non è una `Regola` a cui manca l'id: è **di proposito più grossolana**.
+    §8.10 promette che una regola scartata non venga riproposta, e mantenerlo
+    con l'uguaglianza esatta non basta — «trenta minuti prima di palestra» e
+    «quarantacinque minuti prima di palestra» sono la stessa proposta con una
+    manopola girata, e riproporre la seconda il giorno dopo che hai scartato la
+    prima è esattamente il modo di far smettere di guardare la pagina.
+
+    Quindi qui dentro **non** ci sono i minuti, né la direzione fra prima e
+    dopo, né i giorni della settimana: sono le manopole. Ci sono l'aggancio
+    (quale tipo di impegno, o che ora del giorno) e cosa dice.
+    """
+
+    trigger: Trigger
+    testo: str
+    """Il messaggio della regola. Prima che Claude lo scriva, il nome della cosa
+    di cui parla — che è quanto basta a riconoscere un doppione senza pagare una
+    chiamata per scoprirlo dopo."""
+    ora: str | None = None
+    tipo_evento: str | None = None
+
+
+_PAROLE_VUOTE = frozenset(
+    {
+        # Le parole che ci sono in quasi ogni promemoria e non distinguono niente:
+        # se restassero, «ricordami la creatina» e «ricordami il portatile»
+        # avrebbero già una parola in comune su due.
+        "che",
+        "chi",
+        "col",
+        "come",
+        "con",
+        "cosa",
+        "dal",
+        "dalla",
+        "degli",
+        "dei",
+        "del",
+        "della",
+        "delle",
+        "dello",
+        "dimmi",
+        "dopo",
+        "ogni",
+        "per",
+        "poi",
+        "prima",
+        "quando",
+        "ricorda",
+        "ricordami",
+        "ricordarmi",
+        "ricordati",
+        "sempre",
+        "sul",
+        "sulla",
+        "tra",
+        "tue",
+        "tuo",
+        "tuoi",
+        "tutte",
+        "tutti",
+        "una",
+        "uno",
+    }
+)
+
+
+def _normalizza(testo: str) -> str:
+    """Minuscolo e senza accenti: «perché» e «perche» sono la stessa parola.
+
+    Serve perché i due testi da confrontare arrivano da due tastiere diverse —
+    uno l'hai scritto tu da Telegram, l'altro l'ha scritto un modello — e un
+    accento di differenza non deve far sembrare nuova una proposta già scartata.
+    """
+    scomposto = unicodedata.normalize("NFD", testo.casefold())
+    return "".join(c for c in scomposto if not unicodedata.combining(c))
+
+
+def _parole(testo: str) -> frozenset[str]:
+    """Le parole che distinguono un promemoria da un altro.
+
+    Sotto le tre lettere non si tiene niente: sono articoli e preposizioni, e un
+    elenco che li contenesse tutti sarebbe una lista da manutenere per sempre.
+    """
+    pulito = "".join(c if c.isalnum() else " " for c in _normalizza(testo))
+    return frozenset(p for p in pulito.split() if len(p) >= 3 and p not in _PAROLE_VUOTE)
+
+
+def _parole_simili(primo: str, secondo: str) -> bool:
+    pa, pb = _parole(primo), _parole(secondo)
+    if not pa or not pb:
+        # Un messaggio fatto solo di parole corte («bevi»): niente su cui
+        # calcolare una frazione, quindi si torna all'uguaglianza del testo.
+        return _normalizza(primo).split() == _normalizza(secondo).split()
+    return len(pa & pb) / min(len(pa), len(pb)) >= SOGLIA_PAROLE_SIMILI
+
+
+def _minuti_del_giorno(ora: str) -> int:
+    ore, minuti = dom_impostazioni.ore_e_minuti(ora)
+    return ore * 60 + minuti
+
+
+def _stesso_aggancio(primo: Abbozzo, secondo: Abbozzo) -> bool:
+    """Se i due scattano nello stesso punto della giornata o della tua settimana."""
+    a_orario = primo.trigger is Trigger.ORARIO
+    b_orario = secondo.trigger is Trigger.ORARIO
+    if a_orario != b_orario:
+        return False
+    if a_orario:
+        assert primo.ora is not None and secondo.ora is not None
+        scarto = abs(_minuti_del_giorno(primo.ora) - _minuti_del_giorno(secondo.ora))
+        # In tondo sulla giornata: le 23:50 e le 00:10 distano venti minuti, non
+        # ventitré ore e quaranta.
+        return min(scarto, 24 * 60 - scarto) <= MINUTI_STESSA_ORA
+    # Prima e dopo lo stesso impegno sono la stessa proposta: la direzione è una
+    # manopola, e §8.10 chiede di non riproporre nemmeno il «simile».
+    return primo.tipo_evento == secondo.tipo_evento
+
+
+def stessa_proposta(primo: Abbozzo, secondo: Abbozzo) -> bool:
+    """Se i due sono la stessa proposta — **senza chiedere niente a nessuno**.
+
+    È la funzione che mantiene la promessa di §8.10 («una scartata non si
+    ripropone») senza pagarla con una seconda chiamata al modello solo per
+    confrontare due frasi. Due condizioni insieme, e il perché sono due:
+    l'aggancio da solo zittirebbe per sempre qualunque altra proposta sullo
+    stesso impegno — la borraccia dopo che hai scartato la creatina — e le sole
+    parole aggancerebbero un promemoria del mattino a uno della sera che dicono
+    la stessa cosa in momenti che non c'entrano niente.
+    """
+    return _stesso_aggancio(primo, secondo) and _parole_simili(primo.testo, secondo.testo)
+
+
 # — lettura —
 
 
@@ -404,6 +650,8 @@ def _da_riga(riga: sqlite3.Row) -> Regola:
         giorni=tuple(int(g) for g in grezzi.split(",")) if grezzi else TUTTI_I_GIORNI,
         tipo_evento=riga["tipo_evento"],
         minuti=riga["minuti"],
+        confidenza=Confidenza(riga["confidenza"]) if riga["confidenza"] else None,
+        motivazione=riga["motivazione"],
     )
 
 
@@ -421,6 +669,54 @@ def elenco(conn: sqlite3.Connection, *, stati: Sequence[Stato] | None = None) ->
 def attive(conn: sqlite3.Connection) -> list[Regola]:
     """Quelle che il worker deve valutare, e nessun'altra."""
     return elenco(conn, stati=[Stato.ATTIVA])
+
+
+def in_attesa(conn: sqlite3.Connection) -> list[Regola]:
+    """Le proposte che aspettano una tua risposta."""
+    return elenco(conn, stati=[Stato.PROPOSTA])
+
+
+def gia_vista(conn: sqlite3.Connection, abbozzo: Abbozzo) -> Regola | None:
+    """La regola che copre già questo abbozzo, se c'è. **In qualunque stato.**
+
+    Non solo fra le scartate, e le altre tre non sono un di più:
+    - una **attiva** che dice già questa cosa renderebbe la proposta un
+      doppione da approvare per ricevere due volte lo stesso promemoria;
+    - una in **pausa** l'hai messa in pausa apposta, e riproporla sarebbe
+      chiedere di riaccendere ciò che hai appena spento;
+    - una **proposta** è già in coda: riproporla riempirebbe il tetto con la
+      stessa domanda scritta due volte.
+
+    Ritorna la regola e non un `bool` perché chi chiama ci scrive sopra una riga
+    di log che serve a capire *perché* una notte non è uscito niente.
+    """
+    for regola in elenco(conn):
+        if stessa_proposta(regola.abbozzo(), abbozzo):
+            return regola
+    return None
+
+
+def scadi_proposte(conn: sqlite3.Connection, adesso: datetime) -> list[Regola]:
+    """Porta fra le scartate le proposte che aspettano da troppo. Ritorna quali.
+
+    Due settimane di silenzio sono una risposta, e trattarle come tale è ciò che
+    tiene corta la coda. Finiscono in `scartata` e non cancellate: è la stessa
+    memoria che impedisce di riproporle, cioè la promessa di §8.10 — e la pagina
+    le mostra, il che è la verità, Custode te l'aveva chiesto e non hai risposto.
+
+    L'`UPDATE` è uno solo e non passa da `imposta_stato`: `proposta → scartata`
+    è una transizione che `_TRANSIZIONI` ammette già, quindi non c'è nessuna
+    regola da far rispettare riga per riga, e una scadenza che facesse una query
+    per proposta pagherebbe il tetto di tre con tre giri.
+    """
+    scadute = [r for r in in_attesa(conn) if r.scade_il() <= adesso]
+    if not scadute:
+        return []
+    conn.execute(
+        "UPDATE context_rules SET stato = ? WHERE id IN" f" ({', '.join('?' for _ in scadute)})",
+        [Stato.SCARTATA.value, *(r.id for r in scadute)],
+    )
+    return scadute
 
 
 def per_id(conn: sqlite3.Connection, regola_id: int) -> Regola:
@@ -442,11 +738,14 @@ def crea_a_orario(
     giorni: Sequence[int] = (),
     origine: Origine = Origine.UTENTE,
     stato: Stato = Stato.ATTIVA,
+    confidenza: Confidenza | None = None,
+    motivazione: str | None = None,
 ) -> Regola:
     """«Dimmi alle 19 di prendere la creatina», «ogni domenica sera chiedimi…».
 
-    Nasce **attiva**: §8.10 dice che una regola dettata da te non ha bisogno di
-    un'altra conferma, perché scrivendola l'hai già approvata.
+    Di default nasce **attiva**: §8.10 dice che una regola dettata da te non ha
+    bisogno di un'altra conferma, perché scrivendola l'hai già approvata. Il job
+    delle auto-proposte passa invece `stato=PROPOSTA` con la sua confidenza.
     """
     return _inserisci(
         conn,
@@ -459,6 +758,8 @@ def crea_a_orario(
         origine=origine,
         stato=stato,
         creata_il=creata_il,
+        confidenza=confidenza,
+        motivazione=motivazione,
     )
 
 
@@ -472,6 +773,8 @@ def crea_da_evento(
     creata_il: datetime,
     origine: Origine = Origine.UTENTE,
     stato: Stato = Stato.ATTIVA,
+    confidenza: Confidenza | None = None,
+    motivazione: str | None = None,
 ) -> Regola:
     """«Trenta minuti prima di una lezione», «appena finisce la palestra».
 
@@ -492,6 +795,8 @@ def crea_da_evento(
         origine=origine,
         stato=stato,
         creata_il=creata_il,
+        confidenza=confidenza,
+        motivazione=motivazione,
     )
 
 
@@ -507,11 +812,28 @@ def _inserisci(
     origine: Origine,
     stato: Stato,
     creata_il: datetime,
+    confidenza: Confidenza | None = None,
+    motivazione: str | None = None,
 ) -> Regola:
+    motivazione = _motivazione(motivazione)
+    # Il CHECK della 012 dice la stessa cosa, e non è un doppione: là è la rete
+    # che tiene lo schema coerente contro chiunque scriva in tabella, qui è un
+    # messaggio leggibile per chi ha sbagliato a chiamare. Un `IntegrityError`
+    # di SQLite non nomina quale dei due vincoli ha toccato.
+    if (origine is Origine.IA) != (confidenza is not None):
+        raise ValueError(
+            "confidenza e motivazione vanno insieme a origine «ia», e solo a quella:"
+            " una regola che hai dettato tu non ha una confidenza perché nessuno"
+            " l'ha stimata"
+        )
+    if (confidenza is None) != (motivazione is None):
+        raise ValueError("una proposta senza il perché non si può mostrare")
+
     cursore = conn.execute(
         "INSERT INTO context_rules"
-        " (origine, trigger_tipo, ora, giorni, tipo_evento, minuti, messaggio, stato, creata_il)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " (origine, trigger_tipo, ora, giorni, tipo_evento, minuti, messaggio,"
+        " confidenza, motivazione, stato, creata_il)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             origine.value,
             trigger.value,
@@ -520,6 +842,8 @@ def _inserisci(
             tipo_evento,
             minuti,
             messaggio,
+            confidenza.value if confidenza is not None else None,
+            motivazione,
             stato.value,
             creata_il.isoformat(timespec="seconds"),
         ),
@@ -538,8 +862,9 @@ _TRANSIZIONI: dict[Stato, frozenset[Stato]] = {
 Scritto qui e non lasciato implicito nelle rotte perché è la sola cosa che
 impedisce a una regola scartata di tornare attiva senza che tu l'abbia chiesto —
 e §8.10 promette che una scartata non si ripropone. Approvare è la transizione
-`proposta → attiva`: oggi nessuna riga è in `proposta`, quindi non la prende
-mai nessuno, ma è la stessa tabella che leggerà il job delle auto-proposte.
+`proposta → attiva`, e scartare o lasciar scadere una proposta è
+`proposta → scartata`: da lì non si torna, che è ciò che rende l'elenco delle
+scartate una memoria affidabile per `gia_vista`.
 """
 
 

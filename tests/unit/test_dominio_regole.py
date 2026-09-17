@@ -405,3 +405,249 @@ def test_la_domenica_e_femminile() -> None:
     """«il domenica» non lo prende nessun test di logica, e si legge ogni volta
     che quella regola scatta."""
     assert dom.etichetta_giorni((7,)) == "la domenica"
+
+
+# — «questa te l'ho già proposta», senza chiamare nessuno (§8.10) —
+
+
+def _abbozzo(
+    testo: str,
+    *,
+    trigger: dom.Trigger = dom.Trigger.ORARIO,
+    ora: str | None = "19:00",
+    tipo_evento: str | None = None,
+) -> dom.Abbozzo:
+    return dom.Abbozzo(trigger=trigger, testo=testo, ora=ora, tipo_evento=tipo_evento)
+
+
+def test_la_stessa_proposta_scritta_uguale() -> None:
+    assert dom.stessa_proposta(_abbozzo("prendi la creatina"), _abbozzo("prendi la creatina"))
+
+
+def test_gli_stessi_minuti_diversi_sono_la_stessa_proposta() -> None:
+    """Il caso che l'uguaglianza esatta lascia passare, ed è quello che conta.
+
+    «Trenta minuti prima di palestra» e «quarantacinque prima» sono la stessa
+    idea con una manopola girata: riproporre la seconda il giorno dopo che hai
+    scartato la prima è il modo di far smettere di guardare la pagina.
+    """
+    trenta = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.PRIMA_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    quarantacinque = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.DOPO_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    # Cambiano i minuti (che l'abbozzo non guarda) e pure la direzione.
+    assert dom.stessa_proposta(trenta, quarantacinque)
+
+
+def test_mezz_ora_di_differenza_e_ancora_lo_stesso_momento() -> None:
+    assert dom.stessa_proposta(
+        _abbozzo("prendi la creatina", ora="19:00"), _abbozzo("prendi la creatina", ora="19:30")
+    )
+
+
+def test_il_mattino_e_la_sera_non_sono_la_stessa_proposta() -> None:
+    """Le sole parole aggancerebbero due promemoria che dicono la stessa cosa in
+    momenti che non c'entrano niente: «pesati» alle 7 e «pesati» alle 22."""
+    assert not dom.stessa_proposta(_abbozzo("pesati", ora="07:00"), _abbozzo("pesati", ora="22:00"))
+
+
+def test_la_mezzanotte_si_scavalca_anche_qui() -> None:
+    """Le 23:50 e le 00:10 distano venti minuti, non ventitré ore e quaranta."""
+    assert dom.stessa_proposta(
+        _abbozzo("metti la sveglia", ora="23:50"), _abbozzo("metti la sveglia", ora="00:10")
+    )
+
+
+def test_due_cose_diverse_sullo_stesso_impegno_restano_due_proposte() -> None:
+    """L'aggancio da solo zittirebbe per sempre qualunque altra proposta sulla
+    palestra dopo che ne hai scartata una: la borraccia non è la creatina."""
+    creatina = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.DOPO_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    borraccia = _abbozzo(
+        "riempi la borraccia", trigger=dom.Trigger.PRIMA_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    assert not dom.stessa_proposta(creatina, borraccia)
+
+
+def test_due_impegni_diversi_restano_due_proposte() -> None:
+    palestra = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.DOPO_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    lezione = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.DOPO_EVENTO, ora=None, tipo_evento="lezione"
+    )
+    assert not dom.stessa_proposta(palestra, lezione)
+
+
+def test_un_orario_e_un_evento_non_si_confrontano() -> None:
+    a_orario = _abbozzo("prendi la creatina", ora="19:00")
+    da_evento = _abbozzo(
+        "prendi la creatina", trigger=dom.Trigger.DOPO_EVENTO, ora=None, tipo_evento="palestra"
+    )
+    assert not dom.stessa_proposta(a_orario, da_evento)
+
+
+def test_la_frase_piu_lunga_dice_ancora_la_stessa_cosa() -> None:
+    """Contenimento e non Jaccard: allungare una delle due non la rende nuova."""
+    assert dom.stessa_proposta(
+        _abbozzo("prendi la creatina"),
+        _abbozzo("prendi la creatina prima di uscire di casa"),
+    )
+
+
+def test_gli_accenti_e_le_maiuscole_non_fanno_una_proposta_nuova() -> None:
+    """I due testi arrivano da due tastiere diverse: la tua e quella di un modello."""
+    assert dom.stessa_proposta(_abbozzo("Ripassa Analisi"), _abbozzo("ripassa analisi"))
+
+
+def test_le_parole_di_servizio_non_bastano_a_far_somigliare_due_promemoria() -> None:
+    """Il caso in cui l'elenco delle parole vuote è l'unica cosa che decide.
+
+    Con «ricordami» e «sempre» ancora dentro, questi due hanno due parole in
+    comune su tre — sopra la soglia — e Custode smetterebbe di proporti il
+    portatile perché una volta hai scartato la creatina. Tolte, non hanno più
+    niente in comune, che è la verità.
+
+    La versione corta di questa prova («ricordami la creatina» contro
+    «ricordami il portatile») **non** provava niente: una parola in comune su
+    due sta sotto la soglia comunque, e il test passava anche a filtro spento.
+    """
+    assert not dom.stessa_proposta(
+        _abbozzo("ricordami sempre la creatina"),
+        _abbozzo("ricordami sempre il portatile"),
+    )
+
+
+def test_un_messaggio_di_sole_parole_corte_si_confronta_per_intero() -> None:
+    """Niente su cui calcolare una frazione: si torna all'uguaglianza del testo."""
+    assert dom.stessa_proposta(_abbozzo("bevi"), _abbozzo("Bevi"))
+    assert not dom.stessa_proposta(_abbozzo("bevi"), _abbozzo("esci"))
+
+
+# — le proposte in archivio (§8.10) —
+
+
+def _proposta(
+    conn: sqlite3.Connection,
+    *,
+    messaggio: str = "prendi la creatina",
+    ora: str = "19:00",
+    creata_il: datetime = MERCOLEDI,
+    confidenza: dom.Confidenza = dom.Confidenza.ALTA,
+) -> dom.Regola:
+    return dom.crea_a_orario(
+        conn,
+        ora=ora,
+        messaggio=messaggio,
+        creata_il=creata_il,
+        origine=dom.Origine.IA,
+        stato=dom.Stato.PROPOSTA,
+        confidenza=confidenza,
+        motivazione="lo segni quasi sempre verso quest'ora.",
+    )
+
+
+def test_una_proposta_nasce_in_attesa_e_si_ricorda_perche(conn: sqlite3.Connection) -> None:
+    proposta = _proposta(conn)
+
+    assert proposta.stato is dom.Stato.PROPOSTA
+    assert proposta.origine is dom.Origine.IA
+    assert proposta.confidenza is dom.Confidenza.ALTA
+    assert proposta.motivazione == "lo segni quasi sempre verso quest'ora."
+    assert dom.in_attesa(conn) == [proposta]
+
+
+def test_il_perche_resta_addosso_anche_dopo_che_l_hai_approvata(conn: sqlite3.Connection) -> None:
+    """«E questa da dove salta fuori?», sei mesi dopo."""
+    proposta = _proposta(conn)
+
+    approvata = dom.imposta_stato(conn, proposta.id, dom.Stato.ATTIVA)
+
+    assert approvata.stato is dom.Stato.ATTIVA
+    assert approvata.confidenza is dom.Confidenza.ALTA
+    assert approvata.motivazione == "lo segni quasi sempre verso quest'ora."
+
+
+def test_una_regola_dettata_da_te_non_puo_avere_una_confidenza(conn: sqlite3.Connection) -> None:
+    """Nessuno l'ha stimata: l'hai scritta, quindi la vuoi."""
+    with pytest.raises(ValueError, match="origine"):
+        dom.crea_a_orario(
+            conn,
+            ora="19:00",
+            messaggio="prendi la creatina",
+            creata_il=MERCOLEDI,
+            confidenza=dom.Confidenza.ALTA,
+            motivazione="me la sono inventata.",
+        )
+
+
+def test_una_proposta_senza_il_perche_non_si_scrive(conn: sqlite3.Connection) -> None:
+    with pytest.raises(ValueError):
+        dom.crea_a_orario(
+            conn,
+            ora="19:00",
+            messaggio="prendi la creatina",
+            creata_il=MERCOLEDI,
+            origine=dom.Origine.IA,
+            stato=dom.Stato.PROPOSTA,
+            confidenza=dom.Confidenza.ALTA,
+            motivazione="   ",
+        )
+
+
+def test_una_proposta_scade_dopo_due_settimane(conn: sqlite3.Connection) -> None:
+    """E scade **fra le scartate**, che è la memoria che impedisce di riproporla."""
+    proposta = _proposta(conn)
+    limite = MERCOLEDI + timedelta(days=dom.GIORNI_SCADENZA_PROPOSTA)
+
+    # Il giorno prima aspetta ancora.
+    assert dom.scadi_proposte(conn, limite - timedelta(seconds=1)) == []
+    assert dom.in_attesa(conn) != []
+
+    scadute = dom.scadi_proposte(conn, limite)
+
+    assert [r.id for r in scadute] == [proposta.id]
+    assert dom.in_attesa(conn) == []
+    assert dom.per_id(conn, proposta.id).stato is dom.Stato.SCARTATA
+
+
+def test_una_proposta_scaduta_non_torna_a_proporsi(conn: sqlite3.Connection) -> None:
+    """È il punto della scadenza-fra-le-scartate invece della cancellazione: se
+    sparisse, la notte dopo il pattern la rifarebbe nascere identica."""
+    _proposta(conn)
+    dom.scadi_proposte(conn, MERCOLEDI + timedelta(days=dom.GIORNI_SCADENZA_PROPOSTA))
+
+    gia = dom.gia_vista(
+        conn, dom.Abbozzo(trigger=dom.Trigger.ORARIO, testo="prendi la creatina", ora="19:00")
+    )
+
+    assert gia is not None
+    assert gia.stato is dom.Stato.SCARTATA
+
+
+def test_gia_vista_guarda_le_regole_in_ogni_stato(conn: sqlite3.Connection) -> None:
+    """Una attiva che dice già questa cosa rende la proposta un doppione da
+    approvare per ricevere due volte lo stesso promemoria."""
+    dom.crea_a_orario(conn, ora="19:00", messaggio="prendi la creatina", creata_il=MERCOLEDI)
+
+    gia = dom.gia_vista(
+        conn, dom.Abbozzo(trigger=dom.Trigger.ORARIO, testo="prendi la creatina", ora="19:15")
+    )
+
+    assert gia is not None and gia.stato is dom.Stato.ATTIVA
+
+
+def test_gia_vista_lascia_passare_una_proposta_davvero_nuova(conn: sqlite3.Connection) -> None:
+    dom.crea_a_orario(conn, ora="19:00", messaggio="prendi la creatina", creata_il=MERCOLEDI)
+
+    nuova = dom.Abbozzo(
+        trigger=dom.Trigger.DOPO_EVENTO,
+        testo="riempi la borraccia",
+        ora=None,
+        tipo_evento="palestra",
+    )
+
+    assert dom.gia_vista(conn, nuova) is None

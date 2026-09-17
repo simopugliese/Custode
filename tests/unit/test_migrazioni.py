@@ -249,3 +249,131 @@ def test_la_009_non_lascia_cancellare_un_tipo_ancora_addosso_a_un_evento(db_path
     conn.execute("DELETE FROM calendar_events WHERE tipo = 'viaggio'")
     conn.execute("DELETE FROM calendar_tags WHERE slug = 'viaggio'")
     conn.close()
+
+
+# — la 012 rientra la stessa tabella per le auto-proposte (§8.10, pezzo 9) —
+
+
+REGOLE_DI_IERI = [
+    # (trigger_tipo, ora, giorni, tipo_evento, minuti, messaggio, stato)
+    ("orario", "19:00", "", None, None, "prendi la creatina", "attiva"),
+    ("orario", "07:30", "1,4", None, None, "porta il badge", "pausa"),
+    ("prima_evento", None, "", "lezione", 30, "prendi il portatile", "attiva"),
+    ("dopo_evento", None, "", "palestra", 0, "bevi", "scartata"),
+]
+
+
+def _riempi_regole(conn: sqlite3.Connection) -> None:
+    conn.executemany(
+        "INSERT INTO context_rules (origine, trigger_tipo, ora, giorni, tipo_evento,"
+        " minuti, messaggio, stato, creata_il)"
+        " VALUES ('utente', ?, ?, ?, ?, ?, ?, ?, '2026-09-15T08:00:00')",
+        REGOLE_DI_IERI,
+    )
+
+
+def test_la_012_non_perde_una_regola(db_path: Path) -> None:
+    """Le regole sul Pi le hai scritte a parole, una per una: si perdono una volta sola.
+
+    Gli id compresi, come per la 009: l'id esce nel contratto REST ed è quello
+    su cui la pagina manda una pausa o uno scarto.
+    """
+    conn = connect(db_path)
+    _migra_fino_a(conn, "012")
+    _riempi_regole(conn)
+    prima = [dict(r) for r in conn.execute("SELECT * FROM context_rules ORDER BY id")]
+
+    assert migrazioni.migra(conn)[0] == "012_regole_proposte.sql"
+
+    dopo = [dict(r) for r in conn.execute("SELECT * FROM context_rules ORDER BY id")]
+    # Le due colonne nuove sono l'unica differenza, e su una regola che hai
+    # dettato tu sono vuote: nessuno ha stimato niente, l'hai scritta tu.
+    assert [
+        {k: v for k, v in r.items() if k not in ("confidenza", "motivazione")} for r in dopo
+    ] == prima
+    assert all(r["confidenza"] is None and r["motivazione"] is None for r in dopo)
+    conn.close()
+
+
+def test_la_012_rimette_l_indice_che_la_tabella_si_porta_via(db_path: Path) -> None:
+    """Stesso guasto silenzioso della 009: senza indice il worker risponde uguale, più piano.
+
+    E qui pesa di più che altrove, perché quella `SELECT` gira **ogni cinque
+    minuti per sempre**, anche quando non hai nessuna regola.
+    """
+    conn = connect(db_path)
+    migrazioni.migra(conn)
+
+    indici = {
+        r["name"]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'index'"
+            " AND tbl_name = 'context_rules' AND name NOT LIKE 'sqlite_%'"
+        )
+    }
+    assert indici == {"idx_regole_attive", "idx_regole_per_stato"}
+    conn.close()
+
+
+def test_la_012_tiene_insieme_confidenza_e_motivazione(db_path: Path) -> None:
+    """Le due colonne nuove sono le due metà della stessa frase.
+
+    Una proposta con la confidenza ma senza il perché è una riga che la pagina
+    disegna mezza vuota, e «Approva» diventa un bottone da premere al buio.
+    """
+    conn = connect(db_path)
+    migrazioni.migra(conn)
+
+    def inserisci(origine: str, confidenza: str | None, motivazione: str | None) -> None:
+        conn.execute(
+            "INSERT INTO context_rules (origine, trigger_tipo, ora, giorni, messaggio,"
+            " confidenza, motivazione, stato, creata_il)"
+            " VALUES (?, 'orario', '19:00', '', 'prendi la creatina', ?, ?, 'proposta',"
+            " '2026-09-17T03:30:00')",
+            (origine, confidenza, motivazione),
+        )
+
+    # Una proposta intera passa.
+    inserisci("ia", "alta", "7 giornate con palestra su 8.")
+
+    # Mezza no, in nessuno dei due versi.
+    with pytest.raises(sqlite3.IntegrityError):
+        inserisci("ia", "alta", None)
+    with pytest.raises(sqlite3.IntegrityError):
+        inserisci("ia", None, "7 giornate con palestra su 8.")
+
+    # E una confidenza inventata nemmeno.
+    with pytest.raises(sqlite3.IntegrityError):
+        inserisci("ia", "altissima", "7 giornate con palestra su 8.")
+    conn.close()
+
+
+def test_la_012_lega_la_confidenza_a_chi_ha_proposto(db_path: Path) -> None:
+    """Confidenza e motivazione ci sono **se e solo se** la regola l'ha proposta Custode.
+
+    Nei due versi: una regola che hai dettato tu non ha una confidenza perché
+    nessuno l'ha stimata, e una nata da un pattern senza motivazione non si può
+    mostrare.
+    """
+    conn = connect(db_path)
+    migrazioni.migra(conn)
+
+    def inserisci(origine: str, confidenza: str | None, motivazione: str | None) -> None:
+        conn.execute(
+            "INSERT INTO context_rules (origine, trigger_tipo, ora, giorni, messaggio,"
+            " confidenza, motivazione, stato, creata_il)"
+            " VALUES (?, 'orario', '19:00', '', 'prendi la creatina', ?, ?, 'attiva',"
+            " '2026-09-17T03:30:00')",
+            (origine, confidenza, motivazione),
+        )
+
+    # Dettata da te: nessuna delle due.
+    inserisci("utente", None, None)
+    # Proposta da Custode: tutte e due, e restano addosso anche da approvata.
+    inserisci("ia", "media", "lo segni quasi sempre verso le 19.")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        inserisci("utente", "alta", "te l'ho stimata io.")
+    with pytest.raises(sqlite3.IntegrityError):
+        inserisci("ia", None, None)
+    conn.close()
