@@ -1,8 +1,8 @@
 """Il calendario di Google, letto con httpx (§8.10).
 
 **Perché non l'SDK di Google.** Qui si usano tre chiamate: rinnovare il token,
-chiedere l'elenco dei calendari e quello degli eventi. `google-api-python-client` più `google-auth` si
-porterebbero dietro una catena di dipendenze e un client generato per tutte le
+chiedere l'elenco dei calendari e quello degli eventi. `google-api-python-client`
+più `google-auth` si porterebbero dietro una catena di dipendenze e un client generato per tutte le
 API di Google, su un arm64 dove ogni ruota in meno è tempo di build in meno. È
 la stessa ragione per cui `deepseek.py` non usa l'SDK di OpenAI.
 

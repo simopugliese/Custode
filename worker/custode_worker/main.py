@@ -635,7 +635,8 @@ def main() -> int:
     )
     if sorgente_calendario.configurata():
         log.info(
-            "calendario: tutti quelli spuntati su Google, da %d giorni fa a %d avanti, ogni %d minuti",
+            "calendario: quelli spuntati su Google, da %d giorni fa a %d avanti,"
+            " ogni %d minuti",
             calendario.giorni_indietro,
             calendario.giorni_avanti,
             MINUTI_SYNC_CALENDARIO,
