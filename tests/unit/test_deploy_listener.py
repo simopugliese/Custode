@@ -6,8 +6,9 @@ from collections.abc import Sequence
 
 import pytest
 
+from custode_deploy import listener
 from custode_deploy.firma import firma
-from custode_deploy.listener import STATI_PER_CODICE, Servizio
+from custode_deploy.listener import STATI_PER_CODICE, Servizio, esegui_comando
 
 SEGRETO = "segreto-di-prova"
 ADESSO = 1_800_000_000
@@ -110,3 +111,24 @@ def test_i_nomi_degli_header_possono_arrivare_in_minuscolo() -> None:
     esecutore = Esecutore()
     minuscoli = {nome.lower(): valore for nome, valore in _intestazioni("POST", "/deploy").items()}
     assert _servizio(esecutore).gestisci("POST", "/deploy", minuscoli, b"")[0] == 202
+
+
+def test_il_comando_vero_scrive_nel_journal_e_restituisce_lultima_riga(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    codice, ultima = esegui_comando(["sh", "-c", "echo uno; echo due >&2; echo tre; exit 11"])
+    assert (codice, ultima) == (11, "tre")
+    # Stdout e stderr finiscono nello stesso flusso, riga per riga e col prefisso.
+    fuori = capsys.readouterr().out.splitlines()
+    assert fuori == ["[deploy] uno", "[deploy] due", "[deploy] tre"]
+
+
+def test_un_comando_che_non_stampa_niente_ha_lultima_riga_vuota() -> None:
+    assert esegui_comando(["true"]) == (0, "")
+
+
+def test_un_comando_troppo_lento_viene_fermato(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(listener, "TIMEOUT_DEPLOY_SECONDI", 0.2)
+    codice, messaggio = esegui_comando(["sleep", "5"])
+    assert codice == 1
+    assert "tempo massimo" in messaggio

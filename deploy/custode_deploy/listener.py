@@ -49,19 +49,42 @@ Esecutore = Callable[[Sequence[str]], tuple[int, str]]
 
 
 def esegui_comando(comando: Sequence[str]) -> tuple[int, str]:
-    """Lancia il comando e dà `(exit code, ultima riga stampata)`."""
+    """Lancia il comando e dà `(exit code, ultima riga stampata)`.
+
+    Ogni riga che il comando stampa (anche sugli errori) viene riscritta subito
+    sullo standard output del listener, che systemd manda nel journal: così
+    `journalctl -u custode-deploy -f` mostra il deploy mentre accade, e un
+    deploy fallito si rilegge dopo. Alla CI e a Telegram ne arriva solo l'ultima
+    riga, come prima.
+    """
+    processo = subprocess.Popen(
+        list(comando),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    scaduto = threading.Event()
+
+    def ferma() -> None:
+        scaduto.set()
+        processo.kill()
+
+    timer = threading.Timer(TIMEOUT_DEPLOY_SECONDI, ferma)
+    timer.start()
+    ultima = ""
     try:
-        fatto = subprocess.run(
-            list(comando),
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_DEPLOY_SECONDI,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
+        assert processo.stdout is not None
+        for riga in processo.stdout:
+            print(f"[deploy] {riga.rstrip()}", flush=True)
+            if riga.strip():
+                ultima = riga.strip()
+        processo.wait()
+    finally:
+        timer.cancel()
+    if scaduto.is_set():
         return 1, "il deploy ha superato il tempo massimo"
-    righe = [r for r in (fatto.stdout + fatto.stderr).splitlines() if r.strip()]
-    return fatto.returncode, righe[-1] if righe else ""
+    return processo.returncode, ultima
 
 
 class Servizio:
