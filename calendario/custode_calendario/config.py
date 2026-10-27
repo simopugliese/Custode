@@ -38,9 +38,6 @@ class ImpostazioniCalendario(BaseSettings):
     giorno cominciasse a ruotare, questo campo diventerebbe un file scrivibile.
     """
 
-    calendario_id: str = "primary"
-    """Quale calendario leggere. «primary» è quello principale dell'account."""
-
     giorni_indietro: int = 7
     giorni_avanti: int = 14
     """Quanta finestra sincronizzare.

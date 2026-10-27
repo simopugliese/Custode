@@ -31,6 +31,14 @@ class StatoFinto:
         self.richieste_token: list[dict[str, list[str]]] = []
         self.richieste_eventi: list[dict[str, list[str]]] = []
         self.autorizzazioni_viste: list[str] = []
+        self.calendari: list[dict[str, Any]] = []
+        """La `calendarList`. Vuota = un solo calendario, il principale."""
+        self.eventi_per_calendario: dict[str, list[dict[str, Any]]] = {}
+        """Gli eventi degli altri calendari, per id. Il principale usa `eventi`."""
+        self.stato_per_calendario: dict[str, int] = {}
+        """Un errore HTTP solo per questo calendario (id)."""
+        self.calendari_chiesti: list[str] = []
+        """Gli id dei calendari di cui sono stati chiesti gli eventi, in ordine."""
 
 
 class _Gestore(BaseHTTPRequestHandler):
@@ -65,11 +73,32 @@ class _Gestore(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         pezzi = urllib.parse.urlparse(self.path)
         parametri = urllib.parse.parse_qs(pezzi.query)
-        _Gestore.stato.richieste_eventi.append(parametri)
-        _Gestore.stato.autorizzazioni_viste.append(self.headers.get("Authorization") or "")
+        stato = _Gestore.stato
+        stato.autorizzazioni_viste.append(self.headers.get("Authorization") or "")
 
-        if _Gestore.stato.stato_eventi != 200:
-            self._json(_Gestore.stato.stato_eventi, {"error": {"message": "no"}})
+        if pezzi.path.endswith("/users/me/calendarList"):
+            self._json(
+                200,
+                {"items": stato.calendari or [{"id": "me@example.com", "primary": True}]},
+            )
+            return
+
+        stato.richieste_eventi.append(parametri)
+        # Il percorso arriva ancora codificato: l'id va decodificato per
+        # confrontarlo, ed è anche ciò che prova che il client lo codifica.
+        segmenti = pezzi.path.split("/")
+        calendario = urllib.parse.unquote(segmenti[segmenti.index("calendars") + 1])
+        stato.calendari_chiesti.append(calendario)
+
+        if stato.stato_eventi != 200:
+            self._json(stato.stato_eventi, {"error": {"message": "no"}})
+            return
+        if stato.stato_per_calendario.get(calendario, 200) != 200:
+            self._json(stato.stato_per_calendario[calendario], {"error": {"message": "no"}})
+            return
+
+        if calendario in stato.eventi_per_calendario:
+            self._json(200, {"items": stato.eventi_per_calendario[calendario]})
             return
 
         if _Gestore.stato.pagine:

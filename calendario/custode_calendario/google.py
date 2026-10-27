@@ -1,7 +1,7 @@
 """Il calendario di Google, letto con httpx (§8.10).
 
-**Perché non l'SDK di Google.** Qui si usano due chiamate: rinnovare il token e
-chiedere l'elenco degli eventi. `google-api-python-client` più `google-auth` si
+**Perché non l'SDK di Google.** Qui si usano tre chiamate: rinnovare il token,
+chiedere l'elenco dei calendari e quello degli eventi. `google-api-python-client` più `google-auth` si
 porterebbero dietro una catena di dipendenze e un client generato per tutte le
 API di Google, su un arm64 dove ogni ruota in meno è tempo di build in meno. È
 la stessa ragione per cui `deepseek.py` non usa l'SDK di OpenAI.
@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -135,29 +136,95 @@ class ClientGoogle:
     # — eventi ————————————————————————————————————————————
 
     def eventi(self, da: date, a: date) -> list[Evento]:
-        """Gli eventi fra due giorni, estremi inclusi, ordinati per inizio."""
+        """Gli eventi di tutti i calendari spuntati, ordinati per inizio.
+
+        **Tutto o niente**: se un calendario non si legge, l'intera chiamata
+        solleva. È ciò che tiene giusta la riconciliazione di `sincronizza`,
+        che cancella gli eventi non visti dentro la finestra — con una lettura
+        a metà, gli eventi del calendario saltato sparirebbero dall'archivio.
+        """
         token = self._token_valido()
         raccolti: list[Evento] = []
-        pagina: str | None = None
+        # Lo stesso impegno può stare su più calendari (un invito condiviso):
+        # ha lo stesso `iCalUID`, e si tiene la prima copia, cioè quella del
+        # principale, perché i calendari arrivano con il principale davanti.
+        gia_visti: set[tuple[str, datetime]] = set()
 
+        for calendario_id, principale in self._calendari(token):
+            # Il principale tiene gli id di sempre: prefissarli tutti
+            # farebbe risultare nuovi gli eventi già in archivio, che
+            # perderebbero il tag. Gli altri portano l'id del calendario,
+            # perché su Google un id è unico solo dentro il suo calendario.
+            prefisso = "" if principale else f"{calendario_id}:"
+            pagina: str | None = None
+
+            while True:
+                dati = self._chiedi_eventi(token, calendario_id, principale, da, a, pagina)
+                for voce in dati.get("items") or []:
+                    if not isinstance(voce, dict):
+                        continue
+                    evento = self._evento_da(voce, prefisso)
+                    if evento is None:
+                        continue
+                    ical = str(voce.get("iCalUID") or "").strip()
+                    if ical:
+                        chiave = (ical, evento.inizio)
+                        if chiave in gia_visti:
+                            continue
+                        gia_visti.add(chiave)
+                    raccolti.append(evento)
+                pagina = dati.get("nextPageToken") or None
+                if not pagina:
+                    break
+
+        # Google li restituisce già ordinati, ma l'ordine è ciò su cui il
+        # motore di contesto ragiona: riordinare qui costa niente e toglie una
+        # dipendenza da un comportamento del server. Qui serve anche a fondere
+        # calendari diversi in un'unica sequenza.
+        raccolti.sort(key=lambda e: (e.inizio, e.titolo))
+        return raccolti
+
+    def _calendari(self, token: str) -> list[tuple[str, bool]]:
+        """I calendari da leggere: quelli spuntati su Google Calendar.
+
+        Quali leggere si decide dall'app di Google, non da qui: la spunta nella
+        colonna «I miei calendari» / «Altri calendari» è il campo `selected`,
+        che l'API omette quando è falso. Il principale c'è sempre, spuntato o
+        no, ed è sempre il primo. Quelli in sola «libero/occupato» si saltano:
+        non hanno eventi leggibili e Google risponderebbe 403 ad ogni giro.
+        """
+        trovati: list[tuple[str, bool]] = []
+        pagina: str | None = None
         while True:
-            dati = self._chiedi_eventi(token, da, a, pagina)
+            parametri = {"maxResults": "250"}
+            if pagina:
+                parametri["pageToken"] = pagina
+            dati = self._get(token, "/users/me/calendarList", parametri, "l'elenco dei calendari")
             for voce in dati.get("items") or []:
-                if isinstance(voce, dict):
-                    evento = self._evento_da(voce)
-                    if evento is not None:
-                        raccolti.append(evento)
+                if not isinstance(voce, dict):
+                    continue
+                identificativo = str(voce.get("id") or "").strip()
+                principale = voce.get("primary") is True
+                if not identificativo or voce.get("accessRole") == "freeBusyReader":
+                    continue
+                if principale or voce.get("selected") is True:
+                    trovati.append((identificativo, principale))
             pagina = dati.get("nextPageToken") or None
             if not pagina:
                 break
 
-        # Google li restituisce già ordinati, ma l'ordine è ciò su cui il
-        # motore di contesto ragiona: riordinare qui costa niente e toglie una
-        # dipendenza da un comportamento del server.
-        raccolti.sort(key=lambda e: (e.inizio, e.titolo))
-        return raccolti
+        trovati.sort(key=lambda voce: not voce[1])
+        return trovati
 
-    def _chiedi_eventi(self, token: str, da: date, a: date, pagina: str | None) -> dict[str, Any]:
+    def _chiedi_eventi(
+        self,
+        token: str,
+        calendario_id: str,
+        principale: bool,
+        da: date,
+        a: date,
+        pagina: str | None,
+    ) -> dict[str, Any]:
         parametri: dict[str, str] = {
             "timeMin": self._istante_iso(da, inizio=True),
             "timeMax": self._istante_iso(a + timedelta(days=1), inizio=True),
@@ -172,10 +239,30 @@ class ClientGoogle:
         if pagina:
             parametri["pageToken"] = pagina
 
-        indirizzo = (
-            f"{self._impostazioni.url_api.rstrip('/')}"
-            f"/calendars/{self._impostazioni.calendario_id}/events"
+        # Gli id di Google contengono `@` e a volte `#` (i calendari delle
+        # festività): senza codifica il `#` taglierebbe l'indirizzo.
+        percorso = f"/calendars/{quote(calendario_id, safe='')}/events"
+        return self._get(
+            token,
+            percorso,
+            parametri,
+            "gli eventi",
+            # Un 403 sul principale vuol dire permesso morto. Su un calendario
+            # condiviso può voler dire solo che il proprietario ha cambiato i
+            # permessi: non è una ragione per far rifare l'autorizzazione.
+            autorizzazione_negata=principale,
         )
+
+    def _get(
+        self,
+        token: str,
+        percorso: str,
+        parametri: dict[str, str],
+        cosa: str,
+        *,
+        autorizzazione_negata: bool = True,
+    ) -> dict[str, Any]:
+        indirizzo = f"{self._impostazioni.url_api.rstrip('/')}{percorso}"
         client = self._client or httpx.Client(timeout=self._impostazioni.timeout_secondi)
         try:
             risposta = client.get(
@@ -187,11 +274,11 @@ class ClientGoogle:
             if self._client is None:
                 client.close()
 
-        if risposta.status_code in (401, 403):
+        if risposta.status_code == 401 or (risposta.status_code == 403 and autorizzazione_negata):
             raise AutorizzazioneNonValida(SPIEGAZIONE_SCADUTA)
         if risposta.status_code >= 400:
             raise CalendarioNonRaggiungibile(
-                f"Google ha risposto {risposta.status_code} leggendo gli eventi"
+                f"Google ha risposto {risposta.status_code} leggendo {cosa}"
             )
         return _json_o_errore(risposta)
 
@@ -207,8 +294,12 @@ class ClientGoogle:
         momento = datetime.combine(giorno, time.min, tzinfo=self._fuso)
         return momento.isoformat()
 
-    def _evento_da(self, voce: dict[str, Any]) -> Evento | None:
-        """Da un evento di Google a uno di Custode. `None` se non è utilizzabile."""
+    def _evento_da(self, voce: dict[str, Any], prefisso: str = "") -> Evento | None:
+        """Da un evento di Google a uno di Custode. `None` se non è utilizzabile.
+
+        `prefisso` va davanti a id e serie: vuoto per il calendario principale,
+        l'id del calendario per gli altri.
+        """
         if voce.get("status") == "cancelled":
             # Con `showDeleted=false` non dovrebbero arrivare, ma un'occorrenza
             # cancellata di una serie ricorrente ci arriva lo stesso: se
@@ -229,8 +320,9 @@ class ClientGoogle:
             log.warning("evento %s scartato: finisce prima di iniziare", identificativo)
             return None
 
+        serie = str(voce.get("recurringEventId") or "").strip()
         return Evento(
-            id=identificativo,
+            id=f"{prefisso}{identificativo}",
             # Un evento senza titolo esiste eccome, ed è normale su Google:
             # meglio una parola che una stringa vuota in mezzo a un messaggio.
             titolo=str(voce.get("summary") or "").strip() or "(senza titolo)",
@@ -238,7 +330,7 @@ class ClientGoogle:
             fine=fine,
             tutto_il_giorno=tutto_il_giorno,
             luogo=str(voce.get("location") or "").strip(),
-            serie_id=str(voce.get("recurringEventId") or "").strip(),
+            serie_id=f"{prefisso}{serie}" if serie else "",
         )
 
     def _momento(self, grezzo: object, *, fine: bool) -> tuple[datetime | None, bool]:

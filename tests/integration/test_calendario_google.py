@@ -69,8 +69,9 @@ def test_il_token_si_rinnova_una_volta_sola(client: ClientGoogle, google: FintoG
 
     assert len(google.stato.richieste_token) == 1
     assert len(google.stato.richieste_eventi) == 2
-    # E l'access token ottenuto viene davvero usato per chiedere gli eventi.
-    assert google.stato.autorizzazioni_viste == ["Bearer access-nuovo"] * 2
+    # E l'access token ottenuto viene davvero usato, per l'elenco dei calendari
+    # e per gli eventi: due richieste a giro.
+    assert google.stato.autorizzazioni_viste == ["Bearer access-nuovo"] * 4
 
 
 def test_il_token_si_rinnova_quando_sta_per_scadere(
@@ -263,6 +264,127 @@ def test_il_luogo_arriva_quando_c_e(client: ClientGoogle, google: FintoGoogle) -
     google.stato.eventi = [voce]
 
     assert client.eventi(DA, A)[0].luogo == "Aula 3, via Roma"
+
+
+# — più calendari ————————————————————————————————————————
+
+
+PRINCIPALE = {"id": "me@example.com", "primary": True}
+
+
+def test_si_leggono_i_calendari_spuntati_e_il_principale(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """La spunta su Google Calendar è `selected`; l'API lo omette quando è falso."""
+    google.stato.calendari = [
+        {"id": "nascosto@group.calendar.google.com"},
+        {"id": "corso@group.calendar.google.com", "selected": True},
+        PRINCIPALE,
+    ]
+    google.stato.eventi_per_calendario = {"corso@group.calendar.google.com": []}
+
+    client.eventi(DA, A)
+
+    # Il principale per primo anche se Google lo elenca per ultimo; il calendario
+    # non spuntato non viene nemmeno chiesto.
+    assert google.stato.calendari_chiesti == ["me@example.com", "corso@group.calendar.google.com"]
+
+
+def test_il_principale_si_legge_anche_se_non_e_spuntato(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    google.stato.calendari = [{"id": "me@example.com", "primary": True, "selected": False}]
+    client.eventi(DA, A)
+    assert google.stato.calendari_chiesti == ["me@example.com"]
+
+
+def test_gli_id_del_principale_non_cambiano_quelli_degli_altri_si_prefissano(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """Prefissare anche il principale farebbe risultare nuovi gli eventi già in archivio."""
+    corso = _evento("lez", "2026-09-10T07:00:00Z")
+    corso["recurringEventId"] = "serie"
+    google.stato.calendari = [
+        PRINCIPALE,
+        {"id": "corso@group.calendar.google.com", "selected": True},
+    ]
+    google.stato.eventi = [_evento("mio", "2026-09-10T06:00:00Z")]
+    google.stato.eventi_per_calendario = {"corso@group.calendar.google.com": [corso]}
+
+    eventi = client.eventi(DA, A)
+
+    assert [e.id for e in eventi] == ["mio", "corso@group.calendar.google.com:lez"]
+    assert eventi[1].serie_id == "corso@group.calendar.google.com:serie"
+
+
+def test_lo_stesso_id_su_due_calendari_non_si_scambia(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """Su Google un id è unico solo dentro il suo calendario."""
+    google.stato.calendari = [PRINCIPALE, {"id": "b@example.com", "selected": True}]
+    google.stato.eventi = [_evento("x", "2026-09-10T06:00:00Z")]
+    google.stato.eventi_per_calendario = {"b@example.com": [_evento("x", "2026-09-11T06:00:00Z")]}
+
+    assert [e.id for e in client.eventi(DA, A)] == ["x", "b@example.com:x"]
+
+
+def test_un_invito_su_due_calendari_compare_una_volta(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """Stesso `iCalUID` e stesso inizio: si tiene la copia del principale."""
+    mio = _evento("a", "2026-09-10T06:00:00Z")
+    mio["iCalUID"] = "invito@google.com"
+    altro = _evento("b", "2026-09-10T06:00:00Z")
+    altro["iCalUID"] = "invito@google.com"
+    google.stato.calendari = [PRINCIPALE, {"id": "b@example.com", "selected": True}]
+    google.stato.eventi = [mio]
+    google.stato.eventi_per_calendario = {"b@example.com": [altro]}
+
+    assert [e.id for e in client.eventi(DA, A)] == ["a"]
+
+
+def test_un_id_con_cancelletto_arriva_intero(client: ClientGoogle, google: FintoGoogle) -> None:
+    """I calendari delle festività hanno un `#` nell'id, che tagliato romperebbe l'indirizzo."""
+    festivita = "it.italian#holiday@group.v.calendar.google.com"
+    google.stato.calendari = [PRINCIPALE, {"id": festivita, "selected": True}]
+    google.stato.eventi_per_calendario = {festivita: [_evento("natale", "2026-09-10T06:00:00Z")]}
+
+    assert [e.id for e in client.eventi(DA, A)] == [f"{festivita}:natale"]
+
+
+def test_i_calendari_solo_libero_occupato_si_saltano(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """Non hanno eventi leggibili: Google risponderebbe 403 ad ogni giro."""
+    google.stato.calendari = [
+        PRINCIPALE,
+        {"id": "collega@example.com", "selected": True, "accessRole": "freeBusyReader"},
+    ]
+    client.eventi(DA, A)
+    assert google.stato.calendari_chiesti == ["me@example.com"]
+
+
+def test_un_calendario_che_non_si_legge_ferma_tutto(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    """Tutto o niente: con una lettura a metà la riconciliazione cancellerebbe i suoi eventi.
+
+    E un 403 su un calendario condiviso non è un permesso morto: non deve far
+    scattare l'avviso «rifai l'autorizzazione».
+    """
+    google.stato.calendari = [PRINCIPALE, {"id": "b@example.com", "selected": True}]
+    google.stato.stato_per_calendario = {"b@example.com": 403}
+
+    with pytest.raises(CalendarioNonRaggiungibile):
+        client.eventi(DA, A)
+
+
+def test_un_403_sul_principale_e_un_permesso_morto(
+    client: ClientGoogle, google: FintoGoogle
+) -> None:
+    google.stato.stato_per_calendario = {"me@example.com": 403}
+    with pytest.raises(AutorizzazioneNonValida):
+        client.eventi(DA, A)
 
 
 def _evento(identificativo: str, inizio: str, fine: str | None = None) -> dict[str, object]:
