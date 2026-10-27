@@ -428,8 +428,11 @@ Il tunnel da solo espone l'API **a chiunque conosca l'indirizzo**. Non provarlo
 da fuori finché non c'è anche questo.
 
 1. **Access → Applications → Add an application → Self-hosted.**
-2. Domini: `apicustode.simonepugliese.com` **e** `custode.simonepugliese.com` nella stessa
-   applicazione (un login solo per entrambi).
+2. Dominio: solo `apicustode.simonepugliese.com`. Per la dashboard (§5) si crea
+   una **seconda applicazione**, con la stessa policy. Non mettere i due hostname
+   nella stessa applicazione: Access rimanda il callback del login al primo
+   dominio dell'elenco, e finché `custode.simonepugliese.com` non esiste il
+   login finisce in `DNS_PROBE_FINISHED_NXDOMAIN` (visto sul campo).
 3. Policy `Allow`, regola **Emails** = la tua email, **e nient'altro**. Durata
    sessione 24 h (§9, §13). Come identity provider va bene Google o l'OTP via
    email.

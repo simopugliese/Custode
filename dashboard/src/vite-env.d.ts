@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Base URL of the Custode REST API, e.g. https://api.custode.tuodominio.it */
+  /** Base URL of the Custode REST API, e.g. https://apicustode.simonepugliese.com */
   readonly VITE_API_BASE_URL?: string;
 }
 

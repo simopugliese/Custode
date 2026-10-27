@@ -15,6 +15,7 @@ data/
 # Volumi e dati montati nei container
 volumes/
 backups/
+backup/
 
 # Python
 __pycache__/

@@ -9,7 +9,7 @@ non rispondono con dati reali.
 ## Convenzioni
 
 - **Base URL**: valore di `VITE_API_BASE_URL` (vedi `.env.example`), es.
-  `https://api.custode.tuodominio.it`. Tutti gli endpoint sotto sono
+  `https://apicustode.simonepugliese.com`. Tutti gli endpoint sotto sono
   prefissati con `/api`.
 - **Autenticazione**: nessuna gestita dal frontend. Cloudflare Access
   autentica la richiesta prima che raggiunga il tunnel/l'API (vedi §2 e §9
