@@ -63,6 +63,21 @@ export const api = {
 };
 
 /**
+ * `true` se la fetch non è nemmeno partita. Con la sessione di Access scaduta
+ * (24 ore) la richiesta viene reindirizzata al login e il browser la segnala
+ * come errore CORS: da qui non si distingue da una rete assente, ma il rimedio
+ * più probabile è rinnovare l'accesso.
+ */
+export function erroreDiRete(errore: unknown): boolean {
+  return errore instanceof ApiError && errore.status === 0 && apiConfigured();
+}
+
+/** Una pagina dell'API che fa passare dal login di Access e rimette il cookie. */
+export function urlRinnovoAccesso(): string {
+  return `${BASE_URL}/api/health`;
+}
+
+/**
  * Il messaggio da mostrare per un errore qualunque.
  *
  * `ApiError` porta già la frase giusta — il `detail` dell'API, o «Impossibile

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { messaggioErrore } from '../lib/apiClient';
+import { erroreDiRete, messaggioErrore, urlRinnovoAccesso } from '../lib/apiClient';
 
 interface AsyncStateProps {
   isLoading: boolean;
@@ -18,6 +18,12 @@ export function AsyncState({ isLoading, error, onRetry, children }: AsyncStatePr
     return (
       <div className="state-msg is-error row" style={{ gap: 12 }}>
         <span>{message}</span>
+        {erroreDiRete(error) && (
+          // Si apre in un'altra scheda: dopo il login basta chiuderla e premere «Riprova».
+          <a className="btn btn-ghost" href={urlRinnovoAccesso()} target="_blank" rel="noopener noreferrer">
+            Rinnova l'accesso
+          </a>
+        )}
         {onRetry && (
           <button className="btn btn-ghost" onClick={onRetry}>
             Riprova

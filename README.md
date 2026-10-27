@@ -48,7 +48,7 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Regole di contesto: dettate a parole e auto-proposte da pattern (§8.10) | fatto |
 | Cloudflare Tunnel + Access (accesso da fuori casa, §2, §9) | fatto |
 | Dashboard su Cloudflare Pages (DEPLOY §5) | fatto |
-| Deploy automatico, solo con CI tutta verde, con smoke test e rollback (DEPLOY §6) | scritto, da attivare sul Pi |
+| Deploy automatico, solo con CI tutta verde, con smoke test e rollback (DEPLOY §6) | fatto |
 | Corsi universitari (§8.11), meteo e digest (§8.12, §8.13) | da fare |
 
 Home, Task, Lista della spesa, Diario, Spese, Abitudini, Calendario, Regole e

@@ -531,6 +531,12 @@ curl -i -X OPTIONS https://apicustode.simonepugliese.com/api/home \
 Risponde l'API quando il corpo è `OK` e compaiono `access-control-allow-origin`
 e `access-control-allow-credentials`; se il corpo è vuoto, ha risposto Access.
 
+**Ogni 24 ore** (la durata della sessione di Access) il cookie dell'API scade e la
+dashboard mostra «Impossibile contattare Custode»: la fetch viene reindirizzata al
+login e il browser la segnala come errore CORS. Accanto a «Riprova» c'è il link
+«Rinnova l'accesso», che apre `/api/health` dell'API in un'altra scheda: fai il
+login, chiudi la scheda e premi «Riprova».
+
 ### d. Chiudere anche `*.pages.dev`
 
 Il progetto ha anche un indirizzo pubblico suo (`<progetto>.pages.dev`, con un
@@ -611,6 +617,21 @@ deploy fallisce con «non è un fast-forward».
 - *Access → Applications → Self-hosted:* dominio
   `deploycustode.simonepugliese.com`, policy con azione **Service Auth** che
   include solo quel token. Nessuna policy con email: da lì deve passare solo la CI.
+
+**2-bis. Se il job `Deploy` riceve `403`: Bot Fight Mode.** (Menu a memoria, e
+non verificabile dal repo: sta su Cloudflare.)
+
+- *Sintomo:* il job `Deploy` della CI prende `403` da `deploycustode…` anche con
+  service token e firma giusti, mentre da casa con `curl` la stessa richiesta passa.
+- *Causa:* Bot Fight Mode su `simonepugliese.com` tratta come bot gli IP dei
+  runner di GitHub Actions e li ferma **prima** di Access. Sul piano gratuito non
+  si può escludere un solo hostname: è tutto o niente per l'intera zona.
+- *Rimedio:* *Security → Bots → Bot Fight Mode*, spento.
+- *Cosa si perde:* la sfida automatica ai bot su ogni hostname della zona. Oggi
+  non pesa, perché tutti gli hostname proxati (API, dashboard, deploy, `pages.dev`)
+  hanno una propria applicazione Access: un bot senza identità non arriva
+  comunque all'origine. Se un giorno aggiungi un hostname **fuori** da Access,
+  quella protezione non c'è più e va messa a parte (per esempio con una regola WAF).
 
 **3. Su Pages: spegnere i deploy automatici e creare l'hook.**
 
