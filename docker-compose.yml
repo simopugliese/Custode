@@ -121,7 +121,7 @@ services:
     #
     # Versione pinnata, mai `latest` (§9). Se il tag non esiste più su
     # https://github.com/cloudflare/cloudflared/releases, alzalo.
-    image: cloudflare/cloudflared:2025.8.1
+    image: cloudflare/cloudflared:2026.10.4
     container_name: custode-cloudflared
     restart: unless-stopped
     # Sta dietro un profilo: senza token non c'è tunnel da far partire, e un
