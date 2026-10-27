@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
+from custode_core.registro_job import SYNC_CALENDARIO, ultima_esecuzione
+
 FONTE_GOOGLE = "google"
 
 
@@ -484,6 +486,23 @@ def fra(conn: sqlite3.Connection, da: date, a: date, *, fonte: str | None = None
 def del_giorno(conn: sqlite3.Connection, giorno: date, *, fonte: str | None = None) -> list[Evento]:
     """Gli impegni di una giornata: è ciò che chiede la Home."""
     return fra(conn, giorno, giorno, fonte=fonte)
+
+
+NIENTE_OGGI = "Nessun evento oggi."
+NON_ANCORA_SINCRONIZZATO = "Non ho ancora sincronizzato gli eventi di oggi."
+
+
+def nota_giornata_vuota(conn: sqlite3.Connection) -> str:
+    """La frase che spiega una giornata senza eventi.
+
+    Sta qui, e non nella Home, perché la usano due posti — la Home e il digest
+    del mattino (§8.13) — e devono dire la stessa cosa: finché il worker non ha
+    guardato nemmeno una volta, «nessun evento» sarebbe falso, perché non
+    sappiamo se la giornata è libera o se non abbiamo ancora chiesto.
+    """
+    if ultima_esecuzione(conn, SYNC_CALENDARIO) is None:
+        return NON_ANCORA_SINCRONIZZATO
+    return NIENTE_OGGI
 
 
 def per_id(conn: sqlite3.Connection, evento_id: int) -> Evento:

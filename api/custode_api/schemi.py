@@ -551,11 +551,12 @@ class Connessione(BaseModel):
 class OrariImpostazioni(BaseModel):
     """Quando Custode fa le cose che fa da solo.
 
-    Ci sono **solo** gli orari che qualcuno legge davvero. Il digest mattutino
-    (§8.13), l'ora della voce di diario e le ore di silenzio erano nel contratto
-    da prima dei loro moduli: mandarli adesso vorrebbe dire una manopola che non
-    gira niente, e una manopola così è peggio di una assente — la giri, non
-    succede nulla, e smetti di fidarti della pagina.
+    Ci sono **solo** gli orari che qualcuno legge davvero. L'ora della voce di
+    diario e le ore di silenzio erano nel contratto da prima dei loro moduli:
+    mandarle adesso vorrebbe dire una manopola che non gira niente, e una
+    manopola così è peggio di una assente — la giri, non succede nulla, e smetti
+    di fidarti della pagina. Il digest mattutino (§8.13) e gli avvisi di scadenza
+    (§8.2) ora ci sono, perché li legge il worker.
     """
 
     riepilogoSettimanaleGiorno: str
@@ -570,6 +571,12 @@ class OrariImpostazioni(BaseModel):
     Finché non la sposti vale l'ora del riepilogo, e il valore che arriva qui è
     già quello risolto: la pagina mostra l'ora a cui il job **parte davvero**,
     non un campo vuoto da interpretare."""
+    digestMattutinoOra: str
+    """HH:MM — quando arriva il digest del mattino (§8.13). Valore risolto: il
+    `.env` (`WORKER_ORA_DIGEST`) finché non lo salvi da qui."""
+    scadenzeTaskOra: str
+    """HH:MM — quando si controllano i task «per tutto il giorno» ancora aperti
+    (§8.2). Quelli con un'ora precisa si controllano alla loro."""
     checkInMinutiDopo: int
     """Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
     Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,
@@ -616,6 +623,8 @@ class ModificaOrari(BaseModel):
     riepilogoSettimanaleGiorno: str | None = None
     riepilogoSettimanaleOra: str | None = None
     proposteRegoleOra: str | None = None
+    digestMattutinoOra: str | None = None
+    scadenzeTaskOra: str | None = None
     checkInMinutiDopo: int | None = None
 
 

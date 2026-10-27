@@ -25,6 +25,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 
+from custode_core.formato import inizio_settimana
+
 GIORNI_SETTIMANA = 7
 
 
@@ -328,6 +330,48 @@ def striscia(fatti: set[date], oggi: date) -> int:
 def presenze(fatti: set[date], giorni: list[date]) -> list[bool]:
     """I pallini di una riga: uno per giorno, nell'ordine dato."""
     return [giorno in fatti for giorno in giorni]
+
+
+@dataclass(frozen=True)
+class DaNonPerdere:
+    """Un'abitudine che questa settimana rischia di mancare il target."""
+
+    nome: str
+    fatte: int
+    target: int
+    giorni_rimasti: int
+    """Oggi compreso."""
+
+
+def a_rischio(fatte: int, target: int, giorni_rimasti: int) -> bool:
+    """Se per centrare il target servono tanti giorni quanti ne restano.
+
+    Pura, come le altre: da qui in poi ogni giorno senza farla è un giorno in
+    meno di margine. Se l'hai già segnata oggi `fatte` la conta, quindi il
+    promemoria sparisce da solo.
+    """
+    return fatte < target and target - fatte >= giorni_rimasti
+
+
+def da_non_perdere(conn: sqlite3.Connection, oggi: date) -> list[DaNonPerdere]:
+    """Le abitudini attive che oggi vanno fatte per non mancare il target (§8.13).
+
+    Aritmetica e basta: il digest racconta questi numeri, non li ricalcola un
+    modello. La settimana è quella italiana, da lunedì.
+    """
+    lunedi = inizio_settimana(oggi)
+    rimasti = (lunedi + timedelta(days=GIORNI_SETTIMANA) - oggi).days
+    fatti = log_del_periodo(conn, da=lunedi, a=oggi)
+    return [
+        DaNonPerdere(
+            nome=abitudine.nome,
+            fatte=len(fatti.get(abitudine.id, set())),
+            target=abitudine.target_settimanale,
+            giorni_rimasti=rimasti,
+        )
+        for abitudine in elenco(conn)
+        if a_rischio(len(fatti.get(abitudine.id, set())), abitudine.target_settimanale, rimasti)
+    ]
 
 
 # — proposte di adeguamento del target (§8.6) —

@@ -123,6 +123,42 @@ export default function Impostazioni() {
 
                     <div className="row">
                       <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>Digest del mattino</div>
+                        <div className="cu-muted" style={{ fontSize: 12 }}>
+                          Impegni, meteo, task e abitudini del giorno, su Telegram (§8.13). Se il Pi
+                          è spento a quell'ora parte appena torna su, ma solo entro qualche ora.
+                        </div>
+                      </div>
+                      <input
+                        className="input cu-mono"
+                        style={{ width: 82, flex: 'none', textAlign: 'center' }}
+                        aria-label="Ora del digest mattutino"
+                        defaultValue={data.orari.digestMattutinoOra}
+                        key={data.orari.digestMattutinoOra}
+                        onBlur={(e) => patchOrari({ digestMattutinoOra: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 600 }}>Scadenze dei task</div>
+                        <div className="cu-muted" style={{ fontSize: 12 }}>
+                          Ora in cui Custode ti avvisa dei task di giornata non segnati come fatti
+                          (§8.2). Quelli con un'ora precisa ti avvisano alla loro.
+                        </div>
+                      </div>
+                      <input
+                        className="input cu-mono"
+                        style={{ width: 82, flex: 'none', textAlign: 'center' }}
+                        aria-label="Ora del controllo delle scadenze"
+                        defaultValue={data.orari.scadenzeTaskOra}
+                        key={data.orari.scadenzeTaskOra}
+                        onBlur={(e) => patchOrari({ scadenzeTaskOra: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 15, fontWeight: 600 }}>Margine dopo l'ultima lezione</div>
                         <div className="cu-muted" style={{ fontSize: 12 }}>
                           Minuti prima che Custode ti consideri a casa. Lo userà il check-in serale

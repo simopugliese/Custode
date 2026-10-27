@@ -21,7 +21,6 @@ from custode_core.dominio import lista_spesa as dom_lista
 from custode_core.dominio import spese as dom_spese
 from custode_core.dominio import task as dom_task
 from custode_core.formato import etichetta_data_ora, inizio_settimana, plurale
-from custode_core.registro_job import SYNC_CALENDARIO, ultima_esecuzione
 
 router = APIRouter(prefix="/api/home", tags=["home"])
 
@@ -74,13 +73,6 @@ def _spese_settimana(
     )
 
 
-# Le due frasi che spiegano una lista vuota. Stanno qui e non nella dashboard
-# perché le etichette le compone il backend (§ Convenzioni del contratto): la
-# stessa distinzione servirà al digest mattutino di §8.13.
-NIENTE_OGGI = "Nessun evento oggi."
-NON_ANCORA_SINCRONIZZATO = "Non ho ancora sincronizzato gli eventi di oggi."
-
-
 def _calendario_oggi(
     conn: sqlite3.Connection, oggi: date, configurato: bool
 ) -> tuple[list[schemi.CalendarEventItem] | None, str | None]:
@@ -100,8 +92,8 @@ def _calendario_oggi(
     if eventi:
         return eventi, None
 
-    mai_sincronizzato = ultima_esecuzione(conn, SYNC_CALENDARIO) is None
-    return eventi, NON_ANCORA_SINCRONIZZATO if mai_sincronizzato else NIENTE_OGGI
+    # La frase sta nel dominio: la dice uguale il digest del mattino (§8.13).
+    return eventi, dom_calendario.nota_giornata_vuota(conn)
 
 
 @router.get("", response_model=schemi.HomeData, response_model_exclude_none=True)

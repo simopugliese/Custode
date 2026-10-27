@@ -167,3 +167,28 @@ def test_ogni_voce_del_registro_accetta_il_proprio_default() -> None:
     salta la prima volta che qualcuno salva quel valore invece di un altro."""
     for voce in dom.REGISTRO:
         assert voce.valida(voce.default) == voce.default
+
+
+# — le ore del digest e delle scadenze —
+
+
+def test_digest_e_scadenze_hanno_i_default_scelti(conn: sqlite3.Connection) -> None:
+    assert dom.DIGEST_ORA.leggi(conn) == "07:30"
+    assert dom.SCADENZE_ORA.leggi(conn) == "20:00"
+
+
+def test_digest_e_scadenze_sono_nel_registro_e_normalizzano(conn: sqlite3.Connection) -> None:
+    assert dom.DIGEST_ORA in dom.REGISTRO
+    assert dom.SCADENZE_ORA in dom.REGISTRO
+    assert dom.DIGEST_ORA.scrivi(conn, "7:5", ORA) == "07:05"
+    assert dom.DIGEST_ORA.leggi(conn, default="09:00") == "07:05"
+
+
+def test_il_env_e_il_punto_di_partenza_del_digest(conn: sqlite3.Connection) -> None:
+    assert dom.DIGEST_ORA.leggi(conn, default="08:15") == "08:15"
+    assert dom.SCADENZE_ORA.leggi(conn, default="18:00") == "18:00"
+
+
+def test_un_orario_storto_del_digest_non_si_salva(conn: sqlite3.Connection) -> None:
+    with pytest.raises(dom.ValoreNonValido):
+        dom.DIGEST_ORA.scrivi(conn, "25:00", ORA)

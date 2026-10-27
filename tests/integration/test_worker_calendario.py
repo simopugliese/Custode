@@ -39,6 +39,7 @@ from custode_worker import main as worker_main
 from custode_worker.config import ImpostazioniWorker
 from custode_worker.telegram import InvioNonRiuscito
 from tests.integration.finto_google import FintoGoogle
+from tests.integration.finto_meteo import MeteoDiTest, MeteoSpento
 
 pytestmark = pytest.mark.integration
 
@@ -161,6 +162,8 @@ def _giro(
         router=RouterFinto(),  # type: ignore[arg-type]
         telegram=posta,  # type: ignore[arg-type]
         calendario=calendario,
+        meteo=MeteoDiTest(),
+        sorgente_meteo=MeteoSpento(),
         sorgente_calendario=(
             sorgente
             if sorgente is not None

@@ -22,8 +22,10 @@ from custode_core.config import Settings
 from custode_core.db import connessione
 from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import regole as dom_regole
+from custode_core.dominio import task as dom_task
 from custode_core.registro_job import (
     BACKUP,
+    DIGEST_MATTUTINO,
     RIEPILOGO_SETTIMANALE,
     gia_eseguito,
     segna_eseguito,
@@ -31,6 +33,7 @@ from custode_core.registro_job import (
 from custode_worker import main as worker_main
 from custode_worker.config import ImpostazioniWorker
 from custode_worker.telegram import InvioNonRiuscito
+from tests.integration.finto_meteo import MeteoDiTest, MeteoSpento
 
 pytestmark = pytest.mark.integration
 
@@ -127,6 +130,8 @@ def _giro(
         router=RouterFinto(),  # type: ignore[arg-type]
         telegram=telegram,  # type: ignore[arg-type]
         calendario=_CalendarioDiTest(),
+        meteo=MeteoDiTest(),
+        sorgente_meteo=MeteoSpento(),
         sorgente_calendario=CalendarioSpento(),
     )
 
@@ -334,3 +339,92 @@ def test_senza_regole_il_giro_non_manda_niente_in_piu(
     _giro(impostazioni, datetime(2026, 9, 6, 20, 0), telegram, monkeypatch)
 
     assert telegram.mandati == []
+
+
+# — digest del mattino e avvisi di scadenza —
+
+LUNEDI_MATTINA = datetime(2026, 9, 7, 7, 30)
+
+
+def _task_di_oggi(conn: Any) -> None:
+    dom_task.crea(
+        conn, titolo="Bolletta", ora=datetime(2026, 9, 1, 9, 0), scadenza=LUNEDI_MATTINA.date()
+    )
+
+
+def test_il_digest_parte_alle_sette_e_mezza_una_volta_sola(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _task_di_oggi(conn)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, LUNEDI_MATTINA, telegram, monkeypatch)
+    _giro(impostazioni, LUNEDI_MATTINA + timedelta(minutes=5), telegram, monkeypatch)
+
+    assert len(telegram.mandati) == 1
+    assert "Bolletta" in telegram.mandati[0].testo
+    assert gia_eseguito(conn, DIGEST_MATTUTINO, LUNEDI_MATTINA.date())
+
+
+def test_prima_dell_ora_il_digest_non_parte(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _task_di_oggi(conn)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, LUNEDI_MATTINA - timedelta(minutes=1), telegram, monkeypatch)
+
+    assert telegram.mandati == []
+
+
+def test_pi_riacceso_nel_pomeriggio_il_digest_si_salta(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """«Buongiorno, hai lezione alle 9» alle 13:00 sarebbe sbagliato: non si recupera."""
+    _task_di_oggi(conn)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, LUNEDI_MATTINA.replace(hour=13, minute=0), telegram, monkeypatch)
+
+    assert telegram.mandati == []
+    assert not gia_eseguito(conn, DIGEST_MATTUTINO, LUNEDI_MATTINA.date())
+
+
+def test_se_l_invio_del_digest_fallisce_si_riprova(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _task_di_oggi(conn)
+    _giro(impostazioni, LUNEDI_MATTINA, TelegramFinto(InvioNonRiuscito("rete")), monkeypatch)
+    assert not gia_eseguito(conn, DIGEST_MATTUTINO, LUNEDI_MATTINA.date())
+
+    buono = TelegramFinto()
+    _giro(impostazioni, LUNEDI_MATTINA + timedelta(minutes=5), buono, monkeypatch)
+
+    assert len(buono.mandati) == 1
+
+
+def test_senza_niente_da_dire_il_digest_non_manda_ma_segna_il_giorno(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, LUNEDI_MATTINA, telegram, monkeypatch)
+
+    assert telegram.mandati == []
+    assert gia_eseguito(conn, DIGEST_MATTUTINO, LUNEDI_MATTINA.date())
+
+
+def test_alle_venti_avvisa_dei_task_di_giornata_non_segnati(
+    conn: Any, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _task_di_oggi(conn)
+    telegram = TelegramFinto()
+
+    _giro(impostazioni, LUNEDI_MATTINA.replace(hour=19, minute=55), telegram, monkeypatch)
+    assert telegram.mandati == []
+
+    _giro(impostazioni, LUNEDI_MATTINA.replace(hour=20, minute=0), telegram, monkeypatch)
+    _giro(impostazioni, LUNEDI_MATTINA.replace(hour=20, minute=5), telegram, monkeypatch)
+
+    assert len(telegram.mandati) == 1
+    assert "Scaduti e non segnati" in telegram.mandati[0].testo

@@ -140,6 +140,33 @@ anteriore a questa correzione — aggiorna (§6).
 
 `/profilo` mostra cosa Custode ha capito di te e quanti segnali sono in attesa.
 
+### Provare il digest del mattino e gli avvisi di scadenza (§8.13, §8.2)
+
+Il worker dice all'avvio a che ora li farà (`docker compose logs -f worker`):
+«digest alle 07:30, avvisi di scadenza alle 20:00». Sono i punti di partenza
+`WORKER_ORA_DIGEST` e `WORKER_ORA_SCADENZE`; dalla pagina Impostazioni si
+cambiano a caldo, entro un giro (cinque minuti), senza riavviare niente.
+
+Il digest usa la posizione che la dashboard ha mandato (o `METEO_CASA_LAT` e
+`METEO_CASA_LON`) e `ROUTER_DEEPSEEK_API_KEY` per scrivere il testo: **senza
+chiave esce lo stesso, col testo di base**, e senza posizione dice che non sa
+dove sei. Se il Pi era spento, il digest recupera solo entro quattro ore
+dall'ora prevista.
+
+Per vederlo subito: sposta l'ora del digest a cinque minuti da adesso dalla
+pagina Impostazioni. Per ripeterlo lo stesso giorno, dopo che è già partito:
+
+```bash
+docker compose exec worker python -c "
+import sqlite3; c = sqlite3.connect('/data/custode.db')
+c.execute(\"DELETE FROM job_runs WHERE nome = 'digest_mattutino' AND chiave = date('now', 'localtime')\")
+c.commit()"
+```
+
+Per gli avvisi: crea un task con scadenza oggi (`/nuovo …`, «Oggi») e non
+segnarlo; all'ora delle scadenze arriva un messaggio con ✓ e ⏭. Non arriva due
+volte per la stessa scadenza, e non arriva se il task è nato dopo quell'ora.
+
 ### Provare le auto-proposte di regole (§8.10)
 
 Il job gira **una volta al giorno, all'ora del riepilogo**, e finché non lo

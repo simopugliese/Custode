@@ -290,3 +290,33 @@ def test_il_bottone_di_una_regola_cancellata_non_esplode(conn: sqlite3.Connectio
     )
 
     assert risposta.testo == "Quella voce non esiste più."
+
+
+# — gli avvisi del worker (§8.2, §8.13) —
+
+
+def test_task_scaduti_un_messaggio_con_i_bottoni_per_ognuno(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    uno = dom_task.crea(conn, titolo="Bolletta <luce>", ora=ora, scadenza=date(2026, 8, 31))
+    due = dom_task.crea(conn, titolo="Officina", ora=ora, scadenza=datetime(2026, 8, 31, 8, 0))
+
+    risposta = risposte.task_scaduti([uno, due], ora)
+
+    assert "Scaduti e non segnati" in risposta.testo
+    assert "Bolletta &lt;luce&gt;" in risposta.testo  # l'escape c'è
+    assert [[b.dato for b in riga] for riga in risposta.bottoni] == [
+        [azioni.task_fatto(uno.id, "oggi"), azioni.task_rinvia(uno.id, "oggi")],
+        [azioni.task_fatto(due.id, "oggi"), azioni.task_rinvia(due.id, "oggi")],
+    ]
+
+
+def test_il_digest_mette_al_sicuro_il_testo_e_porta_i_bottoni(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    task = dom_task.crea(conn, titolo="Chiamare", ora=ora, scadenza=date(2026, 8, 31))
+
+    risposta = risposte.digest_mattutino("Hai <b>lezione</b>", [task], "lunedì 31 agosto")
+
+    assert "&lt;b&gt;lezione&lt;/b&gt;" in risposta.testo
+    assert risposta.bottoni[0][0].dato == azioni.task_fatto(task.id, "oggi")

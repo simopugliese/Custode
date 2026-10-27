@@ -495,6 +495,10 @@ export interface ImpostazioniData {
      * davvero**, non un campo vuoto da interpretare.
      */
     proposteRegoleOra: string; // HH:MM
+    /** Quando arriva il digest del mattino (§8.13). HH:MM, già risolto dal `.env` finché non lo salvi. */
+    digestMattutinoOra: string;
+    /** Quando si controllano i task «per tutto il giorno» ancora aperti (§8.2). HH:MM. */
+    scadenzeTaskOra: string;
     /**
      * Il margine dopo l'ultima lezione prima di considerarti a casa (§8.10).
      * Si salva già adesso e lo leggerà l'inferenza «sei probabilmente a casa»,

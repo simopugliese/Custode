@@ -50,7 +50,8 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Dashboard su Cloudflare Pages (DEPLOY §5) | fatto |
 | Deploy automatico, solo con CI tutta verde, con smoke test e rollback (DEPLOY §6) | fatto |
 | Meteo con la posizione che arriva dalla dashboard, senza archivio (§8.12) | fatto |
-| Corsi universitari (§8.11), digest mattutino (§8.13) | da fare |
+| Digest mattutino e avvisi di scadenza dei task (§8.2, §8.13) | fatto |
+| Corsi universitari (§8.11) | da fare |
 
 Home, Task, Lista della spesa, Diario, Spese, Abitudini, Calendario, Regole e
 Impostazioni mostrano dati veri, letti e scritti su SQLite, e la barra «A Custode»

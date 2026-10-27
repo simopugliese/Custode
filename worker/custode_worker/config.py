@@ -30,6 +30,14 @@ class ImpostazioniWorker(BaseSettings):
     ora_riepilogo: str = "21:00"
     """Ora locale, HH:MM, nel fuso di `CUSTODE_TIMEZONE`."""
 
+    ora_digest: str = "07:30"
+    """Quando arriva il digest mattutino (§8.13), HH:MM locali. Punto di partenza:
+    dal primo salvataggio dalla pagina Impostazioni vince la tabella."""
+
+    ora_scadenze: str = "20:00"
+    """Quando controllare i task con scadenza di giornata ancora aperti (§8.2).
+    Come `ora_digest`, è il punto di partenza di una manopola a caldo."""
+
     ora_backup: str = "03:30"
     """Quando fare il backup giornaliero del database (§9), HH:MM locali.
 
@@ -65,6 +73,14 @@ class ImpostazioniWorker(BaseSettings):
     def ora_e_minuto(self) -> tuple[int, int]:
         """Spezza `ora_riepilogo`."""
         return _leggi_orario(self.ora_riepilogo, "WORKER_ORA_RIEPILOGO")
+
+    def ora_e_minuto_digest(self) -> tuple[int, int]:
+        """Spezza `ora_digest`."""
+        return _leggi_orario(self.ora_digest, "WORKER_ORA_DIGEST")
+
+    def ora_e_minuto_scadenze(self) -> tuple[int, int]:
+        """Spezza `ora_scadenze`."""
+        return _leggi_orario(self.ora_scadenze, "WORKER_ORA_SCADENZE")
 
     def ora_e_minuto_backup(self) -> tuple[int, int]:
         """Spezza `ora_backup`."""

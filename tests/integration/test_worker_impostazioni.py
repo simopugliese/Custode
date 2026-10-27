@@ -24,15 +24,18 @@ from custode_calendario.evento import Evento
 from custode_core.config import Settings
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import impostazioni as dom
+from custode_core.dominio import task as dom_task
 from custode_core.registro_job import RIEPILOGO_SETTIMANALE, gia_eseguito
 from custode_worker import main as worker_main
 from custode_worker.config import ImpostazioniWorker
+from tests.integration.finto_meteo import MeteoDiTest, MeteoSpento
 
 pytestmark = pytest.mark.integration
 
 # Domenica 13 settembre 2026. Il riepilogo di default è «domenica alle 21:00».
 DOMENICA_SERA = datetime(2026, 9, 13, 21, 3)
 LUNEDI_PRECEDENTE = date(2026, 9, 7)
+ORA_TASK = datetime(2026, 9, 1, 9, 0)
 
 
 class _WorkerDiTest(ImpostazioniWorker):
@@ -111,6 +114,8 @@ def _giro(
         router=ModelloFinto(),  # type: ignore[arg-type]
         telegram=telegram,  # type: ignore[arg-type]
         calendario=_CalendarioSpento(),
+        meteo=MeteoDiTest(),
+        sorgente_meteo=MeteoSpento(),
         sorgente_calendario=SorgenteSpenta(),
     )
     return telegram
@@ -199,3 +204,27 @@ def test_un_orario_storto_in_tabella_non_ferma_il_giro(
     _giro(impostazioni, DOMENICA_SERA, monkeypatch)
 
     assert gia_eseguito(conn, RIEPILOGO_SETTIMANALE, LUNEDI_PRECEDENTE)
+
+
+def test_spostare_l_ora_del_digest_dalla_pagina_sposta_il_job(
+    conn: sqlite3.Connection, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Come il riepilogo: la tabella batte il `.env` (07:30), senza riavviare niente."""
+    dom_task.crea(conn, titolo="Bolletta", ora=ORA_TASK, scadenza=date(2026, 9, 8))
+    dom.DIGEST_ORA.scrivi(conn, "09:00", ORA_TASK)
+    mattina = datetime(2026, 9, 8, 7, 30)
+
+    assert _giro(impostazioni, mattina, monkeypatch).mandati == []
+    assert len(_giro(impostazioni, mattina.replace(hour=9), monkeypatch).mandati) == 1
+
+
+def test_spostare_l_ora_delle_scadenze_dalla_pagina_sposta_il_controllo(
+    conn: sqlite3.Connection, impostazioni: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dom_task.crea(conn, titolo="Bolletta", ora=ORA_TASK, scadenza=date(2026, 9, 8))
+    dom.SCADENZE_ORA.scrivi(conn, "22:00", ORA_TASK)
+    sera = datetime(2026, 9, 8, 20, 0)
+
+    assert _giro(impostazioni, sera, monkeypatch).mandati == []
+    mandati = _giro(impostazioni, sera.replace(hour=22), monkeypatch).mandati
+    assert len(mandati) == 1 and "Bolletta" in mandati[0].testo

@@ -569,8 +569,7 @@ sono ancora scattate — senza, non si distingue dal motore fermo.
 `PATCH /api/impostazioni` body `ModificaImpostazioni` → `ImpostazioniData`
 
 **Ci sono solo le manopole che girano qualcosa.** Questo contratto aveva da
-sempre più campi di quanti moduli esistessero: il digest mattutino (§8.13),
-l'ora della voce di diario, le ore di silenzio, le quattro approvazioni, il
+sempre più campi di quanti moduli esistessero: l'ora della voce di diario, le ore di silenzio, le quattro approvazioni, il
 primo giorno della settimana, il tetto mensile e la soglia d'avviso. Nessuno di
 quelli è cablato a niente, e mandarli vorrebbe dire un interruttore che non
 interrompe — lo giri, non succede nulla, e da lì in poi non ti fidi più nemmeno
@@ -583,6 +582,12 @@ alla volta, col modulo che li legge.
 del riepilogo in vigore, e la pagina mostra l'ora a cui il job parte davvero
 invece di un campo vuoto da interpretare. Il giorno che la cambi diventa
 indipendente.
+
+`orari.digestMattutinoOra` e `orari.scadenzeTaskOra` (HH:MM) sono tornati col
+modulo che li legge: l'ora del digest del mattino (§8.13) e quella in cui si
+controllano i task «per tutto il giorno» ancora aperti (§8.2). Come il riepilogo,
+partono dal `.env` (`WORKER_ORA_DIGEST`, `WORKER_ORA_SCADENZE`) e il valore
+mostrato è già quello risolto.
 
 L'altra eccezione è `orari.checkInMinutiDopo`, il margine di «sei probabilmente
 a casa»: §8.10 lo vuole esplicitamente configurabile, e si salva già adesso come

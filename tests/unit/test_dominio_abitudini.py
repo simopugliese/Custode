@@ -326,3 +326,49 @@ def test_l_ultimo_report_e_il_piu_recente(conn: sqlite3.Connection, ora: datetim
     dom.salva_report(conn, periodo=dom.Periodo.SETTIMANA, chiave=lunedi, testo="nuovo", ora=ora)
     ultimo = dom.ultimo_report(conn, periodo=dom.Periodo.SETTIMANA)
     assert ultimo is not None and ultimo.testo == "nuovo"
+
+
+# — i promemoria del digest (§8.13) —
+
+LUNEDI_DI_TEST = date(2026, 8, 31)
+
+
+def test_a_rischio_solo_se_i_giorni_rimasti_bastano_appena() -> None:
+    assert dom.a_rischio(fatte=0, target=3, giorni_rimasti=3) is True
+    assert dom.a_rischio(fatte=0, target=3, giorni_rimasti=4) is False
+    assert dom.a_rischio(fatte=3, target=3, giorni_rimasti=1) is False  # già centrata
+
+
+def test_lunedi_solo_un_target_da_sette_e_a_rischio(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    dom.crea(conn, nome="palestra", target_settimanale=3, ora=ora)
+    dom.crea(conn, nome="meditazione", target_settimanale=7, ora=ora)
+    assert [a.nome for a in dom.da_non_perdere(conn, LUNEDI_DI_TEST)] == ["meditazione"]
+
+
+def test_sabato_con_una_palestra_su_tre_e_a_rischio_con_i_numeri(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    palestra = dom.crea(conn, nome="palestra", target_settimanale=3, ora=ora)
+    dom.segna(conn, palestra.id, giorno=LUNEDI_DI_TEST, fatto=True, ora=ora)
+
+    (voce,) = dom.da_non_perdere(conn, date(2026, 9, 5))  # sabato: ne servono 2 e restano 2
+    assert (voce.nome, voce.fatte, voce.target, voce.giorni_rimasti) == ("palestra", 1, 3, 2)
+
+
+def test_segnata_oggi_non_compare_piu(conn: sqlite3.Connection, ora: datetime) -> None:
+    palestra = dom.crea(conn, nome="palestra", target_settimanale=3, ora=ora)
+    oggi = date(2026, 9, 5)
+    dom.segna(conn, palestra.id, giorno=LUNEDI_DI_TEST, fatto=True, ora=ora)
+    assert dom.da_non_perdere(conn, oggi) != []
+    dom.segna(conn, palestra.id, giorno=oggi, fatto=True, ora=ora)
+    assert dom.da_non_perdere(conn, oggi) == []
+
+
+def test_un_non_fatto_non_conta_e_le_disattivate_non_compaiono(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    morta = dom.crea(conn, nome="vecchia", target_settimanale=7, ora=ora)
+    dom.modifica(conn, morta.id, attiva=False)
+    assert dom.da_non_perdere(conn, LUNEDI_DI_TEST) == []

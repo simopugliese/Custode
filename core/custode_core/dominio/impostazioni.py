@@ -229,6 +229,30 @@ Il job gira **una volta al giorno** e non una volta a settimana: §8.10 chiede
 che una proposta arrivi «subito, non solo nel report settimanale».
 """
 
+DIGEST_ORA: Impostazione[str] = Impostazione(
+    chiave="digest_mattutino_ora",
+    default="07:30",
+    valida=_orario,
+)
+"""A che ora arriva il digest mattutino (§8.13). Default dal `.env`
+(`WORKER_ORA_DIGEST`).
+
+Se il Pi era spento a quell'ora il digest recupera solo per qualche ora
+(`pianificazione.ORE_UTILI_DIGEST`): dopo, «buongiorno, oggi hai lezione» sarebbe
+falso.
+"""
+
+SCADENZE_ORA: Impostazione[str] = Impostazione(
+    chiave="scadenze_task_ora",
+    default="20:00",
+    valida=_orario,
+)
+"""A che ora si controllano i task con scadenza «per tutto il giorno» ancora
+aperti (§8.2). Default dal `.env` (`WORKER_ORA_SCADENZE`).
+
+Quelli con un'ora precisa non passano di qui: si controllano all'ora loro.
+"""
+
 CHECK_IN_MINUTI_DOPO: Impostazione[int] = Impostazione(
     chiave="check_in_minuti_dopo",
     default=40,
@@ -248,6 +272,8 @@ REGISTRO: tuple[Impostazione[Any], ...] = (
     RIEPILOGO_GIORNO,
     RIEPILOGO_ORA,
     PROPOSTE_ORA,
+    DIGEST_ORA,
+    SCADENZE_ORA,
     CHECK_IN_MINUTI_DOPO,
 )
 """Tutte le impostazioni che esistono. Serve a chi deve elencarle o ripulirle."""

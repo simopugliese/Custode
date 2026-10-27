@@ -64,6 +64,8 @@ def test_la_pagina_manda_solo_quello_che_qualcuno_legge(client: TestClient) -> N
         "riepilogoSettimanaleGiorno",
         "riepilogoSettimanaleOra",
         "proposteRegoleOra",
+        "digestMattutinoOra",
+        "scadenzeTaskOra",
         "checkInMinutiDopo",
     }
     assert "approvazioni" not in corpo

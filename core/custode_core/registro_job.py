@@ -25,6 +25,16 @@ PROPOSTE_REGOLE = "proposte_regole"
 """Il job che cerca pattern e ti propone una regola (§8.10). Il periodo è un
 **giorno**: gira una volta al giorno, all'ora che dicono le impostazioni."""
 
+DIGEST_MATTUTINO = "digest_mattutino"
+"""Il digest del mattino (§8.13). Il periodo è un **giorno**."""
+
+SCADENZE_TASK = "scadenze_task"
+"""Gli avvisi di scadenza dei task (§8.2). La chiave è `{scadenza}#{id}`
+(`2026-10-27T18:00#42`): con la scadenza davanti l'ordine lessicografico è
+cronologico, quindi `dimentica_prima_di` pota senza altro. Rinviare un task
+cambia la scadenza e quindi la chiave: si può riavvisare per la nuova, mai due
+volte per la stessa."""
+
 SENZA_PERIODO = "-"
 """La chiave delle cose che il registro ricorda ma che non hanno un periodo.
 

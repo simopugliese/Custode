@@ -102,3 +102,19 @@ def test_la_potatura_non_tocca_gli_altri_job(conn: sqlite3.Connection, ora: date
     registro.dimentica_prima_di(conn, registro.SYNC_CALENDARIO, datetime(2026, 9, 14, 12, 0))
 
     assert registro.gia_eseguito(conn, registro.RIEPILOGO_SETTIMANALE, vecchio_lunedi) is True
+
+
+# — gli avvisi di scadenza (§8.2) —
+
+
+def test_la_chiave_di_una_scadenza_si_pota_per_data(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    registro.segna_eseguito(conn, registro.SCADENZE_TASK, "2026-07-01T18:00#3", ora)
+    registro.segna_eseguito(conn, registro.SCADENZE_TASK, "2026-09-07#4", ora)
+
+    tolte = registro.dimentica_prima_di(conn, registro.SCADENZE_TASK, date(2026, 8, 1))
+
+    assert tolte == 1
+    assert registro.gia_eseguito(conn, registro.SCADENZE_TASK, "2026-09-07#4") is True
+    assert registro.gia_eseguito(conn, registro.SCADENZE_TASK, "2026-07-01T18:00#3") is False

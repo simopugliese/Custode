@@ -15,6 +15,7 @@ import pytest
 
 from custode_calendario.evento import Evento as EventoSorgente
 from custode_core.dominio import calendario as dom
+from custode_core.registro_job import SYNC_CALENDARIO, segna_eseguito
 
 ORA = datetime(2026, 8, 31, 8, 41)
 OGGI = ORA.date()
@@ -600,3 +601,14 @@ def test_da_rivedere_mette_davanti_quello_che_torna_prima(conn: sqlite3.Connecti
     _tagga(conn, "serie-an", "lezione")
 
     assert [s.titolo for s in dom.da_rivedere(conn, OGGI)] == ["Analisi II", "Palestra"]
+
+
+# — la frase di una giornata vuota (Home e digest, §8.13) —
+
+
+def test_giornata_vuota_prima_del_primo_sync_non_dice_che_e_libera(
+    conn: sqlite3.Connection, ora: datetime
+) -> None:
+    assert dom.nota_giornata_vuota(conn) == dom.NON_ANCORA_SINCRONIZZATO
+    segna_eseguito(conn, SYNC_CALENDARIO, ora, ora)
+    assert dom.nota_giornata_vuota(conn) == dom.NIENTE_OGGI

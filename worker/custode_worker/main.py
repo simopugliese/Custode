@@ -34,6 +34,7 @@ from custode_core.migrazioni import migra
 from custode_core.registro_job import (
     AVVISO_CALENDARIO_FERMO,
     BACKUP,
+    DIGEST_MATTUTINO,
     PROPOSTE_REGOLE,
     REPORT_MENSILE_ABITUDINI,
     RIEPILOGO_SETTIMANALE,
@@ -44,16 +45,20 @@ from custode_core.registro_job import (
     gia_eseguito,
     segna_eseguito,
 )
+from custode_meteo.config import ImpostazioniMeteo, get_impostazioni_meteo
+from custode_meteo.openmeteo import ClientOpenMeteo
+from custode_meteo.previsione import SorgenteMeteo
 from custode_router import Router
 from custode_router.compiti import Compito
 from custode_worker import abitudini as worker_abitudini
-from custode_worker import backup, settimanale
+from custode_worker import backup, digest, scadenze, settimanale
 from custode_worker import calendario as worker_calendario
 from custode_worker import proposte as worker_proposte
 from custode_worker import regole as worker_regole
 from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 from custode_worker.pianificazione import (
     MINUTI_SYNC_CALENDARIO,
+    digest_dovuto,
     fascia_dovuta,
     giorno_dovuto,
     mese_dovuto,
@@ -80,16 +85,29 @@ def giro(
     telegram: ClientTelegram,
     calendario: ImpostazioniCalendario,
     sorgente_calendario: SorgenteCalendario,
+    meteo: ImpostazioniMeteo,
+    sorgente_meteo: SorgenteMeteo,
 ) -> None:
     """Un singolo passaggio: guarda cosa è dovuto e, se c'è, lo fa."""
     ora = adesso(impostazioni.timezone)
     _giro_backup(impostazioni, worker, ora)
     _giro_calendario(impostazioni, calendario, ora, sorgente=sorgente_calendario, telegram=telegram)
     _giro_tag_calendario(impostazioni, ora, router=router)
+    _giro_digest(
+        impostazioni,
+        worker,
+        ora,
+        router=router,
+        telegram=telegram,
+        calendario=calendario,
+        meteo=meteo,
+        sorgente_meteo=sorgente_meteo,
+    )
     _giro_regole(impostazioni, ora, telegram=telegram)
     _giro_settimanale(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_proposte(impostazioni, worker, ora, router=router, telegram=telegram)
     _giro_mensile_abitudini(impostazioni, worker, ora, router=router, telegram=telegram)
+    _giro_scadenze(impostazioni, worker, ora, telegram=telegram)
 
 
 def _giro_backup(impostazioni: Settings, worker: ImpostazioniWorker, ora: datetime) -> None:
@@ -254,6 +272,95 @@ def _giro_tag_calendario(impostazioni: Settings, ora: datetime, *, router: Route
         f", {esito.non_letti} senza risposta leggibile" if esito.non_letti else "",
         f", {esito.rimasti} al prossimo giro" if esito.rimasti else "",
     )
+
+
+def _giro_digest(
+    impostazioni: Settings,
+    worker: ImpostazioniWorker,
+    ora: datetime,
+    *,
+    router: Router,
+    telegram: ClientTelegram,
+    calendario: ImpostazioniCalendario,
+    meteo: ImpostazioniMeteo,
+    sorgente_meteo: SorgenteMeteo,
+) -> None:
+    """Il digest del mattino (§8.13), una volta al giorno.
+
+    **Dopo il sync del calendario nell'ordine**: alle 07:30 deve vedere gli
+    eventi appena riletti, non una fotografia di cinque minuti fa.
+
+    L'ora si rilegge in cima a ogni giro (§8). **Il recupero è breve**: se il Pi
+    era spento il digest parte appena torna su, ma solo entro
+    `ORE_UTILI_DIGEST` ore; dopo il giorno si salta, perché un digest delle
+    13:00 che dice «buongiorno» e «hai lezione alle 9» è sbagliato. Non guarda a
+    ieri, al contrario di `giorno_dovuto`.
+    """
+    with connessione(impostazioni.db_path) as conn:
+        orario = dom_impostazioni.DIGEST_ORA.leggi(conn, default=worker.ora_digest)
+    ore, minuti = dom_impostazioni.ore_e_minuti(orario)
+    giorno = digest_dovuto(ora, ore=ore, minuti=minuti)
+    if giorno is None:
+        return
+
+    with connessione(impostazioni.db_path) as conn:
+        if gia_eseguito(conn, DIGEST_MATTUTINO, giorno):
+            return
+
+        esito = digest.esegui(
+            conn,
+            ora,
+            router=router,
+            sorgente_meteo=sorgente_meteo,
+            casa=meteo.casa(),
+            fuso=impostazioni.timezone,
+            calendario_configurato=calendario.configurato(),
+        )
+        if esito.messaggio is not None:
+            try:
+                telegram.manda(esito.messaggio)
+            except InvioNonRiuscito as errore:
+                # Non si segna: al giro dopo si riprova, finché la finestra resta aperta.
+                log.warning("invio del digest non riuscito, riproverò: %s", errore)
+                return
+
+        segna_eseguito(conn, DIGEST_MATTUTINO, giorno, ora)
+        log.info(
+            "digest del %s: %s",
+            giorno.isoformat(),
+            "niente da dire"
+            if esito.messaggio is None
+            else "scritto dal modello"
+            if esito.con_modello
+            else "col testo di base",
+        )
+
+
+def _giro_scadenze(
+    impostazioni: Settings,
+    worker: ImpostazioniWorker,
+    ora: datetime,
+    *,
+    telegram: ClientTelegram,
+) -> None:
+    """Gli avvisi dei task scaduti e non segnati (§8.2).
+
+    **In fondo al giro**, come le proposte: se l'ora coincide con quella del
+    riepilogo, quello che aspettavi passa per primo. L'ora dei task «per tutto il
+    giorno» si rilegge in cima a ogni giro; quelli con un'ora precisa scattano
+    alla loro.
+    """
+    with connessione(impostazioni.db_path) as conn:
+        orario = dom_impostazioni.SCADENZE_ORA.leggi(conn, default=worker.ora_scadenze)
+        ore, minuti = dom_impostazioni.ore_e_minuti(orario)
+        esito = scadenze.esegui(conn, ora, ore=ore, minuti=minuti, telegram=telegram)
+
+    if esito.qualcosa_da_dire:
+        log.info(
+            "scadenze: %d avvisate%s",
+            esito.avvisate,
+            f", {esito.non_spedite} non spedite" if esito.non_spedite else "",
+        )
 
 
 def _giro_regole(impostazioni: Settings, ora: datetime, *, telegram: Spedizioniere) -> None:
@@ -487,6 +594,8 @@ def main() -> int:
     try:
         worker.ora_e_minuto()
         worker.ora_e_minuto_backup()
+        worker.ora_e_minuto_digest()
+        worker.ora_e_minuto_scadenze()
     except ValueError as errore:
         log.error("configurazione del worker non valida: %s", errore)
         return 1
@@ -514,6 +623,8 @@ def main() -> int:
     telegram = ClientTelegram(bot.bot_token, bot.allowed_user_id)
     calendario = get_impostazioni_calendario()
     sorgente_calendario = ClientGoogle(calendario, impostazioni.timezone)
+    meteo = get_impostazioni_meteo()
+    sorgente_meteo = ClientOpenMeteo()
     log.info(
         "worker avviato: riepilogo di %s alle %s, backup alle %s in %s, controllo ogni %d s",
         worker.giorno_riepilogo,
@@ -546,6 +657,19 @@ def main() -> int:
             "calendario spento: senza CALENDARIO_CLIENT_ID, CALENDARIO_CLIENT_SECRET e"
             " CALENDARIO_REFRESH_TOKEN non si sincronizza niente (DEPLOY.md § 3-bis)"
         )
+    log.info(
+        "digest alle %s, avvisi di scadenza alle %s",
+        worker.ora_digest,
+        worker.ora_scadenze,
+    )
+    if not router.configurato_per(Compito.DIGEST_MATTUTINO):
+        # Una volta all'avvio: il digest esce lo stesso, ma non scritto dal modello.
+        log.info("digest senza modello: senza ROUTER_DEEPSEEK_API_KEY esce col testo di base")
+    if not meteo.casa():
+        log.info(
+            "meteo del digest: senza posizione dalla dashboard né METEO_CASA_LAT e"
+            " METEO_CASA_LON il digest dice che non sa dove sei"
+        )
     if not worker.backup_chiave:
         # Ripetuto ad ogni avvio apposta: è la differenza fra sapere di avere un
         # backup in chiaro e crederlo cifrato.
@@ -560,6 +684,8 @@ def main() -> int:
                 telegram=telegram,
                 calendario=calendario,
                 sorgente_calendario=sorgente_calendario,
+                meteo=meteo,
+                sorgente_meteo=sorgente_meteo,
             )
         except Exception:
             # Un giro andato male non deve far morire il worker: il prossimo

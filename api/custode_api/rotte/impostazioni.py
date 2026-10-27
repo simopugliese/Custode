@@ -1,7 +1,7 @@
 """Impostazioni — `GET /api/impostazioni`, `PATCH /api/impostazioni` (§8).
 
 **Solo le manopole che girano qualcosa.** Il contratto della dashboard ha da
-sempre più campi di quanti moduli esistano: il digest mattutino (§8.13), l'ora
+sempre più campi di quanti moduli esistano: l'ora
 della voce di diario, le ore di silenzio, le quattro approvazioni, il primo
 giorno della settimana. Nessuno di quelli è cablato a niente, e mandarli
 vorrebbe dire un interruttore che non interrompe — lo giri, non succede nulla,
@@ -184,6 +184,10 @@ def _leggi(
                 conn,
                 default=dom.RIEPILOGO_ORA.leggi(conn, default=worker.ora_riepilogo),
             ),
+            # Come il riepilogo: il default è il `.env` del worker, gli stessi
+            # che legge `_giro_digest` e `_giro_scadenze` in cima a ogni giro.
+            digestMattutinoOra=dom.DIGEST_ORA.leggi(conn, default=worker.ora_digest),
+            scadenzeTaskOra=dom.SCADENZE_ORA.leggi(conn, default=worker.ora_scadenze),
             # Nessun `default`: questa manopola non ha una variabile d'ambiente
             # dietro — nasce qui (§8.10 la vuole configurabile, e chi la userà
             # arriva dopo), quindi il valore di partenza è quello del registro.
@@ -267,6 +271,8 @@ def _scrivi_orari(conn: sqlite3.Connection, orari: schemi.ModificaOrari, ora: da
         ("riepilogoSettimanaleGiorno", dom.RIEPILOGO_GIORNO),
         ("riepilogoSettimanaleOra", dom.RIEPILOGO_ORA),
         ("proposteRegoleOra", dom.PROPOSTE_ORA),
+        ("digestMattutinoOra", dom.DIGEST_ORA),
+        ("scadenzeTaskOra", dom.SCADENZE_ORA),
         ("checkInMinutiDopo", dom.CHECK_IN_MINUTI_DOPO),
     ):
         if campo in dati:

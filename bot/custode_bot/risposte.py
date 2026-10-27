@@ -67,7 +67,8 @@ def _taglia(testo: str, massimo: int = MAX_TESTO_BOTTONE) -> str:
     return testo if len(testo) <= massimo else testo[: massimo - 1] + "…"
 
 
-def _riga_task(task: dom_task.Task, ora: datetime) -> str:
+def riga_task(task: dom_task.Task, ora: datetime) -> str:
+    """Una riga di task con scadenza e rinvii. Pubblica: la usa anche il worker."""
     etichetta = etichetta_scadenza(task.scadenza, ora)
     riga = f"• {escape(task.titolo)}"
     if etichetta:
@@ -126,9 +127,9 @@ def riepilogo_oggi(conn: sqlite3.Connection, ora: datetime) -> Risposta:
 
     pezzi: list[str] = []
     if in_ritardo:
-        pezzi.append("<b>In ritardo</b>\n" + "\n".join(_riga_task(t, ora) for t in in_ritardo))
+        pezzi.append("<b>In ritardo</b>\n" + "\n".join(riga_task(t, ora) for t in in_ritardo))
     if per_oggi:
-        pezzi.append("<b>Oggi</b>\n" + "\n".join(_riga_task(t, ora) for t in per_oggi))
+        pezzi.append("<b>Oggi</b>\n" + "\n".join(riga_task(t, ora) for t in per_oggi))
     if da_prendere:
         pezzi.append(
             f"<b>Lista spesa</b>\n{plurale(len(da_prendere), 'voce', 'voci')} da prendere."
@@ -139,6 +140,35 @@ def riepilogo_oggi(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         for t in in_ritardo + per_oggi
     ]
     return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
+
+
+def task_scaduti(scaduti: list[dom_task.Task], ora: datetime) -> Risposta:
+    """L'avviso del worker (§8.2): scaduti, e non li hai segnati come fatti.
+
+    Un messaggio solo per tutti quelli scaduti nel giro, con ✓ e ⏭ per ciascuno
+    — gli stessi bottoni dell'elenco — invece di una notifica per task.
+    """
+    testo = "<b>Scaduti e non segnati</b>\n" + "\n".join(riga_task(t, ora) for t in scaduti)
+    bottoni = [
+        [
+            Bottone(f"✓ {_taglia(t.titolo)}", azioni.task_fatto(t.id, "oggi")),
+            Bottone("⏭", azioni.task_rinvia(t.id, "oggi")),
+        ]
+        for t in scaduti
+    ]
+    return Risposta(testo=testo, bottoni=bottoni)
+
+
+def digest_mattutino(testo: str, da_segnare: list[dom_task.Task], data: str) -> Risposta:
+    """Il digest del mattino (§8.13): il testo composto, più un ✓ per i task di oggi.
+
+    `testo` è testo semplice (lo ha scritto il modello, o il codice come ripiego)
+    e qui si mette al sicuro con `escape` come ogni cosa che arriva da fuori.
+    """
+    bottoni = [
+        [Bottone(f"✓ {_taglia(t.titolo)}", azioni.task_fatto(t.id, "oggi"))] for t in da_segnare
+    ]
+    return Risposta(testo=f"<b>Buongiorno</b> · {escape(data)}\n\n{escape(testo)}", bottoni=bottoni)
 
 
 NON_SO_DOVE_SEI = (
@@ -197,7 +227,7 @@ def elenco_task(conn: sqlite3.Connection, ora: datetime) -> Risposta:
     if not aperti:
         return Risposta(testo="Nessun task aperto.")
 
-    testo = "<b>Task aperti</b>\n" + "\n".join(_riga_task(t, ora) for t in aperti)
+    testo = "<b>Task aperti</b>\n" + "\n".join(riga_task(t, ora) for t in aperti)
     bottoni = [
         [
             Bottone(f"✓ {_taglia(t.titolo)}", azioni.task_fatto(t.id, "task")),

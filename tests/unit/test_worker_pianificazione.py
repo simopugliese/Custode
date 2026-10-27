@@ -6,10 +6,12 @@ sera: `settimana_dovuta` prende `adesso` come parametro apposta.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, datetime, timedelta
 
 import pytest
 
+from custode_core.dominio import task as dom_task
 from custode_worker import pianificazione
 from custode_worker.config import ImpostazioniWorker
 
@@ -163,3 +165,120 @@ def test_una_fascia_non_guarda_indietro() -> None:
 def test_una_fascia_fuori_misura_e_un_errore_subito(minuti: int) -> None:
     with pytest.raises(ValueError):
         pianificazione.fascia_dovuta(datetime(2026, 9, 14, 10, 3), ogni_minuti=minuti)
+
+
+# — il digest del mattino (§8.13): recupero breve, mai ieri —
+
+
+def _digest(quando: datetime, ore: int = 7, minuti: int = 30) -> date | None:
+    return pianificazione.digest_dovuto(quando, ore=ore, minuti=minuti)
+
+
+def test_prima_dell_ora_il_digest_non_e_dovuto() -> None:
+    assert _digest(datetime(2026, 9, 7, 7, 29)) is None
+
+
+def test_all_ora_esatta_il_digest_e_dovuto() -> None:
+    assert _digest(datetime(2026, 9, 7, 7, 30)) == date(2026, 9, 7)
+
+
+def test_pi_riacceso_poco_dopo_manda_ancora_il_digest() -> None:
+    assert _digest(datetime(2026, 9, 7, 11, 29)) == date(2026, 9, 7)
+
+
+def test_dopo_la_finestra_il_digest_si_salta() -> None:
+    """Alle 11:30 «buongiorno, hai lezione alle 9» sarebbe falso."""
+    assert _digest(datetime(2026, 9, 7, 11, 30)) is None
+    assert _digest(datetime(2026, 9, 7, 13, 0)) is None
+
+
+def test_il_digest_di_ieri_non_si_recupera_di_notte() -> None:
+    assert _digest(datetime(2026, 9, 7, 3, 0)) is None
+
+
+def test_con_un_ora_a_ridosso_della_mezzanotte_la_finestra_scavalca() -> None:
+    assert _digest(datetime(2026, 9, 8, 1, 0), ore=23, minuti=30) == date(2026, 9, 7)
+
+
+# — le scadenze dei task (§8.2) —
+
+
+def _task(
+    conn: sqlite3.Connection,
+    scadenza: date | datetime | None,
+    *,
+    creato: datetime = datetime(2026, 9, 1, 9, 0),
+    titolo: str = "bolletta",
+) -> dom_task.Task:
+    return dom_task.crea(conn, titolo=titolo, ora=creato, scadenza=scadenza)
+
+
+def _dovute(conn: sqlite3.Connection, quando: datetime) -> list[pianificazione.Scadenza]:
+    aperti = dom_task.elenco(conn, fatto=False)
+    return pianificazione.scadenze_dovute(aperti, quando, ore=20, minuti=0)
+
+
+def test_una_scadenza_di_giornata_vale_l_ora_del_controllo() -> None:
+    assert pianificazione.momento_scadenza(date(2026, 9, 7), ore=20, minuti=0) == datetime(
+        2026, 9, 7, 20, 0
+    )
+
+
+def test_una_scadenza_oraria_vale_se_stessa() -> None:
+    preciso = datetime(2026, 9, 7, 18, 15)
+    assert pianificazione.momento_scadenza(preciso, ore=20, minuti=0) == preciso
+
+
+def test_il_task_di_giornata_scatta_alle_venti(conn: sqlite3.Connection) -> None:
+    _task(conn, date(2026, 9, 7))
+    assert _dovute(conn, datetime(2026, 9, 7, 19, 59)) == []
+    assert len(_dovute(conn, datetime(2026, 9, 7, 20, 0))) == 1
+
+
+def test_il_task_con_ora_scatta_alla_sua_ora(conn: sqlite3.Connection) -> None:
+    _task(conn, datetime(2026, 9, 7, 18, 0))
+    assert len(_dovute(conn, datetime(2026, 9, 7, 18, 5))) == 1
+
+
+def test_oltre_la_finestra_non_si_avvisa(conn: sqlite3.Connection) -> None:
+    """Dopo una notte ci pensa la sezione «In ritardo» del digest."""
+    _task(conn, date(2026, 9, 7))
+    assert len(_dovute(conn, datetime(2026, 9, 8, 7, 59))) == 1
+    assert _dovute(conn, datetime(2026, 9, 8, 8, 0)) == []
+
+
+def test_un_task_creato_dopo_la_sua_ora_non_scatta(conn: sqlite3.Connection) -> None:
+    _task(conn, date(2026, 9, 7), creato=datetime(2026, 9, 7, 21, 0))
+    assert _dovute(conn, datetime(2026, 9, 7, 21, 5)) == []
+
+
+def test_fatto_e_senza_scadenza_non_scattano(conn: sqlite3.Connection) -> None:
+    fatto = _task(conn, date(2026, 9, 7), titolo="fatto")
+    dom_task.imposta_fatto(conn, fatto.id, True, datetime(2026, 9, 7, 12, 0))
+    _task(conn, None, titolo="libero")
+    assert _dovute(conn, datetime(2026, 9, 7, 20, 0)) == []
+
+
+def test_la_chiave_segue_la_scadenza_del_task_non_l_ora_del_controllo(
+    conn: sqlite3.Connection,
+) -> None:
+    """Spostare il controllo serale dalle Impostazioni non deve riavvisare."""
+    task = _task(conn, date(2026, 9, 7))
+    sera = pianificazione.scadenze_dovute(
+        dom_task.elenco(conn, fatto=False), datetime(2026, 9, 7, 20, 0), ore=20, minuti=0
+    )
+    cena = pianificazione.scadenze_dovute(
+        dom_task.elenco(conn, fatto=False), datetime(2026, 9, 7, 19, 0), ore=18, minuti=30
+    )
+    assert sera[0].chiave == cena[0].chiave == f"2026-09-07#{task.id}"
+
+
+@pytest.mark.parametrize("valore", ["07:30", "20:00"])
+def test_le_nuove_ore_del_worker_si_leggono(valore: str) -> None:
+    worker = ImpostazioniWorker(ora_digest=valore, ora_scadenze=valore)
+    assert worker.ora_e_minuto_digest() == worker.ora_e_minuto_scadenze()
+
+
+def test_un_ora_del_digest_storta_si_rifiuta() -> None:
+    with pytest.raises(ValueError, match="WORKER_ORA_DIGEST"):
+        ImpostazioniWorker(ora_digest="7").ora_e_minuto_digest()

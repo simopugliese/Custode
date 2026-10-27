@@ -42,6 +42,7 @@ from custode_router.errori import ProviderNonRaggiungibile
 from custode_worker import main as worker_main
 from custode_worker.config import ImpostazioniWorker
 from tests.integration.finto_google import FintoGoogle
+from tests.integration.finto_meteo import MeteoDiTest, MeteoSpento
 
 pytestmark = pytest.mark.integration
 
@@ -215,6 +216,8 @@ def _giro(
         router=modello,  # type: ignore[arg-type]
         telegram=TelegramFinto(),  # type: ignore[arg-type]
         calendario=calendario,
+        meteo=MeteoDiTest(),
+        sorgente_meteo=MeteoSpento(),
         sorgente_calendario=(
             sorgente
             if sorgente is not None

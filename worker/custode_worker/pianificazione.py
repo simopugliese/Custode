@@ -10,8 +10,11 @@ quella tabella ormai la leggono in due — il worker e l'API.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
+from custode_core.dominio.task import Task, scrivi_scadenza
 from custode_core.formato import inizio_settimana
 
 MINUTI_SYNC_CALENDARIO = 5
@@ -32,6 +35,23 @@ fascia evita comunque una seconda chiamata a Google per lo stesso minuto —
 
 Non è configurabile: è una costante che discende da una scelta di progetto, non
 un gusto della macchina su cui gira.
+"""
+
+
+ORE_UTILI_DIGEST = 4
+"""Per quante ore dopo l'ora prevista il digest ha ancora senso (§8.13).
+
+Non configurabile, come `MINUTI_SYNC_CALENDARIO`: discende da una scelta di
+progetto. Un Pi riacceso alle 07:50 manda il digest; riacceso alle 13:00 lo
+salta, perché «buongiorno, oggi hai lezione alle 9» a quell'ora è falso.
+"""
+
+ORE_UTILI_SCADENZE = 12
+"""Per quante ore dopo la scadenza un avviso si consegna ancora (§8.2).
+
+Una notte: un avviso di ieri sera letto stamattina serve ancora. Oltre, della
+cosa in ritardo si occupa la sezione «In ritardo» del digest, e alla prima
+attivazione non arriva il diluvio di tutto ciò che è scaduto da settimane.
 """
 
 
@@ -122,3 +142,73 @@ def mese_dovuto(adesso: datetime, *, ore: int, minuti: int) -> date | None:
 
 def _primo_del_mese_dopo(primo: date) -> date:
     return (primo.replace(day=28) + timedelta(days=4)).replace(day=1)
+
+
+def digest_dovuto(
+    adesso: datetime, *, ore: int, minuti: int, ore_utili: int = ORE_UTILI_DIGEST
+) -> date | None:
+    """Il giorno del digest da mandare adesso, o None se non è il momento.
+
+    **Non guarda a ieri come `giorno_dovuto`**: quello recupera un backup perso,
+    ma il digest di ieri la mattina dopo è un messaggio sbagliato. Si guarda
+    però ai due giorni, non solo a oggi, perché con un'ora vicina alla
+    mezzanotte la finestra di ieri può contenere ancora «adesso».
+    """
+    for candidato in (adesso.date(), adesso.date() - timedelta(days=1)):
+        inizio = datetime.combine(candidato, time(hour=ore, minute=minuti))
+        if inizio <= adesso < inizio + timedelta(hours=ore_utili):
+            return candidato
+    return None
+
+
+@dataclass(frozen=True)
+class Scadenza:
+    """Un task scaduto da avvisare, con l'istante in cui è scaduto."""
+
+    task: Task
+    momento: datetime
+
+    @property
+    def chiave(self) -> str:
+        """La chiave in `job_runs`: scadenza davanti, così si pota per data.
+
+        Si scrive la scadenza **del task** e non il `momento`: spostare l'ora del
+        controllo serale dalle Impostazioni non deve far riavvisare ciò che è già
+        stato avvisato.
+        """
+        return f"{scrivi_scadenza(self.task.scadenza)}#{self.task.id}"
+
+
+def momento_scadenza(scadenza: date | datetime, *, ore: int, minuti: int) -> datetime:
+    """Quando una scadenza va considerata passata.
+
+    Un'ora precisa vale se stessa; una scadenza «per tutto il giorno» vale l'ora
+    del controllo serale di quel giorno.
+    """
+    if isinstance(scadenza, datetime):
+        return scadenza
+    return datetime.combine(scadenza, time(hour=ore, minute=minuti))
+
+
+def scadenze_dovute(
+    aperti: Iterable[Task],
+    adesso: datetime,
+    *,
+    ore: int,
+    minuti: int,
+    ore_utili: int = ORE_UTILI_SCADENZE,
+) -> list[Scadenza]:
+    """I task aperti la cui scadenza è passata da poco, e che vanno avvisati.
+
+    Il task creato **dopo** il proprio momento non c'è: «scade oggi» scritto
+    alle 21 non deve far scattare un «non l'hai segnato» cinque minuti dopo.
+    """
+    finestra = timedelta(hours=ore_utili)
+    dovute = []
+    for task in aperti:
+        if task.fatto or task.scadenza is None:
+            continue
+        momento = momento_scadenza(task.scadenza, ore=ore, minuti=minuti)
+        if momento <= adesso < momento + finestra and task.creato_il < momento:
+            dovute.append(Scadenza(task=task, momento=momento))
+    return sorted(dovute, key=lambda s: (s.momento, s.task.id))
