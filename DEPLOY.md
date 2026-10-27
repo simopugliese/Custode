@@ -36,7 +36,7 @@ sudo timedatectl set-timezone Europe/Rome
 ## 2. Clonare e configurare
 
 ```bash
-git clone https://github.com/simopugliese/custode.git ~/custode
+git clone https://github.com/simopugliese/Custode.git ~/custode
 cd ~/custode
 cp .env.example .env
 ```
