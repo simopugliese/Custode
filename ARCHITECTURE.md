@@ -74,6 +74,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
   /router         # logica di scelta DeepSeek/Claude + interprete del testo libero
   /whisper        # trascrizione vocale locale (servizio a sé, §13)
   /calendario     # lettura del calendario di Google, sola lettura (§8.10)
+  /meteo          # previsione da Open-Meteo, senza archivio (§8.12)
   /worker         # job schedulati (riepilogo settimanale, backup, reminder)
   /core           # codice condiviso: configurazione, accesso SQLite, dominio
   /dashboard      # frontend (build separata, deploy su Pages)
@@ -453,7 +454,17 @@ Tre funzioni nel modulo di dominio, pensate per chi le chiamerà nei pezzi dopo:
 - In base alle tue risposte + `syllabus.md`, Claude genera un piano di cosa sistemare/ripassare, salvato come task collegate al corso (riuso del modulo 8.2, niente modulo nuovo da zero).
 
 ### 8.12 Meteo
-Una chiamata al giorno a un servizio gratuito (es. Open-Meteo, nessuna chiave richiesta) — il dato grezzo non richiede LLM, viene solo incrociato col calendario e infilato nel digest mattutino (es. "hai lezione alle 9 e piove, porta l'ombrello"). Costo pressoché nullo.
+Una chiamata a un servizio gratuito (Open-Meteo, nessuna chiave richiesta) — il dato grezzo non richiede LLM, viene solo incrociato col calendario e infilato nel digest mattutino (es. "hai lezione alle 9 e piove, porta l'ombrello"). Costo pressoché nullo.
+
+**Fatto** (`meteo/custode_meteo`, `api/custode_api/rotte/meteo.py`, la tabella `posizione` della migrazione 013), con tre scelte prese costruendolo:
+
+*Non c'è un archivio delle previsioni.* La bozza di questo pezzo prevedeva una tabella `meteo_giorno` riempita da un job; è stata scartata perché una previsione si butta via quando è vecchia, e una tabella da tenere allineata per un dato che il servizio rida in un attimo è lavoro senza ritorno. `GET /api/meteo` chiede a Open-Meteo al momento. Se il servizio non risponde la pagina lo dice (`502`): meglio una riga «meteo non disponibile» che il meteo di ieri con la sicurezza di quello di oggi.
+
+*La posizione la dice il browser, e se ne tiene una sola.* Ogni volta che la dashboard si apre, col permesso di geolocalizzazione, manda dove sei (`PUT /api/posizione`), già arrotondata a due decimali: circa un chilometro, abbastanza per il meteo e non abbastanza per dire in che casa sei. Sta in una tabella a una riga e non in `impostazioni`: quella è la tabella delle preferenze, e la pagina Impostazioni conta quali ne hai salvate. Una posizione è uno stato, non una scelta. Serve una sola perché il digest mattutino (§8.13) gira sul Pi quando nessun browser è aperto, e deve sapere dove sei **adesso**, cioè l'ultima volta che l'hai detto.
+
+*Senza posizione si dice che non si sa, non si indovina.* Se la dashboard non ti ha mai visto e non c'è `METEO_CASA_LAT`/`METEO_CASA_LON`, `previsioni` è omessa e la Home scrive perché: una lista vuota leggerebbe come «non piove». Con una posizione più vecchia di 48 ore si usa lo stesso, ma la risposta lo dice («ultima posizione: 3 giorni fa»), perché potresti essere altrove.
+
+*Quello che non c'è.* La posizione **non** segue il calendario: l'idea di leggere «viaggio verso X» e spostare il meteo a X è rimandata. Il GPS dice dove sei davvero, un titolo di evento dice dove pensavi di andare, e risolverlo vorrebbe dire un geocoding e una chiamata al modello per un caso che la posizione del browser copre già. Non c'è nemmeno il nome del luogo: Open-Meteo non fa geocoding inverso. La frase dell'ombrello («Pioggia probabile e hai «Analisi» alle 09:00») è una soglia e non un modello (`custode_meteo.testo`).
 
 ### 8.13 Digest mattutino
 Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/lezioni del giorno dal calendario, meteo, task aperti, eventuali promemoria da abitudini — così non devi chiedere tu ogni mattina.
@@ -497,7 +508,7 @@ Ogni fase porta la sua nota in corsivo: **una fase senza nota non è ancora comi
 5. **Tracciatore abitudini** (dinamico, log da linguaggio libero, statistiche di aderenza + report settimanale/mensile). *Fatta: abitudini dinamiche con target, log da linguaggio libero via DeepSeek, aderenza e strisce calcolate in codice senza modello, e i due resoconti narrativi di Claude — il settimanale dentro il messaggio del riepilogo del diario, il mensile con un job suo.*
 6. **Calendario + motore di contesto** (sync in sola lettura, tagging eventi, tipi di evento tuoi, impostazioni modificabili a caldo, regole dettate da te, poi le auto-proposte basate su pattern). *Fatta: calendario, tagging, i tipi che decidi tu, le impostazioni a caldo (§8), le **regole dettate da te** e le **auto-proposte** da pattern (§8.10 «Stato attuale»). Resta fuori la correzione di una regola **a parole**, che non è di questa fase: ha bisogno di capire quale regola stai correggendo, cioè di riconoscere un riferimento e non solo un'intenzione.*
 7. **Corsi universitari** (sync appunti da GitHub, check-in serale, piano di ripasso da syllabus.md).
-8. **Meteo + digest mattutino**.
+8. **Meteo + digest mattutino**. *Il meteo è fatto (§8.12): posizione dalla dashboard, nessun archivio, riquadro in Home. Il digest mattutino (§8.13) no: userà l'ultima posizione salvata e la frase dell'ombrello già pronta.*
 9. **Dashboard completa** su Cloudflare Pages.
 10. **Spotify.**
 11. **Samsung Health** (app companion Health Connect → Pi).

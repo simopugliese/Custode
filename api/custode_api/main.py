@@ -29,6 +29,7 @@ from custode_api.rotte import (
 )
 from custode_api.rotte import calendario as rotta_calendario
 from custode_api.rotte import impostazioni as rotta_impostazioni
+from custode_api.rotte import meteo as rotta_meteo
 from custode_api.rotte import regole as rotta_regole
 from custode_bot.config import ImpostazioniBot, get_impostazioni_bot
 from custode_calendario.config import ImpostazioniCalendario, get_impostazioni_calendario
@@ -36,6 +37,9 @@ from custode_core.config import Settings, get_settings, versione
 from custode_core.db import connessione, db_raggiungibile
 from custode_core.log import configura as configura_log
 from custode_core.migrazioni import migra
+from custode_meteo.config import ImpostazioniMeteo, get_impostazioni_meteo
+from custode_meteo.openmeteo import ClientOpenMeteo
+from custode_meteo.previsione import SorgenteMeteo
 from custode_router import Router
 from custode_worker.config import ImpostazioniWorker, get_impostazioni_worker
 
@@ -56,6 +60,8 @@ def crea_app(
     calendario: ImpostazioniCalendario | None = None,
     bot: ImpostazioniBot | None = None,
     worker: ImpostazioniWorker | None = None,
+    meteo: ImpostazioniMeteo | None = None,
+    sorgente_meteo: SorgenteMeteo | None = None,
 ) -> FastAPI:
     """Costruisce l'app. Parametrizzata sulle impostazioni per i test."""
     impostazioni = settings or get_settings()
@@ -63,6 +69,7 @@ def crea_app(
     calendario_impostazioni = calendario or get_impostazioni_calendario()
     bot_impostazioni = bot or get_impostazioni_bot()
     worker_impostazioni = worker or get_impostazioni_worker()
+    meteo_impostazioni = meteo or get_impostazioni_meteo()
     configura_log(impostazioni.log_level)
     log = logging.getLogger("custode.api")
 
@@ -108,7 +115,7 @@ def crea_app(
             # consente. Con `allow_credentials` Starlette rifiuta il jolly `*`:
             # le origini devono essere elencate, ed è quello che vogliamo.
             allow_credentials=True,
-            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Content-Type"],
         )
 
@@ -138,6 +145,7 @@ def crea_app(
     app.include_router(abitudini.router)
     app.include_router(rotta_impostazioni.router)
     app.include_router(rotta_regole.router)
+    app.include_router(rotta_meteo.router)
     # Per ultimo: i moduli non ancora attivi non devono coprire una rotta vera.
     app.include_router(non_attivi.router)
 
@@ -151,6 +159,8 @@ def crea_app(
     # calda che non hai mai salvato: giorno e ora del riepilogo nascono nel
     # `.env` del worker, ed è quello che la pagina deve mostrare (§8).
     app.state.worker = worker_impostazioni
+    app.state.meteo = meteo_impostazioni
+    app.state.sorgente_meteo = sorgente_meteo or ClientOpenMeteo()
 
     return app
 

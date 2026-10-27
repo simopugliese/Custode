@@ -19,6 +19,8 @@ from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
 from custode_core.db import connect
 from custode_core.formato import adesso
+from custode_meteo.config import ImpostazioniMeteo
+from custode_meteo.previsione import SorgenteMeteo
 from custode_router import Router
 from custode_worker.config import ImpostazioniWorker
 
@@ -98,6 +100,26 @@ def prendi_router(request: Request) -> Router:
 
 
 RouterDip = Annotated[Router, Depends(prendi_router)]
+
+
+def prendi_meteo(request: Request) -> ImpostazioniMeteo:
+    """La «casa» di ripiego del meteo (§8.12). Passa da qui per la stessa ragione
+    delle altre: leggere il `.env` della macchina farebbe dipendere un test da chi
+    lo lancia."""
+    meteo: ImpostazioniMeteo = request.app.state.meteo
+    return meteo
+
+
+MeteoDip = Annotated[ImpostazioniMeteo, Depends(prendi_meteo)]
+
+
+def prendi_sorgente_meteo(request: Request) -> SorgenteMeteo:
+    """Chi dice che tempo fa. Nei test è un finto: nessuna chiamata in rete."""
+    sorgente: SorgenteMeteo = request.app.state.sorgente_meteo
+    return sorgente
+
+
+SorgenteMeteoDip = Annotated[SorgenteMeteo, Depends(prendi_sorgente_meteo)]
 
 
 def prendi_conn(settings: ImpostazioniDip) -> Iterator[sqlite3.Connection]:

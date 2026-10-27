@@ -10,6 +10,7 @@ import { ShoppingRow } from '../components/ShoppingRow';
 import { CampoAggiunta } from '../components/CampoAggiunta';
 import { HabitDotsRow } from '../components/HabitDotsRow';
 import { Money } from '../components/Money';
+import { BloccoMeteo } from '../components/BloccoMeteo';
 import { Icon } from '../lib/icons';
 import { ACCENT_RAMP } from '../lib/palette';
 import { oggiISO } from '../lib/date';
@@ -95,6 +96,8 @@ export default function Home() {
                 },
               ]}
             />
+
+            <BloccoMeteo />
 
             <div className="cols">
               <div className="colL">

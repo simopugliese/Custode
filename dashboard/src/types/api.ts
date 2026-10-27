@@ -81,6 +81,25 @@ export interface HomeData {
   };
 }
 
+// — Meteo —
+
+export interface PrevisioneGiorno {
+  giornoLabel: string; // "oggi", "domani", "giovedì"
+  descrizione: string; // "pioggia"
+  minima: number;
+  massima: number;
+  probPioggia?: number; // 0-100; assente se il servizio non la dà
+}
+
+export interface MeteoData {
+  // Assente se non so dove sei: una lista vuota direbbe "non piove".
+  previsioni?: PrevisioneGiorno[];
+  consiglioLabel?: string; // "Pioggia probabile (80%) e hai «Analisi» alle 09:00: …"
+  // Solo se il meteo non parla del posto in cui sei adesso: "casa", "ultima posizione: 3 giorni fa".
+  posizioneLabel?: string;
+  notaLabel?: string; // perché non c'è la previsione
+}
+
 // — Diario —
 
 export type StatoVoceDiario = 'da_approvare' | 'approvata' | 'assente';

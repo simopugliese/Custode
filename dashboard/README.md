@@ -41,6 +41,14 @@ altrimenti il browser blocca le chiamate.
   AskBar, TaskRow, ecc.) che ricalcano le classi del design system.
 - `src/pages/` — le 9 pagine, una per voce di navigazione.
 
+## Posizione (meteo)
+
+Aprendo la dashboard il browser chiede il permesso di conoscere la tua
+posizione, e la manda a Custode (arrotondata a circa un chilometro) per il
+meteo di §8.12. Si può negare: il meteo usa l'ultima posizione nota, o
+`METEO_CASA_LAT`/`METEO_CASA_LON` se non ce n'è nessuna. Serve HTTPS, che su
+Pages c'è.
+
 ## Build & deploy (Cloudflare Pages)
 
 ```bash

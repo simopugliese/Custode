@@ -437,7 +437,7 @@ da fuori finché non c'è anche questo.
    sessione 24 h (§9, §13). Come identity provider va bene Google o l'OTP via
    email.
 4. Nelle impostazioni dell'applicazione, **CORS settings**: origine
-   `https://custode.simonepugliese.com`, metodi `GET, POST, PATCH, DELETE, OPTIONS`,
+   `https://custode.simonepugliese.com`, metodi `GET, POST, PUT, PATCH, DELETE, OPTIONS`,
    header `Content-Type`, **Allow credentials** attivo e **Bypass OPTIONS
    requests to origin** attivo. Senza il bypass Access risponde con il suo login
    anche alla richiesta di preflight del browser, che non ha cookie, e la

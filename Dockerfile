@@ -64,6 +64,7 @@ COPY --chown=custode:custode router/ router/
 COPY --chown=custode:custode whisper/ whisper/
 COPY --chown=custode:custode worker/ worker/
 COPY --chown=custode:custode calendario/ calendario/
+COPY --chown=custode:custode meteo/ meteo/
 RUN uv sync --frozen --no-dev
 
 

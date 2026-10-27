@@ -49,7 +49,8 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Cloudflare Tunnel + Access (accesso da fuori casa, §2, §9) | fatto |
 | Dashboard su Cloudflare Pages (DEPLOY §5) | fatto |
 | Deploy automatico, solo con CI tutta verde, con smoke test e rollback (DEPLOY §6) | fatto |
-| Corsi universitari (§8.11), meteo e digest (§8.12, §8.13) | da fare |
+| Meteo con la posizione che arriva dalla dashboard, senza archivio (§8.12) | fatto |
+| Corsi universitari (§8.11), digest mattutino (§8.13) | da fare |
 
 Home, Task, Lista della spesa, Diario, Spese, Abitudini, Calendario, Regole e
 Impostazioni mostrano dati veri, letti e scritti su SQLite, e la barra «A Custode»

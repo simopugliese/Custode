@@ -16,6 +16,8 @@ from custode_api.main import crea_app
 from custode_bot.config import ImpostazioniBot
 from custode_calendario.config import ImpostazioniCalendario
 from custode_core.config import Settings
+from custode_meteo import Previsione
+from custode_meteo.config import ImpostazioniMeteo
 from custode_worker.config import ImpostazioniWorker
 
 CAMPI_MESSAGGIO = frozenset({"segnale", "segnale_estratto", "segnale_domanda"})
@@ -133,6 +135,40 @@ def worker() -> ImpostazioniWorker:
     return _WorkerDiTest()
 
 
+class _MeteoDiTest(ImpostazioniMeteo):
+    """Ignora il `.env` dello sviluppatore, come `_WorkerDiTest`: una «casa» locale
+    farebbe rispondere la pagina in macchina e tacere in CI."""
+
+    model_config = SettingsConfigDict(env_prefix="METEO_", env_file=None, extra="ignore")
+
+
+@pytest.fixture
+def meteo() -> ImpostazioniMeteo:
+    """Senza casa: è come nasce un'installazione (§8.12)."""
+    return _MeteoDiTest()
+
+
+class SorgenteMeteoFinta:
+    """Al posto di Open-Meteo: dà le previsioni che le si dicono e ricorda dove
+    gliele hanno chieste."""
+
+    def __init__(self) -> None:
+        self.previsioni_date: list[Previsione] = []
+        self.errore: Exception | None = None
+        self.chiamate: list[tuple[float, float, int, str]] = []
+
+    def previsioni(self, lat: float, lon: float, giorni: int, fuso: str) -> list[Previsione]:
+        self.chiamate.append((lat, lon, giorni, fuso))
+        if self.errore is not None:
+            raise self.errore
+        return self.previsioni_date
+
+
+@pytest.fixture
+def sorgente_meteo() -> SorgenteMeteoFinta:
+    return SorgenteMeteoFinta()
+
+
 @pytest.fixture
 def client(
     fai_settings: Callable[..., Settings],
@@ -143,6 +179,8 @@ def client(
     calendario: ImpostazioniCalendario,
     bot: ImpostazioniBot,
     worker: ImpostazioniWorker,
+    meteo: ImpostazioniMeteo,
+    sorgente_meteo: SorgenteMeteoFinta,
 ) -> Iterator[TestClient]:
     """API completa su un DB temporaneo, con "adesso" fissato.
 
@@ -155,6 +193,8 @@ def client(
         calendario=calendario,
         bot=bot,
         worker=worker,
+        meteo=meteo,
+        sorgente_meteo=sorgente_meteo,
     )
     # L'ora è iniettata: senza, le etichette ("oggi", "giovedì") e la sezione
     # in cui finisce un task dipenderebbero da quando girano i test.

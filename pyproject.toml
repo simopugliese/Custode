@@ -75,6 +75,7 @@ packages = [
     "whisper/custode_whisper",
     "worker/custode_worker",
     "calendario/custode_calendario",
+    "meteo/custode_meteo",
 ]
 
 [tool.uv]
@@ -106,7 +107,7 @@ filterwarnings = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "bot", "router", "whisper", "worker", "calendario", "deploy", "tests"]
+files = ["core", "api", "bot", "router", "whisper", "worker", "calendario", "meteo", "deploy", "tests"]
 mypy_path = "deploy"
 
 [tool.ruff.lint.isort]
@@ -120,6 +121,7 @@ known-first-party = [
     "custode_whisper",
     "custode_worker",
     "custode_calendario",
+    "custode_meteo",
     "custode_deploy",
 ]
 

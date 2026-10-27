@@ -269,6 +269,33 @@ giorni indietro, quattordici avanti). Serve al mese: quello che c'è dopo è
 vuoto perché nessuno ha ancora guardato là, non perché quei giorni siano
 liberi.
 
+## Meteo
+
+`PUT /api/posizione` con `{ "lat", "lon" }` → `204`
+`GET /api/meteo` → `MeteoData`
+
+La dashboard manda la posizione **una volta per caricamento della pagina**, col
+permesso di geolocalizzazione del browser, già arrotondata a due decimali
+(circa un chilometro). Se il permesso è negato non succede niente: resta
+l'ultima posizione nota. L'API ne tiene **una sola** (migrazione 013), perché
+serve anche al digest del mattino (§8.13), che gira sul Pi senza browser.
+
+`GET /api/meteo` chiede la previsione a Open-Meteo al momento: **non c'è un
+archivio**. Tre casi:
+
+- `previsioni` presente: oggi più i giorni seguenti (`METEO_GIORNI`, default 3).
+  `probPioggia` è omessa se il servizio non la dà — non è «0%».
+- `previsioni` **omessa** e `notaLabel` presente: non so dove sei (nessuna
+  posizione mai ricevuta e nessuna `METEO_CASA_LAT`/`METEO_CASA_LON`). Una
+  lista vuota direbbe «non piove», che sarebbe un dato falso.
+- `502` con `detail`: Open-Meteo non risponde. La pagina non mostra un meteo
+  vecchio o inventato.
+
+`posizioneLabel` compare solo quando il meteo non parla del posto in cui sei
+adesso: `"casa"` (vale il `.env`) oppure `"ultima posizione: 3 giorni fa"`
+(oltre 48 ore). `consiglioLabel` compare con almeno il 50% di pioggia oggi, e
+cita il prossimo impegno con un orario se c'è.
+
 ## Lezioni e corsi
 
 `GET /api/lezioni?vista=settimana|mese` → `LezioniData`

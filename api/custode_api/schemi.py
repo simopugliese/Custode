@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaskItem(BaseModel):
@@ -801,3 +801,31 @@ class MessaggioAssistente(BaseModel):
 class RispostaAssistente(BaseModel):
     risposteLabel: list[str] = []
     """Una frase per ogni cosa fatta, nell'ordine in cui è stata fatta."""
+
+
+# — Meteo (§8.12) —
+
+
+class PosizioneIn(BaseModel):
+    """Dove sei, come la manda il browser. Già arrotondata là; qui si ripete."""
+
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+class PrevisioneGiorno(BaseModel):
+    giornoLabel: str
+    descrizione: str
+    minima: int
+    massima: int
+    probPioggia: int | None = None
+
+
+class MeteoData(BaseModel):
+    """La previsione per dove sei. Se non so dove sei, `previsioni` è omessa e
+    `notaLabel` dice perché: una lista vuota direbbe «non piove», che è un dato."""
+
+    previsioni: list[PrevisioneGiorno] | None = None
+    consiglioLabel: str | None = None
+    posizioneLabel: str | None = None
+    notaLabel: str | None = None
