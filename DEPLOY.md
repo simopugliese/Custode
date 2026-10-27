@@ -527,9 +527,25 @@ curl -i -X OPTIONS https://apicustode.simonepugliese.com/api/home \
 Risponde l'API quando il corpo è `OK` e compaiono `access-control-allow-origin`
 e `access-control-allow-credentials`; se il corpo è vuoto, ha risposto Access.
 
-> L'indirizzo `*.pages.dev` del progetto resta pubblico. Il bundle non contiene
-> segreti e da lì le chiamate all'API sono bloccate dal CORS, ma conviene
-> disattivarlo o metterlo dietro Access.
+### d. Chiudere anche `*.pages.dev`
+
+Il progetto ha anche un indirizzo pubblico suo (`<progetto>.pages.dev`, con un
+suffisso casuale se il nome era già preso) e uno per ogni anteprima
+(`<hash>.<progetto>.pages.dev`). Il bundle non contiene segreti e da lì le
+chiamate all'API sono bloccate dal CORS, ma non c'è motivo di lasciarlo aperto.
+
+Sono due hostname diversi, e vanno coperti **entrambi**: crea un'applicazione
+Access (o aggiungi i domini a quella esistente di `pages.dev`) con
+
+- `<progetto>.pages.dev`, l'indirizzo di produzione;
+- `*.<progetto>.pages.dev`, per branch e anteprime.
+
+Il wildcard da solo **non** copre l'indirizzo di produzione: sul campo le
+anteprime davano `302` e quello di produzione restava a `200`. Controlla con
+`curl -sI` su tutti e due: devono rispondere `302` verso `cloudflareaccess.com`.
+
+Dall'indirizzo `pages.dev` la dashboard non mostra i dati, ed è voluto: l'API
+ammette via CORS solo `https://custode.simonepugliese.com`. Si usa sempre quello.
 
 ## 6. Aggiornare una versione già in esecuzione
 

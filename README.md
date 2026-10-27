@@ -45,7 +45,7 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Abitudini: log a parole, aderenza in codice, report Claude (§8.6) | fatto |
 | Calendario Google (sola lettura), tipi di evento, impostazioni a caldo (§8, §8.10) | fatto |
 | Regole di contesto: dettate a parole e auto-proposte da pattern (§8.10) | fatto |
-| Cloudflare Tunnel + Access (accesso da fuori casa, §2, §9) | da fare |
+| Cloudflare Tunnel + Access (accesso da fuori casa, §2, §9) | fatto |
 | Dashboard su Cloudflare Pages (DEPLOY §5) | fatto |
 | Corsi universitari (§8.11), meteo e digest (§8.12, §8.13) | da fare |
 
