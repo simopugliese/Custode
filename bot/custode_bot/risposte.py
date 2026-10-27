@@ -21,6 +21,7 @@ from custode_bot.azioni import Vista
 from custode_core.dominio import abitudini as dom_abitudini
 from custode_core.dominio import diario as dom_diario
 from custode_core.dominio import lista_spesa as dom_lista
+from custode_core.dominio import meteo as dom_meteo
 from custode_core.dominio import profilo as dom_profilo
 from custode_core.dominio import regole as dom_regole
 from custode_core.dominio import spese as dom_spese
@@ -36,6 +37,8 @@ from custode_core.formato import (
     inizio_settimana,
     plurale,
 )
+from custode_meteo import MeteoNonRaggiungibile, SorgenteMeteo
+from custode_meteo.testo import descrizione, emoji, frase_ombrello
 from custode_router import Router
 from custode_router import assistente as dom_assistente
 from custode_router import diario as router_diario
@@ -94,6 +97,7 @@ def aiuto() -> Risposta:
             "/diario — chiudi la giornata e leggi il riassunto da approvare\n"
             "/spese — quanto hai speso questo mese\n"
             "/abitudini — come stai andando questa settimana\n"
+            "/meteo — che tempo fa, dove sei\n"
             "/profilo — cosa ho capito di te\n"
             "/aiuto — questo messaggio\n\n"
             "<i>Puoi anche scrivermi o dettarmi normalmente: «ricordami di "
@@ -135,6 +139,56 @@ def riepilogo_oggi(conn: sqlite3.Connection, ora: datetime) -> Risposta:
         for t in in_ritardo + per_oggi
     ]
     return Risposta(testo="\n\n".join(pezzi), bottoni=bottoni)
+
+
+NON_SO_DOVE_SEI = (
+    "Non so dove sei: apri la dashboard dal telefono e concedi la posizione al"
+    " browser (o imposta METEO_CASA_LAT e METEO_CASA_LON nel .env)."
+)
+
+
+def meteo(
+    conn: sqlite3.Connection,
+    ora: datetime,
+    sorgente: SorgenteMeteo,
+    *,
+    casa: tuple[float, float] | None,
+    giorni: int,
+    fuso: str,
+) -> Risposta:
+    """«Che tempo fa» dove sei (§8.12): stesso dato della Home, in righe.
+
+    La posizione la scrive la dashboard e il bot la **legge soltanto**. Se il
+    servizio non risponde lo dice: un meteo vecchio detto con la sicurezza di
+    uno nuovo è peggio di nessun meteo.
+    """
+    dove = dom_meteo.punto(conn, casa, ora)
+    if dove is None:
+        return Risposta(testo=NON_SO_DOVE_SEI)
+    lat, lon, posizione = dove
+    try:
+        previsioni = sorgente.previsioni(lat, lon, giorni, fuso)
+    except MeteoNonRaggiungibile:
+        return Risposta(testo="Il servizio meteo non risponde: riprova fra poco.")
+
+    oggi = ora.date()
+    righe = []
+    for p in previsioni:
+        giorno = etichetta_giorno(p.giorno, oggi)
+        nome = f"<b>{giorno.capitalize()}</b>" if p.giorno == oggi else giorno
+        pioggia = "" if p.prob_pioggia is None else f" · 💧 {p.prob_pioggia}%"
+        righe.append(
+            f"{emoji(p.codice)} {nome} {descrizione(p.codice)},"
+            f" {round(p.minima)}–{round(p.massima)}°{pioggia}"
+        )
+
+    testa = "<b>Meteo</b>" + (f" · {escape(posizione, quote=False)}" if posizione else "")
+    pezzi = [testa + "\n" + "\n".join(righe)]
+    prob_oggi = next((p.prob_pioggia for p in previsioni if p.giorno == oggi), None)
+    consiglio = frase_ombrello(prob_oggi, dom_meteo.prossimo_impegno(conn, ora))
+    if consiglio:
+        pezzi.append(f"<i>{escape(consiglio, quote=False)}</i>")
+    return Risposta(testo="\n\n".join(pezzi))
 
 
 def elenco_task(conn: sqlite3.Connection, ora: datetime) -> Risposta:

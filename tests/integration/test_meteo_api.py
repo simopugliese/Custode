@@ -53,6 +53,7 @@ def test_la_posizione_arrivata_dal_browser_decide_dove_si_chiede_il_meteo(
         {
             "giornoLabel": "oggi",
             "descrizione": "pioggia",
+            "icona": "cloud-rain",
             "minima": 16,
             "massima": 24,
             "probPioggia": 80,
@@ -60,6 +61,7 @@ def test_la_posizione_arrivata_dal_browser_decide_dove_si_chiede_il_meteo(
         {
             "giornoLabel": "domani",
             "descrizione": "sereno",
+            "icona": "sun",
             "minima": 17,
             "massima": 27,
             "probPioggia": 5,

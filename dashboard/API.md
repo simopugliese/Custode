@@ -291,6 +291,12 @@ archivio**. Tre casi:
 - `502` con `detail`: Open-Meteo non risponde. La pagina non mostra un meteo
   vecchio o inventato.
 
+Ogni giorno porta `descrizione` («nebbia») e `icona`, il nome lucide che la
+dashboard disegna (`sun`, `cloud-sun`, `cloud`, `cloud-fog`, `cloud-drizzle`,
+`cloud-rain`, `snowflake`, `cloud-lightning`). La scelta è dell'API e non della
+dashboard perché Telegram usa la stessa tabella con le emoji: parola, icona ed
+emoji devono dire lo stesso tempo. Un nome sconosciuto si disegna come `cloud`.
+
 `posizioneLabel` compare solo quando il meteo non parla del posto in cui sei
 adesso: `"casa"` (vale il `.env`) oppure `"ultima posizione: 3 giorni fa"`
 (oltre 48 ore). `consiglioLabel` compare con almeno il 50% di pioggia oggi, e

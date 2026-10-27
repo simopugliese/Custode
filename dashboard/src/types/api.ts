@@ -86,6 +86,7 @@ export interface HomeData {
 export interface PrevisioneGiorno {
   giornoLabel: string; // "oggi", "domani", "giovedì"
   descrizione: string; // "pioggia"
+  icona: string; // nome lucide scelto dall'API: "cloud-rain"
   minima: number;
   massima: number;
   probPioggia?: number; // 0-100; assente se il servizio non la dà

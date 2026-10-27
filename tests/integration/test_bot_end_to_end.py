@@ -682,6 +682,38 @@ def test_la_foto_di_un_estraneo_viene_ignorata(
         assert dom_spese.in_attesa(conn) == []
 
 
+def test_meteo_risponde_dalla_posizione_salvata(
+    db_path: Path, modello: RouterFinto, whisper: WhisperFinto, finto: BotFinto
+) -> None:
+    from custode_core.dominio import posizione
+    from custode_meteo import Previsione
+
+    class Sorgente:
+        def previsioni(self, lat: float, lon: float, giorni: int, fuso: str) -> list[Previsione]:
+            return [Previsione(adesso("Europe/Rome").date(), 0, 10.0, 20.0, 0)]
+
+    applicazione = crea_applicazione(
+        Settings(ambiente="test", db_path=db_path),
+        ImpostazioniBot(bot_token="123456:FINTO", allowed_user_id=IO),
+        router=modello,  # type: ignore[arg-type]
+        whisper=whisper,
+        sorgente_meteo=Sorgente(),
+    )
+    applicazione._initialized = True
+    with connessione(db_path) as conn:
+        posizione.salva(conn, 45.07, 7.69, adesso("Europe/Rome"))
+
+    _manda(applicazione, finto, "/meteo")
+
+    assert "☀️ <b>Oggi</b> sereno, 10–20°" in finto.ultimo
+
+
+def test_meteo_di_un_estraneo_non_risponde(app: Application, finto: BotFinto) -> None:
+    _manda(app, finto, "/meteo", da=ESTRANEO)
+
+    assert finto.inviati == []
+
+
 def test_spese_elenca_il_mese(app: Application, finto: BotFinto, db_path: Path) -> None:
     with connessione(db_path) as conn:
         dom_spese.registra(

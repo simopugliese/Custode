@@ -26,6 +26,14 @@ import {
   Info,
   ClipboardCheck,
   CheckCircle,
+  Sun,
+  CloudSun,
+  Cloud,
+  CloudFog,
+  CloudDrizzle,
+  CloudRain,
+  Snowflake,
+  CloudLightning,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -58,6 +66,15 @@ export const ICONS = {
   info: Info,
   'clipboard-check': ClipboardCheck,
   'check-circle': CheckCircle,
+  // il tempo (§8.12): i nomi li sceglie l'API, `custode_meteo.testo.icona`
+  sun: Sun,
+  'cloud-sun': CloudSun,
+  cloud: Cloud,
+  'cloud-fog': CloudFog,
+  'cloud-drizzle': CloudDrizzle,
+  'cloud-rain': CloudRain,
+  snowflake: Snowflake,
+  'cloud-lightning': CloudLightning,
 } satisfies Record<string, LucideIcon>;
 
 export type IconName = keyof typeof ICONS;

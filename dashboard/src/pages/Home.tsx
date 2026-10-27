@@ -97,8 +97,6 @@ export default function Home() {
               ]}
             />
 
-            <BloccoMeteo />
-
             <div className="cols">
               <div className="colL">
                 <div>
@@ -175,6 +173,7 @@ export default function Home() {
               </div>
 
               <div className="colR">
+                <BloccoMeteo />
                 {data.speseSettimana && (
                 <div>
                   <div className="row" style={{ marginBottom: 12 }}>

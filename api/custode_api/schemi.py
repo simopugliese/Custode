@@ -816,6 +816,7 @@ class PosizioneIn(BaseModel):
 class PrevisioneGiorno(BaseModel):
     giornoLabel: str
     descrizione: str
+    icona: str
     minima: int
     massima: int
     probPioggia: int | None = None

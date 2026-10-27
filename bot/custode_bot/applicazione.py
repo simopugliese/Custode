@@ -41,6 +41,9 @@ from custode_core.db import connect
 from custode_core.dominio import vocabolario
 from custode_core.formato import adesso
 from custode_core.migrazioni import migra
+from custode_meteo.config import ImpostazioniMeteo, get_impostazioni_meteo
+from custode_meteo.openmeteo import ClientOpenMeteo
+from custode_meteo.previsione import SorgenteMeteo
 from custode_router import Router
 
 log = logging.getLogger("custode.bot")
@@ -61,6 +64,7 @@ COMANDI = [
     BotCommand("diario", "Chiudi la giornata (anche «/diario ieri»)"),
     BotCommand("spese", "Quanto hai speso questo mese"),
     BotCommand("abitudini", "Come stai andando questa settimana"),
+    BotCommand("meteo", "Che tempo fa"),
     BotCommand("profilo", "Cosa ho capito di te"),
     BotCommand("aiuto", "Cosa so fare"),
 ]
@@ -83,14 +87,18 @@ def crea_applicazione(
     *,
     router: Router | None = None,
     whisper: ClientWhisper | None = None,
+    meteo: ImpostazioniMeteo | None = None,
+    sorgente_meteo: SorgenteMeteo | None = None,
 ) -> Application:
     """Costruisce l'applicazione Telegram con la whitelist già applicata.
 
-    `router` e `whisper` sono iniettabili per i test: in esercizio si
+    `router`, `whisper`, `meteo` e `sorgente_meteo` sono iniettabili per i test: in esercizio si
     costruiscono da soli dalle impostazioni.
     """
     instradatore = router or Router()
     trascrittore = whisper or ClientWhisper(bot.whisper_url)
+    meteo_impostazioni = meteo or get_impostazioni_meteo()
+    previsioni = sorgente_meteo or ClientOpenMeteo()
 
     @contextmanager
     def connessione() -> Iterator[sqlite3.Connection]:
@@ -353,6 +361,22 @@ def crea_applicazione(
         CommandHandler(
             "spese",
             comando(lambda conn, ora_, _: risposte.elenco_spese(conn, ora_)),
+            filters=solo_io,
+        )
+    )
+    applicazione.add_handler(
+        CommandHandler(
+            "meteo",
+            comando(
+                lambda conn, ora_, _: risposte.meteo(
+                    conn,
+                    ora_,
+                    previsioni,
+                    casa=meteo_impostazioni.casa(),
+                    giorni=meteo_impostazioni.giorni,
+                    fuso=impostazioni.timezone,
+                )
+            ),
             filters=solo_io,
         )
     )

@@ -9,7 +9,7 @@ import pytest
 
 from custode_meteo import MeteoNonRaggiungibile, Previsione
 from custode_meteo.openmeteo import ClientOpenMeteo
-from custode_meteo.testo import descrizione, frase_ombrello
+from custode_meteo.testo import descrizione, emoji, frase_ombrello, icona
 
 RISPOSTA = {
     "daily": {
@@ -98,3 +98,25 @@ def test_l_ombrello_si_dice_solo_sopra_la_soglia() -> None:
         frase_ombrello(80, ("09:00", "Analisi"))
         == "Pioggia probabile (80%) e hai «Analisi» alle 09:00: porta l'ombrello."
     )
+
+
+@pytest.mark.parametrize(
+    ("codice", "nome_icona", "simbolo"),
+    [
+        (0, "sun", "☀️"),
+        (1, "cloud-sun", "🌤️"),
+        (3, "cloud", "☁️"),
+        (45, "cloud-fog", "🌫️"),
+        (53, "cloud-drizzle", "🌦️"),
+        (63, "cloud-rain", "🌧️"),
+        (73, "snowflake", "❄️"),
+        (95, "cloud-lightning", "⛈️"),
+        # Un codice che non conosco non deve rompere la pagina: nuvola e «variabile».
+        (10, "cloud", "☁️"),
+    ],
+)
+def test_parola_icona_ed_emoji_dicono_lo_stesso_tempo(
+    codice: int, nome_icona: str, simbolo: str
+) -> None:
+    assert icona(codice) == nome_icona
+    assert emoji(codice) == simbolo
