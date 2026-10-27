@@ -589,7 +589,7 @@ sudo nano /etc/custode-deploy.env      # segreto (openssl rand -hex 32) e indiri
 sudo cp deploy/custode-deploy.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now custode-deploy
 sudo systemctl status custode-deploy   # active (running)
-sudo docker compose up -d cloudflared  # prende l'extra_hosts nuovo
+curl -si -X POST http://<indirizzo>:9000/deploy | head -3   # 401: ascolta, e vuole la firma
 ```
 
 Il checkout sul Pi deve essere **pulito**: una modifica a mano a un file
@@ -599,7 +599,12 @@ deploy fallisce con «non è un fast-forward».
 **2. Su Cloudflare: l'hostname e l'accesso.** I nomi dei menu sono a memoria.
 
 - *Tunnel → Public hostname:* `deploycustode.simonepugliese.com` →
-  `http://host.docker.internal:9000`.
+  `http://<indirizzo>:9000`, con lo **stesso** indirizzo del gateway di Compose
+  messo in `CUSTODE_DEPLOY_ASCOLTA` (per esempio `172.24.0.1`). Non usare
+  `host.docker.internal`: con `host-gateway` punta alla rete Docker di default
+  (`172.17.0.1`), non a quella di Compose, e il tunnel risponde 502 con
+  «connection refused» (visto sul campo). Se un giorno ricrei la rete con
+  `docker compose down`, l'indirizzo può cambiare: aggiornalo in tutti e due i posti.
 - *Zero Trust → Access → Service credentials → Service Tokens:* crea un token
   (es. `custode-ci`) e copia **subito** Client ID e Client Secret: il secondo non
   si rivede.

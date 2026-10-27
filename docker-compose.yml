@@ -130,11 +130,6 @@ services:
     # `COMPOSE_PROFILES=tunnel` nel .env, così ogni `up` lo include da sé.
     profiles: ["tunnel"]
     command: tunnel --no-autoupdate run
-    # Per raggiungere il listener del deploy, che gira sull'host e non in un
-    # container (DEPLOY.md §6): nell'hostname pubblico `deploycustode` del tunnel
-    # il servizio è `http://host.docker.internal:9000`.
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
