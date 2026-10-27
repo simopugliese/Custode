@@ -570,7 +570,10 @@ ammette via CORS solo `https://custode.simonepugliese.com`. Si usa sempre quello
 
 Il Pi non si fida di chi lo avvisa: oltre al job con `needs`, `deploy.sh` chiede
 a GitHub se **tutti** i controlli di quel commit sono verdi, e il commit da
-installare lo sceglie lui (`origin/main`), non la richiesta.
+installare lo sceglie lui (`origin/main`), non la richiesta. GitHub può mostrare per
+qualche secondo i controlli ancora «in corso» anche a CI finita: se sono solo
+in corso o in coda il Pi riprova ogni 10 s per circa 2 minuti prima di rifiutare;
+un controllo già concluso e non verde ferma subito.
 
 ### a. Configurazione una tantum
 
@@ -665,7 +668,7 @@ Telegram. Gli stati, e cosa fare:
 
 | Stato | Cosa è successo | Cosa fare |
 |---|---|---|
-| `rifiutato` | Il Pi ha visto che la CI di quel commit non è tutta verde. Non ha toccato nulla. | Sistema la CI e rifai il push. |
+| `rifiutato` | Il Pi ha visto che la CI di quel commit non è tutta verde. Non ha toccato nulla. Due varianti: «non sono verdi: … (failure)» è un controllo rosso, subito; «dopo 120 s ancora in corso: … (in_progress)» vuol dire che dopo ~2 minuti la CI non era ancora finita. | Rosso: sistema la CI e rifai il push. In corso: aspetta che la CI finisca e rilancia il job (*Re-run failed jobs*). |
 | `rollback` | Il nuovo non rispondeva su `/api/health`: il Pi è tornato al commit di prima, che risponde. La dashboard **non** è stata pubblicata. | Guarda i log del servizio che non partiva: `sudo docker compose logs api`. |
 | `da_guardare` | Il deploy è fallito **e** nel mezzo c'è una migrazione nuova: il Pi non torna indietro da solo, perché il codice vecchio potrebbe non reggere lo schema nuovo. Oppure è fallito anche il ritorno. | Guarda a mano. Il backup di ieri notte è in §7. |
 | `fallito` | Altro: `git fetch` o il merge non sono riusciti (spesso modifiche locali sul Pi). | `sudo git status` sul Pi. |
@@ -700,7 +703,9 @@ La vecchia procedura in tre righe (`git pull`, `docker compose up --build -d`,
   *Retry deployment* o l'hook.
 - **Se cambi `deploy/listener.py` o `custode_deploy/`**, riavvia il servizio:
   `sudo systemctl restart custode-deploy`. L'aggiornamento li cambia su disco ma
-  il processo in esecuzione ha ancora il codice vecchio. (`deploy.sh`, invece, è
+  il processo in esecuzione ha ancora il codice vecchio. Vale anche per l'attesa
+  dei controlli in corso (`custode_deploy/ci.py`): finché non riavvii, il Pi
+  rifiuta ancora alla prima lettura. (`deploy.sh`, invece, è
   sicuro: è scritto per poter essere riscritto mentre gira.)
 
 ## 7. Backup e restore del database
