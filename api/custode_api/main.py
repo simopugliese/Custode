@@ -104,6 +104,10 @@ def crea_app(
         app.add_middleware(
             CORSMiddleware,
             allow_origins=impostazioni.cors_origins,
+            # Il cookie di Cloudflare Access (§9) viaggia solo se la risposta lo
+            # consente. Con `allow_credentials` Starlette rifiuta il jolly `*`:
+            # le origini devono essere elencate, ed è quello che vogliamo.
+            allow_credentials=True,
             allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
             allow_headers=["Content-Type"],
         )

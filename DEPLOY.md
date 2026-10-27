@@ -48,15 +48,16 @@ Apri `.env` e compila le variabili. Quelle già usate oggi:
 | `CUSTODE_AMBIENTE` | `production` |
 | `CUSTODE_DB_PATH` | `/data/custode.db` (percorso **dentro** il container) |
 | `CUSTODE_TIMEZONE` | `Europe/Rome` |
-| `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard su Pages, es. `https://custode.pages.dev` |
+| `CUSTODE_CORS_ORIGINS` | l'indirizzo della dashboard, es. `https://custode.simonepugliese.com` (stesso dominio dell'API: vedi §4) |
 | `CUSTODE_BUDGET_SETTIMANALE` | quanto conti di spendere in una settimana, in euro. È il **valore di partenza**: dal primo salvataggio nella pagina Impostazioni vale quello, e questa variabile smette di contare (§8). **Lasciala vuota** se non ne vuoi uno: la Home non disegna il blocco «Spese · settimana», e il totale speso resta comunque visibile |
 | `TELEGRAM_BOT_TOKEN` | il token che dà @BotFather quando crei il bot |
 | `TELEGRAM_ALLOWED_USER_ID` | il tuo user ID Telegram numerico — te lo dice @userinfobot |
 | `ROUTER_DEEPSEEK_API_KEY` | chiave DeepSeek: serve al linguaggio libero e ai vocali (§6) |
 | `ROUTER_ANTHROPIC_API_KEY` | chiave Anthropic: riassunto del diario, riepilogo settimanale, profilo (§8.4), categorie e lettura degli scontrini (§8.5) |
 
-Il token del tunnel resta commentato finché non arriva la fase 1 di §12 — cioè
-il § 4 qui sotto, l'unico pezzo dello scheletro ancora da fare.
+Il token del tunnel e `COMPOSE_PROFILES=tunnel` restano commentati finché non
+fai il §4 qui sotto, l'unico pezzo dello scheletro che richiede passi su
+Cloudflare.
 
 Senza le chiavi del router, comandi e bottoni del bot funzionano lo stesso: si
 perdono il linguaggio libero (DeepSeek) e tutto ciò che passa da Claude —
@@ -375,26 +376,92 @@ sia quello dei container, cioè dopo un `docker compose up -d`.
 > un'ora. Non è un difetto — è il prezzo di non richiedere un token nuovo ad
 > ogni sincronizzazione.
 
-## 4. Cloudflare Tunnel + Access **[da fare — fase 1]**
+## 4. Cloudflare Tunnel + Access (fase 1, §2 e §9)
 
-Fase 1 e non una delle ultime: in §12 il tunnel sta nello **scheletro**, ed è
-l'unico pezzo di quella fase rimasto indietro. Tutto il resto — bot, Whisper,
-router, database, Compose, CI — gira da un pezzo, e i moduli costruiti sopra
-sono arrivati fino alla fase 6. Finché questo manca, dashboard e API si
-raggiungono **solo dal Pi**: da fuori casa non c'è niente.
+Fase 1 e non una delle ultime: in §12 il tunnel sta nello **scheletro**. Finché
+non è configurato, dashboard e API si raggiungono **solo dal Pi**. Il servizio
+`cloudflared` è già in `docker-compose.yml` (dietro il profilo `tunnel`, spento
+finché non gli dai un token); quello che resta da fare è la parte su Cloudflare.
 
-In sintesi, quando ci arriviamo:
+Servono **due hostname sotto lo stesso dominio** (`simonepugliese.com`):
 
-1. In Cloudflare Zero Trust → Networks → Tunnels, creare un tunnel e copiarne
-   il token in `CLOUDFLARE_TUNNEL_TOKEN` nel `.env`.
-2. Aggiungere il servizio `cloudflared` a `docker-compose.yml`, con un public
-   hostname (es. `api.tuodominio.it`) che punta a `http://api:8000` sulla rete
-   interna di Compose.
-3. In Access → Applications, creare un'applicazione self-hosted su quello
-   stesso hostname con una policy `Allow` ristretta esattamente alla propria
-   email, sessione 24h (§9, §13).
-4. Verificare da rete esterna: senza login l'endpoint deve rispondere con la
-   pagina di Access, mai con i dati.
+- `apicustode.simonepugliese.com` → l'API, attraverso il tunnel;
+- `custode.simonepugliese.com` → la dashboard su Pages (§5).
+
+Devono stare sotto lo stesso dominio e non su `*.pages.dev` per una ragione
+concreta: il cookie di sessione di Access è per hostname, e una dashboard su
+`pages.dev` che chiama `apicustode.simonepugliese.com` lo manda come cookie di terze parti,
+che Safari e ormai anche Chrome bloccano. Con due sottodomini dello stesso sito
+il browser lo manda senza discutere.
+
+### a. Il tunnel
+
+1. [one.dash.cloudflare.com](https://one.dash.cloudflare.com) → **Networks →
+   Tunnels → Create a tunnel → Cloudflared**. Dagli un nome (`custode`).
+2. Copia il **token** (la stringa lunga dopo `--token` nel comando che mostra) e
+   mettilo nel `.env` del Pi, insieme al profilo che accende il servizio:
+
+   ```
+   CLOUDFLARE_TUNNEL_TOKEN=eyJ...
+   COMPOSE_PROFILES=tunnel
+   ```
+
+3. Nella scheda **Public Hostname** del tunnel aggiungi `apicustode.simonepugliese.com` con
+   servizio `HTTP` → `api:8000`. È il nome del servizio su Compose, non
+   `localhost`: il container `cloudflared` ha un suo `localhost`, e l'API non è lì.
+4. `CUSTODE_CORS_ORIGINS` nel `.env` = `https://custode.simonepugliese.com` (l'origine
+   della dashboard, senza barra finale).
+5. Sul Pi:
+
+   ```bash
+   cd ~/custode
+   docker compose up -d
+   docker compose logs cloudflared | tail
+   ```
+
+   Nei log devono comparire righe `Registered tunnel connection`. Se invece il
+   container si riavvia, il token è sbagliato o incompleto.
+
+### b. Access: davanti a tutto, prima di provare da fuori
+
+Il tunnel da solo espone l'API **a chiunque conosca l'indirizzo**. Non provarlo
+da fuori finché non c'è anche questo.
+
+1. **Access → Applications → Add an application → Self-hosted.**
+2. Domini: `apicustode.simonepugliese.com` **e** `custode.simonepugliese.com` nella stessa
+   applicazione (un login solo per entrambi).
+3. Policy `Allow`, regola **Emails** = la tua email, **e nient'altro**. Durata
+   sessione 24 h (§9, §13). Come identity provider va bene Google o l'OTP via
+   email.
+4. Nelle impostazioni dell'applicazione, **CORS settings**: origine
+   `https://custode.simonepugliese.com`, metodi `GET, POST, PATCH, DELETE, OPTIONS`,
+   header `Content-Type`, **Allow credentials** attivo e **Bypass OPTIONS
+   requests to origin** attivo. Senza il bypass Access risponde con il suo login
+   anche alla richiesta di preflight del browser, che non ha cookie, e la
+   dashboard vede un errore di rete senza capire perché.
+
+### c. Verificare, da una rete che non è quella di casa
+
+Dal telefono con il Wi-Fi spento, o da qualunque macchina fuori casa:
+
+```bash
+curl -i https://apicustode.simonepugliese.com/api/health
+```
+
+Deve rispondere con un reindirizzamento alla pagina di login di Access
+(`302`, o `403` se non segue i redirect) e **mai** con `{"stato":"ok",...}`.
+Se vedi quel JSON senza aver fatto login, Access non è davanti all'API: spegni il
+tunnel (`docker compose stop cloudflared`) e rivedi il punto b.
+
+Poi nel browser: apri `https://apicustode.simonepugliese.com/api/health` e accedi con la tua
+email — qui si vede il JSON, ed è il segno che il tunnel arriva all'API. Un
+indirizzo diverso dal tuo non deve riuscire a entrare.
+
+> **Sicurezza, da sapere.** L'API si fida di Access: non controlla da sé il token
+> `Cf-Access-Jwt-Assertion` che Access aggiunge alle richieste. Finché il tunnel
+> è l'unica strada verso l'API, e l'API sta su `127.0.0.1`, è una scelta
+> ragionevole. Verificare quel token nell'API è un rinforzo possibile se un
+> giorno l'esposizione cambia.
 
 ## 5. Dashboard su Cloudflare Pages **[da fare — fase 9, «dashboard completa»]**
 

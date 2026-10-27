@@ -1,6 +1,6 @@
 # Custode — stack di esecuzione sul Raspberry Pi 5 (ARCHITECTURE.md §4).
 #
-# Un servizio per componente. cloudflared entra qui quando arriva la sua fase.
+# Un servizio per componente, cloudflared compreso.
 # Nessuna porta è pubblicata verso l'esterno: da fuori si passa da Cloudflare
 # Tunnel, che apre una connessione in uscita dal Pi (§2, §9).
 
@@ -112,6 +112,31 @@ services:
       timeout: 10s
       start_period: 20s
       retries: 3
+
+  cloudflared:
+    # Il tunnel (§2, §9): apre una connessione **in uscita** verso Cloudflare, quindi
+    # sul router non si apre nessuna porta. Parla con l'API sulla rete interna di
+    # Compose (`http://api:8000`, configurato nell'hostname pubblico del tunnel, non
+    # qui): la pubblicazione su 127.0.0.1 dell'api non c'entra e resta com'è.
+    #
+    # Versione pinnata, mai `latest` (§9). Se il tag non esiste più su
+    # https://github.com/cloudflare/cloudflared/releases, alzalo.
+    image: cloudflare/cloudflared:2025.8.1
+    container_name: custode-cloudflared
+    restart: unless-stopped
+    # Sta dietro un profilo: senza token non c'è tunnel da far partire, e un
+    # `docker compose up` in locale (o sul Pi prima del §4 di DEPLOY.md) non deve
+    # lasciare un container che si riavvia all'infinito. Si attiva con
+    # `COMPOSE_PROFILES=tunnel` nel .env, così ogni `up` lo include da sé.
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    # Come gli altri: Compose non deve esporre nulla del tunnel verso la LAN.
+    # Nessuna porta pubblicata, nessun volume.
 
 volumes:
   # Il database vive qui: è l'unica cosa da backuppare (§3, §9).

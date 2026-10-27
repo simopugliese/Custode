@@ -2,7 +2,9 @@
  * Thin fetch wrapper for the Custode REST API (see /API.md for the contract).
  * The API is reached through the Cloudflare Tunnel + Access chain described
  * in the architecture doc — Access authenticates the request before it gets
- * here, so this client sends no credentials of its own.
+ * here. The client holds no secret of its own, but it must let the browser send
+ * the Access session cookie on cross-origin calls (`credentials: 'include'`),
+ * which also needs the API to answer with `Access-Control-Allow-Credentials`.
  */
 
 const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
@@ -27,6 +29,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}/api${path}`, {
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
       ...init,
     });
