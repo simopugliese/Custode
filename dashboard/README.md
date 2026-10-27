@@ -47,8 +47,10 @@ altrimenti il browser blocca le chiamate.
 npm run build   # output in dist/
 ```
 
-`public/_redirects` reindirizza ogni percorso a `index.html` (routing lato
-client con React Router) — copiato automaticamente in `dist/` dal build.
+Niente `_redirects`: Pages serve `index.html` per ogni percorso sconosciuto
+finché nel progetto non c'è un `404.html`, e questo basta al routing lato client
+con React Router. Una regola `/* /index.html 200` Pages la scarta come ciclo
+infinito (avviso nel log di build).
 Imposta `VITE_API_BASE_URL` come variabile d'ambiente del progetto Pages
 (Settings → Environment variables): nessun segreto qui, solo l'indirizzo
 pubblico raggiunto tramite Cloudflare Tunnel — l'autenticazione la fa
