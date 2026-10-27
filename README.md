@@ -43,12 +43,17 @@ in quattro punti sarebbe l'errore più facile da fare.
 | Backup cifrato del DB + runbook di restore (§9, §11) | fatto |
 | Spese: a parole e da foto dello scontrino (§8.5) | fatto |
 | Abitudini: log a parole, aderenza in codice, report Claude (§8.6) | fatto |
-| Calendario, corsi, meteo, digest | da fare |
+| Calendario Google (sola lettura), tipi di evento, impostazioni a caldo (§8, §8.10) | fatto |
+| Regole di contesto: dettate a parole e auto-proposte da pattern (§8.10) | fatto |
+| Cloudflare Tunnel + Access (accesso da fuori casa, §2, §9) | da fare |
+| Dashboard su Cloudflare Pages | da fare |
+| Corsi universitari (§8.11), meteo e digest (§8.12, §8.13) | da fare |
 
-Home, Task, Lista della spesa, Diario, Spese e Abitudini mostrano dati veri, letti e
-scritti su SQLite, e la barra «A Custode» funziona in linguaggio libero. Le altre pagine
-ricevono un `501` che dice quale modulo manca, e mostrano quel messaggio: è il
-comportamento previsto, non un bug.
+Home, Task, Lista della spesa, Diario, Spese, Abitudini, Calendario, Regole e
+Impostazioni mostrano dati veri, letti e scritti su SQLite, e la barra «A Custode»
+funziona in linguaggio libero. Resta a `501` solo la pagina Lezioni (corsi): la
+dashboard mostra il messaggio che dice quale modulo manca, ed è il comportamento
+previsto, non un bug.
 
 Da Telegram si può parlare normalmente («sto finendo il latte») o mandare un
 vocale: la trascrizione avviene sul Pi, e l'audio non esce di casa.
