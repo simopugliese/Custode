@@ -1,0 +1,35 @@
+# Il listener del deploy automatico (DEPLOY.md §6). Si installa con:
+#
+#     sudo cp deploy/custode-deploy.service /etc/systemd/system/
+#     sudo systemctl daemon-reload && sudo systemctl enable --now custode-deploy
+#
+# I percorsi sono quelli del Pi (/docker_files_miei/custode): se il checkout sta
+# altrove, cambiali qui.
+
+[Unit]
+Description=Custode: deploy automatico (riceve l'avviso dalla CI)
+# Il listener ascolta sull'indirizzo della rete Docker di Compose, che esiste
+# solo a Docker avviato.
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/docker_files_miei/custode
+# CUSTODE_DEPLOY_SEGRETO e CUSTODE_DEPLOY_ASCOLTA. File a parte, leggibile solo
+# da root: il segreto non va nel `.env` del progetto né nel repo.
+EnvironmentFile=/etc/custode-deploy.env
+Environment=PYTHONPATH=/docker_files_miei/custode/deploy
+ExecStart=/usr/bin/python3 -m custode_deploy.listener
+Restart=on-failure
+RestartSec=5
+
+# Root perché il checkout e Docker sono di root su questo Pi (`sudo git pull`,
+# `sudo docker compose`): un utente nel gruppo `docker` avrebbe comunque i
+# poteri di root. Quello che si può togliere si toglie.
+User=root
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

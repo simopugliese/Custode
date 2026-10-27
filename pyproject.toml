@@ -89,6 +89,9 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# `deploy/` gira sull'host e non è nel wheel (vedi custode_deploy/__init__.py):
+# i test lo importano da qui.
+pythonpath = ["deploy"]
 addopts = "-q"
 markers = [
     "integration: test che esercitano l'API completa contro un DB reale su disco",
@@ -103,7 +106,8 @@ filterwarnings = [
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["core", "api", "bot", "router", "whisper", "worker", "calendario", "tests"]
+files = ["core", "api", "bot", "router", "whisper", "worker", "calendario", "deploy", "tests"]
+mypy_path = "deploy"
 
 [tool.ruff.lint.isort]
 # Senza questo isort tratterebbe i pacchetti del repo come librerie di terze
@@ -116,6 +120,7 @@ known-first-party = [
     "custode_whisper",
     "custode_worker",
     "custode_calendario",
+    "custode_deploy",
 ]
 
 # `telegram.ext.Application` è generica su sei parametri che python-telegram-bot

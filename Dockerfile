@@ -170,6 +170,9 @@ FROM progetto AS test
 
 RUN uv sync --frozen --all-extras
 COPY tests/ tests/
+# I test del deploy automatico importano `custode_deploy` da qui (pythonpath in
+# pyproject.toml); non fa parte delle immagini che girano.
+COPY deploy/ deploy/
 
 ENV CUSTODE_AMBIENTE=test \
     CUSTODE_DB_PATH=/tmp/custode-test.db

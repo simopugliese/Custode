@@ -79,6 +79,7 @@ Nessuna preferenza espressa, quindi la scelta è guidata dal caso d'uso: **SQLit
   /dashboard      # frontend (build separata, deploy su Pages)
   /tests          # unit + integration test
   /.github/workflows  # CI: lint + test ad ogni push
+  /deploy         # deploy automatico sul Pi: listener, script, servizio systemd (§10)
   pyproject.toml  # dipendenze Python di tutti i servizi
   uv.lock         # versioni bloccate (installazioni riproducibili)
   Dockerfile      # multi-stage: un target per servizio (api, bot, worker, whisper) + test
@@ -473,7 +474,8 @@ Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/l
 - **Unit test**: parser (spese, abitudini, lista spesa), logica del router DeepSeek/Claude, funzioni DB.
 - **Integration test**: endpoint API contro un DB di test in container dedicato (`docker-compose.test.yml`).
 - **GitHub Actions**: ad ogni push → lint + test + **build delle immagini**; il deploy sul Pi parte solo se la pipeline è verde. Il job delle immagini costruisce i quattro target del Dockerfile e poi ne *avvia* ciascuno per importare il proprio modulo: costruire dimostra solo che i layer si applicano, non che il servizio abbia le dipendenze che importa. È il buco da cui erano passati tre difetti del Dockerfile arrivati fino al Pi (README fuori dal contesto di build, curl mancante, librerie condivise non copiate), e serve in particolare al target `worker`, che usa `custode_bot.risposte` senza installare `python-telegram-bot`.
-- **Smoke test post-deploy**: endpoint di health-check chiamato subito dopo ogni deploy, rollback automatico se fallisce.
+- **Deploy automatico, solo con tutto verde.** Un job `Deploy` in coda alla CI (`needs` su tutti gli altri, solo su `main`) avvisa il Pi con una richiesta firmata attraverso il tunnel (service token di Access + HMAC); il Pi aggiorna, fa lo smoke test e racconta l'esito alla CI, che solo dopo fa pubblicare la dashboard con l'hook di Pages. Una CI rossa non fa partire **né il Pi né la dashboard**. Il Pi non si fida di chi lo avvisa: sceglie lui il commit (`origin/main`) e chiede a GitHub se tutti i controlli sono verdi. Procedura e limiti in DEPLOY.md §6.
+- **Smoke test post-deploy**: `GET /api/health` subito dopo ogni deploy, con ritentativi; **rollback automatico** al commit di prima se fallisce, tranne quando nel mezzo c'è una migrazione nuova (il codice vecchio potrebbe non reggere lo schema nuovo): lì si ferma e avvisa.
 - **Staging locale**: un profilo Docker Compose separato per provare le modifiche prima di "andare in produzione" sul tunnel pubblico.
 
 ## 11. Documentazione richiesta nel repo
@@ -488,7 +490,7 @@ Messaggio automatico la mattina (DeepSeek, composizione semplice) con: impegni/l
 
 Ogni fase porta la sua nota in corsivo: **una fase senza nota non è ancora cominciata.** Serve perché per un po' le note c'erano solo su due fasi finite, e l'assenza si leggeva come «fatta» sulle fasi prima e come «da fare» su quelle dopo — la stessa mancanza che diceva due cose opposte a seconda di dove stava.
 
-1. **Scheletro**: bot Telegram (testo+voce) + Whisper locale + router DeepSeek/Claude + DB SQLite + Docker Compose + Cloudflare Tunnel/Access + CI base. *Fatta tranne **Cloudflare Tunnel e Access**, che restano da configurare (DEPLOY.md §4): finché mancano, dashboard e API si raggiungono solo dal Pi e il deploy automatico di §10 non ha da dove partire. È l'unico pezzo di questa fase rimasto indietro, e non ha impedito di costruirci sopra fino alla fase 6.*
+1. **Scheletro**: bot Telegram (testo+voce) + Whisper locale + router DeepSeek/Claude + DB SQLite + Docker Compose + Cloudflare Tunnel/Access + CI base. *Fatta: Cloudflare Tunnel e Access (DEPLOY.md §4), la dashboard su Pages (§5) e il deploy automatico di §10 (DEPLOY.md §6). Tunnel e Access sono arrivati dopo la fase 6: non hanno impedito di costruirci sopra, ma fino ad allora dashboard e API si raggiungevano solo dal Pi.*
 2. **Task/promemoria + lista della spesa** (moduli semplici, valore d'uso immediato). *Fatte tutte e due, tranne il job che controlla le **scadenze** dei task e avvisa su Telegram (§8.2): quello arriverà col worker, dove è già in elenco insieme al digest mattutino.*
 3. **Diario** (flusso trascrizione → riassunto → approvazione → salvataggio, + job settimanale). *Fatta, canale passivo e job settimanale compresi.*
 4. **Tracciamento spese** (testo + foto scontrino con conferma prima del salvataggio). *Fatta.*

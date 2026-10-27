@@ -468,8 +468,12 @@ indirizzo diverso dal tuo non deve riuscire a entrare.
 
 ## 5. Dashboard su Cloudflare Pages
 
-La dashboard è statica: la costruisce Pages a ogni push su `main`. Si fa dal
-dashboard Cloudflare (`dash.cloudflare.com`), non da Zero Trust.
+La dashboard è statica e la costruisce Pages. Si fa dal dashboard Cloudflare
+(`dash.cloudflare.com`), non da Zero Trust.
+
+Il primo deploy parte da solo, appena colleghi il repo. **Dopo** aver configurato
+§6 questo cambia: i deploy automatici vengono spenti e la dashboard esce solo
+quando la CI è tutta verde e il Pi è stato aggiornato (§6, passo 3).
 
 ### a. Il progetto
 
@@ -549,23 +553,129 @@ ammette via CORS solo `https://custode.simonepugliese.com`. Si usa sempre quello
 
 ## 6. Aggiornare una versione già in esecuzione
 
+**Niente va online se non è tutto verde.** Ad ogni push su `main`:
+
+1. la CI controlla tutto (backend, immagini Docker, dashboard);
+2. se **uno qualunque** è rosso, non succede nient'altro: né il Pi né la dashboard;
+3. se sono tutti verdi, il job `Deploy` avvisa il Pi, che aggiorna e fa lo smoke
+   test su `/api/health`; se il nuovo non risponde, **torna al commit di prima**;
+4. solo se il Pi è su e risponde, il job fa pubblicare la dashboard su Pages;
+5. l'esito arriva su Telegram.
+
+Il Pi non si fida di chi lo avvisa: oltre al job con `needs`, `deploy.sh` chiede
+a GitHub se **tutti** i controlli di quel commit sono verdi, e il commit da
+installare lo sceglie lui (`origin/main`), non la richiesta.
+
+### a. Configurazione una tantum
+
+Si fa tutta **prima** del primo push che deve usarla. L'ordine conta: se spegni i
+deploy automatici di Pages (punto 3) prima che il resto funzioni, la dashboard
+non si aggiorna.
+
+**1. Sul Pi: il servizio che ascolta.**
+
 ```bash
-cd ~/custode
-git pull
-docker compose up --build -d
-curl -sf localhost:8000/api/health || echo "SMOKE TEST FALLITO"
+cd /docker_files_miei/custode
+sudo git pull
+
+# L'indirizzo del Pi dentro la rete di Compose: lì ascolta il listener, così
+# cloudflared lo raggiunge e la rete di casa no.
+sudo docker network inspect custode_default -f '{{(index .IPAM.Config 0).Gateway}}'
+
+sudo cp deploy/custode-deploy.env.example /etc/custode-deploy.env
+sudo chmod 600 /etc/custode-deploy.env
+sudo nano /etc/custode-deploy.env      # segreto (openssl rand -hex 32) e indirizzo
+
+sudo cp deploy/custode-deploy.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now custode-deploy
+sudo systemctl status custode-deploy   # active (running)
+sudo docker compose up -d cloudflared  # prende l'extra_hosts nuovo
 ```
 
-Se lo smoke test fallisce, tornare alla versione precedente:
+Il checkout sul Pi deve essere **pulito**: una modifica a mano a un file
+versionato (è già successo con `docker-compose.yml`) fa fermare il merge e il
+deploy fallisce con «non è un fast-forward».
+
+**2. Su Cloudflare: l'hostname e l'accesso.** I nomi dei menu sono a memoria.
+
+- *Tunnel → Public hostname:* `deploycustode.simonepugliese.com` →
+  `http://host.docker.internal:9000`.
+- *Zero Trust → Access → Service credentials → Service Tokens:* crea un token
+  (es. `custode-ci`) e copia **subito** Client ID e Client Secret: il secondo non
+  si rivede.
+- *Access → Applications → Self-hosted:* dominio
+  `deploycustode.simonepugliese.com`, policy con azione **Service Auth** che
+  include solo quel token. Nessuna policy con email: da lì deve passare solo la CI.
+
+**3. Su Pages: spegnere i deploy automatici e creare l'hook.**
+
+- *Il progetto → Settings → Builds → Branch control:* disattiva i deploy
+  automatici del branch di produzione.
+- *Settings → Builds → Deploy hooks:* aggiungine uno per `main`, e copia l'URL.
+
+**4. Su GitHub: i segreti** (*Settings → Secrets and variables → Actions*):
+
+| Segreto | Valore |
+|---|---|
+| `CF_ACCESS_CLIENT_ID`, `CF_ACCESS_CLIENT_SECRET` | quelli del service token |
+| `DEPLOY_HMAC_SECRET` | lo stesso `CUSTODE_DEPLOY_SEGRETO` del Pi |
+| `PAGES_DEPLOY_HOOK` | l'URL dell'hook di Pages |
+
+**5. Provare le difese, dal tuo computer, prima del primo deploy vero:**
 
 ```bash
-git checkout <commit-precedente>
-docker compose up --build -d
+# Senza token: Access deve fermarti (302 o 403), non deve arrivare al Pi.
+curl -si -X POST https://deploycustode.simonepugliese.com/deploy | head -3
+
+# Con il token ma senza firma: deve rispondere 401 dal listener.
+curl -si -X POST https://deploycustode.simonepugliese.com/deploy \
+  -H "CF-Access-Client-Id: <id>" -H "CF-Access-Client-Secret: <secret>" | head -3
 ```
 
-L'automazione di questo passaggio (deploy solo a pipeline verde + rollback
-automatico) è quella descritta in §10, e arriva col tunnel: senza, non c'è
-niente da cui far partire un deploy che non sia la mano su questa tastiera.
+### b. Quando il deploy non va a buon fine
+
+L'esito sta nel log del job `Deploy` su GitHub (diventa rosso) e arriva su
+Telegram. Gli stati, e cosa fare:
+
+| Stato | Cosa è successo | Cosa fare |
+|---|---|---|
+| `rifiutato` | Il Pi ha visto che la CI di quel commit non è tutta verde. Non ha toccato nulla. | Sistema la CI e rifai il push. |
+| `rollback` | Il nuovo non rispondeva su `/api/health`: il Pi è tornato al commit di prima, che risponde. La dashboard **non** è stata pubblicata. | Guarda i log del servizio che non partiva: `sudo docker compose logs api`. |
+| `da_guardare` | Il deploy è fallito **e** nel mezzo c'è una migrazione nuova: il Pi non torna indietro da solo, perché il codice vecchio potrebbe non reggere lo schema nuovo. Oppure è fallito anche il ritorno. | Guarda a mano. Il backup di ieri notte è in §7. |
+| `fallito` | Altro: `git fetch` o il merge non sono riusciti (spesso modifiche locali sul Pi). | `sudo git status` sul Pi. |
+
+Se il Pi è spento al momento del push, il job `Deploy` diventa rosso («Il Pi non
+risponde») e la dashboard non esce. Riaccendilo e rilancia il job da GitHub
+(*Actions → la run → Re-run failed jobs*), oppure lancia lo script a mano.
+
+### c. A mano
+
+Funziona anche senza CI, con gli stessi controlli (compreso quello sulla CI di
+GitHub e il rollback):
+
+```bash
+cd /docker_files_miei/custode
+sudo bash deploy/deploy.sh
+```
+
+La vecchia procedura in tre righe (`git pull`, `docker compose up --build -d`,
+`curl -sf localhost:8000/api/health`) resta valida, ma senza rollback.
+
+### d. Cosa non fa
+
+- **Non annulla le migrazioni.** Il rollback rimette il codice di prima, non lo
+  schema del database. Per questo, con una migrazione nuova, non scatta.
+- **Non aspetta il build di Pages**: conferma che l'hook è stato accettato. È lo
+  stesso `npm run build` già verde in CI, quindi non dovrebbe fallire.
+- **Un push ravvicinato dopo l'altro** può far costruire a Pages un commit più
+  nuovo di quello appena verificato; la CI di quello, subito dopo, lo controlla.
+- **Dopo lo spegnimento dei deploy automatici di Pages**, un push non pubblica più
+  la dashboard se non passa da qui. È voluto: se vuoi pubblicarla a mano, usa
+  *Retry deployment* o l'hook.
+- **Se cambi `deploy/listener.py` o `custode_deploy/`**, riavvia il servizio:
+  `sudo systemctl restart custode-deploy`. L'aggiornamento li cambia su disco ma
+  il processo in esecuzione ha ancora il codice vecchio. (`deploy.sh`, invece, è
+  sicuro: è scritto per poter essere riscritto mentre gira.)
 
 ## 7. Backup e restore del database
 

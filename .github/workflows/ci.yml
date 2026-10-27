@@ -1,6 +1,6 @@
 # Lint + test ad ogni push e su ogni PR (ARCHITECTURE.md §10).
-# Il deploy sul Pi si innesterà qui quando esisterà il tunnel: parte solo se
-# questa pipeline è verde.
+# Il job `deploy` in fondo aggiorna il Pi e poi pubblica la dashboard, e parte
+# solo su un push a `main` con **tutti** gli altri job verdi (DEPLOY.md §6).
 name: CI
 
 on:
@@ -21,7 +21,10 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Su `main` mai: un push nuovo non deve interrompere a metà un deploy in corso
+  # sul Pi (la run vecchia smetterebbe di aspettarne l'esito e di pubblicare la
+  # dashboard). Le run in coda si sostituiscono da sole, resta solo l'ultima.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
@@ -128,3 +131,79 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  deploy:
+    # Il nome conta: `custode_deploy/ci.py` lo esclude dai controlli che il Pi
+    # chiede a GitHub, perché al momento della domanda è lui, in corso.
+    name: Deploy
+    needs: [backend, immagini, dashboard]
+    # Mai su una PR, mai su un branch: solo ciò che è arrivato su `main`. Con un
+    # `needs` rosso il job viene saltato, e con lui tutto quello che segue.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      URL: https://deploycustode.simonepugliese.com
+      CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+      CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+      DEPLOY_HMAC_SECRET: ${{ secrets.DEPLOY_HMAC_SECRET }}
+    steps:
+      - name: Aggiorna il Pi e aspetta l'esito
+        run: |
+          set -euo pipefail
+
+          # Una richiesta al listener del Pi: Cloudflare Access la lascia
+          # passare col service token, il listener controlla la firma. Il
+          # messaggio firmato è lo stesso di `custode_deploy/firma.py`:
+          #   timestamp \n METODO \n percorso \n corpo
+          chiama() {
+            local metodo=$1 percorso=$2 corpo=${3:-} ts firma
+            ts=$(date +%s)
+            firma=$(printf '%s\n%s\n%s\n%s' "$ts" "$metodo" "$percorso" "$corpo" \
+              | openssl dgst -sha256 -hmac "$DEPLOY_HMAC_SECRET" -hex | awk '{print $NF}')
+            local args=(-fsS --max-time 30 -X "$metodo"
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"
+              -H "X-Custode-Timestamp: $ts" -H "X-Custode-Firma: $firma")
+            if [ -n "$corpo" ]; then
+              args+=(-H "Content-Type: application/json" --data "$corpo")
+            fi
+            curl "${args[@]}" "$URL$percorso"
+          }
+
+          id=$(chiama POST /deploy '{}' | jq -r .id)
+          echo "Deploy in coda sul Pi: $id"
+
+          fine=$((SECONDS + 1500))
+          errori=0
+          while :; do
+            sleep 10
+            if risposta=$(chiama GET "/stato/$id"); then
+              errori=0
+              stato=$(jq -r .stato <<<"$risposta")
+              messaggio=$(jq -r .messaggio <<<"$risposta")
+              echo "[$stato] $messaggio"
+              case "$stato" in
+                in_coda | in_corso) ;;
+                ok) break ;;
+                *)
+                  echo "::error::Deploy sul Pi non riuscito ($stato): $messaggio"
+                  exit 1
+                  ;;
+              esac
+            else
+              # Un singolo singhiozzo di rete non è un deploy fallito; cinque di fila sì.
+              errori=$((errori + 1))
+              echo "Il Pi non risponde ($errori/5)"
+              [ "$errori" -lt 5 ] || { echo "::error::Il Pi non risponde"; exit 1; }
+            fi
+            [ "$SECONDS" -lt "$fine" ] || { echo "::error::Il deploy non è finito in 25 minuti"; exit 1; }
+          done
+
+      - name: Pubblica la dashboard
+        # Solo se il Pi è su e risponde: la dashboard parla con l'API nuova.
+        # L'hook costruisce l'ultimo commit di `main` con lo stesso `npm run
+        # build` già verde sopra; qui si conferma che Pages ha accettato.
+        env:
+          PAGES_DEPLOY_HOOK: ${{ secrets.PAGES_DEPLOY_HOOK }}
+        run: curl -fsS --max-time 30 -X POST "$PAGES_DEPLOY_HOOK"
