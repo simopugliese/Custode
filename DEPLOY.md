@@ -466,11 +466,70 @@ indirizzo diverso dal tuo non deve riuscire a entrare.
 > ragionevole. Verificare quel token nell'API è un rinforzo possibile se un
 > giorno l'esposizione cambia.
 
-## 5. Dashboard su Cloudflare Pages **[da fare — fase 9, «dashboard completa»]**
+## 5. Dashboard su Cloudflare Pages
 
-Build da `dashboard/` (`npm run build`, output in `dist/`), progetto Pages
-collegato al repo, variabile d'ambiente `VITE_API_BASE_URL` puntata
-all'hostname del tunnel. Dettagli in [`dashboard/README.md`](./dashboard/README.md).
+La dashboard è statica: la costruisce Pages a ogni push su `main`. Si fa dal
+dashboard Cloudflare (`dash.cloudflare.com`), non da Zero Trust.
+
+### a. Il progetto
+
+**Workers & Pages → Create → Pages → Connect to Git**, repo `Custode`,
+production branch `main`:
+
+| Campo | Valore |
+|---|---|
+| Build command | `npm run build` |
+| Build output directory | `dist` |
+| Root directory | `dashboard` |
+
+Variabili d'ambiente del progetto, **prima** del primo deploy (le `VITE_*` entrano
+nel bundle al build: cambiarle dopo vuole un nuovo deploy):
+
+- `VITE_API_BASE_URL=https://apicustode.simonepugliese.com` (senza `/` finale);
+- `NODE_VERSION=22` (Vite 8 vuole Node `^20.19.0 || >=22.12.0`).
+
+Niente `_redirects`: per il routing lato client basta il comportamento di Pages,
+che serve `index.html` ai percorsi che non esistono (vedi
+[`dashboard/README.md`](./dashboard/README.md)).
+
+### b. Access davanti, poi il dominio
+
+L'ordine conta, così la dashboard non è mai pubblica nemmeno per un attimo:
+
+1. **Access → Applications → Add → Self-hosted**, dominio **solo**
+   `custode.simonepugliese.com`, stessa policy dell'API (§4b). Il dominio non
+   deve ancora esistere. Il CORS settings qui non serve: sta sull'applicazione
+   dell'API.
+2. **Pages → il progetto → Custom domains → Set up a custom domain**,
+   `custode.simonepugliese.com`. Se il dominio è nello stesso account Cloudflare
+   crea da solo il record DNS.
+3. Verifica: `curl -sI https://custode.simonepugliese.com` deve rispondere `302`
+   verso `*.cloudflareaccess.com`.
+
+### c. Verificare nel browser
+
+Da una finestra in incognito, `https://custode.simonepugliese.com`: login di
+Access, poi la dashboard con i dati. Con la Console aperta (F12) non devono
+comparire errori CORS.
+
+Se nella Console vedi *«Response to preflight request doesn't pass access
+control check: No 'Access-Control-Allow-Origin'»*, è l'applicazione Access
+dell'API che risponde al preflight al posto dell'API: attiva **Bypass OPTIONS
+requests to origin** (§4b, punto 4). Per diagnosticarlo senza il browser:
+
+```bash
+curl -i -X OPTIONS https://apicustode.simonepugliese.com/api/home \
+  -H "Origin: https://custode.simonepugliese.com" \
+  -H "Access-Control-Request-Method: GET" \
+  -H "Access-Control-Request-Headers: content-type"
+```
+
+Risponde l'API quando il corpo è `OK` e compaiono `access-control-allow-origin`
+e `access-control-allow-credentials`; se il corpo è vuoto, ha risposto Access.
+
+> L'indirizzo `*.pages.dev` del progetto resta pubblico. Il bundle non contiene
+> segreti e da lì le chiamate all'API sono bloccate dal CORS, ma conviene
+> disattivarlo o metterlo dietro Access.
 
 ## 6. Aggiornare una versione già in esecuzione
 
