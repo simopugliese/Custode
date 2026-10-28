@@ -545,7 +545,7 @@ class Connessione(BaseModel):
     nome: str
     dettaglio: str
     stato: str
-    """'collegato' | 'non_collegato'."""
+    """'collegato' | 'non_collegato' (manca la chiave) | 'errore' (c'è, ma non funziona)."""
 
 
 class OrariImpostazioni(BaseModel):

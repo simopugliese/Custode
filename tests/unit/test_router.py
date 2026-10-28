@@ -203,3 +203,76 @@ def test_configurato_per_guarda_il_provider_del_compito() -> None:
     router = Router(solo_deepseek)
     assert router.configurato_per(Compito.CRUD_TASK) is True
     assert router.configurato_per(Compito.RIASSUNTO_DIARIO) is False
+
+
+# — verifica della chiave —
+
+
+class _ElencoModelli:
+    def __init__(self, errore: Exception | None = None):
+        self._errore = errore
+        self.chiamate = 0
+
+    def list(self, **kwargs: Any) -> Any:
+        self.chiamate += 1
+        if self._errore is not None:
+            raise self._errore
+        return []
+
+
+class _ClientConModelli:
+    def __init__(self, modelli: _ElencoModelli):
+        self.models = modelli
+
+
+class AuthenticationError(Exception):
+    """Ha lo stesso nome dell'eccezione dell'SDK: è così che il client la riconosce."""
+
+
+def _deepseek_con_stato(stato: int) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(stato, json={})))
+
+
+def test_deepseek_con_chiave_buona_si_verifica(impostazioni: ImpostazioniRouter) -> None:
+    ClientDeepSeek(impostazioni, _deepseek_con_stato(200)).verifica_chiave(1)
+
+
+def test_deepseek_rifiuta_la_chiave(impostazioni: ImpostazioniRouter) -> None:
+    with pytest.raises(ProviderNonConfigurato):
+        ClientDeepSeek(impostazioni, _deepseek_con_stato(401)).verifica_chiave(1)
+
+
+def test_deepseek_in_errore_non_dice_che_la_chiave_e_sbagliata(
+    impostazioni: ImpostazioniRouter,
+) -> None:
+    with pytest.raises(ProviderNonRaggiungibile):
+        ClientDeepSeek(impostazioni, _deepseek_con_stato(503)).verifica_chiave(1)
+
+
+def test_claude_con_chiave_buona_si_verifica(impostazioni: ImpostazioniRouter) -> None:
+    modelli = _ElencoModelli()
+    ClientClaude(impostazioni, _ClientConModelli(modelli)).verifica_chiave(1)
+    assert modelli.chiamate == 1
+
+
+def test_claude_rifiuta_la_chiave(impostazioni: ImpostazioniRouter) -> None:
+    modelli = _ElencoModelli(AuthenticationError("invalid x-api-key"))
+    with pytest.raises(ProviderNonConfigurato):
+        ClientClaude(impostazioni, _ClientConModelli(modelli)).verifica_chiave(1)
+
+
+def test_claude_che_non_risponde_alla_verifica(impostazioni: ImpostazioniRouter) -> None:
+    modelli = _ElencoModelli(RuntimeError("boom"))
+    with pytest.raises(ProviderNonRaggiungibile):
+        ClientClaude(impostazioni, _ClientConModelli(modelli)).verifica_chiave(1)
+
+
+def test_il_router_ricorda_l_esito_della_verifica(impostazioni: ImpostazioniRouter) -> None:
+    modelli = _ElencoModelli()
+    claude = ClientClaude(impostazioni, _ClientConModelli(modelli))
+    router = Router(impostazioni, claude=claude)
+
+    router.verifica_per(Compito.RIASSUNTO_DIARIO)
+    router.verifica_per(Compito.RIASSUNTO_DIARIO)
+
+    assert modelli.chiamate == 1

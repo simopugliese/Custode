@@ -512,7 +512,7 @@ export interface ImpostazioniData {
    * bisogno di un tetto (§8.5).
    */
   budget: { settimanale?: number };
-  connessioni: { nome: string; dettaglio: string; stato: 'collegato' | 'non_collegato' }[];
+  connessioni: { nome: string; dettaglio: string; stato: 'collegato' | 'non_collegato' | 'errore' }[];
   dati: { vociDiario: number; speseRegistrate: number; ultimoBackupLabel: string };
   sistema: { apiOnline: boolean; ultimoSyncCalendarioLabel: string; versione: string };
   /** Cosa vale ancora dal `.env` perché non l'hai mai deciso da qui. */

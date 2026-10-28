@@ -29,7 +29,9 @@ from custode_calendario.config import ImpostazioniCalendario
 from custode_core.db import connessione
 from custode_core.dominio import impostazioni as dom
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, segna_eseguito
+from custode_router.errori import ProviderNonConfigurato, ProviderNonRaggiungibile
 from custode_worker.config import ImpostazioniWorker
+from tests.integration.conftest import RouterFinto
 
 pytestmark = pytest.mark.integration
 
@@ -102,6 +104,38 @@ def test_le_connessioni_dicono_cosa_si_perde_quando_manca(client: TestClient) ->
     # seguono lui, non il `.env` della macchina.
     assert per_nome["DeepSeek"]["stato"] == "collegato"
     assert per_nome["Claude"]["stato"] == "collegato"
+
+
+def test_una_chiave_rifiutata_non_e_collegata(client: TestClient, modello: RouterFinto) -> None:
+    """Una chiave inventata nel `.env` c'è, ma non vale: la pagina deve dirlo."""
+    modello.verifica = ProviderNonConfigurato("Claude ha rifiutato la chiave")
+
+    per_nome = {c["nome"]: c for c in _get(client)["connessioni"]}
+
+    assert per_nome["Claude"]["stato"] == "errore"
+    assert "rifiutata" in per_nome["Claude"]["dettaglio"]
+    # Telegram e Calendar si leggono dalla configurazione, non dalla rete.
+    assert per_nome["Telegram"]["stato"] == "non_collegato"
+
+
+def test_un_provider_che_non_risponde_non_dice_collegato(
+    client: TestClient, modello: RouterFinto
+) -> None:
+    modello.verifica = ProviderNonRaggiungibile("timeout")
+
+    claude = next(c for c in _get(client)["connessioni"] if c["nome"] == "Claude")
+
+    assert claude["stato"] == "errore"
+    assert "non so se la chiave funziona" in claude["dettaglio"]
+
+
+def test_senza_chiave_non_si_prova_nemmeno(client: TestClient, modello: RouterFinto) -> None:
+    modello.compiti_accesi = False
+    modello.verifica = AssertionError("non doveva chiamare il provider")
+
+    claude = next(c for c in _get(client)["connessioni"] if c["nome"] == "Claude")
+
+    assert claude["stato"] == "non_collegato"
 
 
 # — il `.env` come punto di partenza —————————————————————

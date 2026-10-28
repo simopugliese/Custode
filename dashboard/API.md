@@ -619,9 +619,12 @@ cache, nessun `docker compose restart`.
 
 **Nei segreti non si entra** (§9). `connessioni` dice cosa è collegato e — quando
 non lo è — **quale variabile manca**, che è la sola cosa che permette di
-rimetterla a posto senza cercare nei log del Pi. Il valore di quella variabile
-non esce mai da qui, e `PATCH` non ne accetta nessuno: le credenziali stanno nel
-`.env`, come ogni altra del progetto.
+rimetterla a posto senza cercare nei log del Pi. Se la variabile c'è ma la chiave
+di DeepSeek o di Claude viene rifiutata, `stato` è `"errore"` (la verifica è una
+chiamata gratuita all'elenco dei modelli, ricordata per qualche minuto); se il
+provider non risponde, `stato` è `"errore"` e il `dettaglio` dice che non si
+sa. Il valore di quella variabile non esce mai da qui, e `PATCH` non ne accetta
+nessuno: le credenziali stanno nel `.env`, come ogni altra del progetto.
 
 `PATCH` accetta **solo i blocchi che vuoi cambiare**, e guarda quali chiavi
 arrivano invece del loro valore. La differenza conta per il budget:

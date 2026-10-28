@@ -34,7 +34,7 @@ class ClientClaude:
     def configurato(self) -> bool:
         return bool(self._impostazioni.anthropic_api_key) or self._client is not None
 
-    def _cliente(self) -> Any:
+    def _cliente(self, timeout: float | None = None) -> Any:
         if self._client is not None:
             return self._client
         if not self._impostazioni.anthropic_api_key:
@@ -43,8 +43,22 @@ class ClientClaude:
 
         return anthropic.Anthropic(
             api_key=self._impostazioni.anthropic_api_key,
-            timeout=self._impostazioni.timeout_secondi,
+            timeout=timeout or self._impostazioni.timeout_secondi,
         )
+
+    def verifica_chiave(self, timeout: float) -> None:
+        """Chiede un modello all'elenco: costa zero e la chiave sbagliata la respinge.
+
+        Alza `ProviderNonConfigurato` se Anthropic rifiuta la chiave,
+        `ProviderNonRaggiungibile` per qualunque altro guasto.
+        """
+        cliente = self._cliente(timeout)
+        try:
+            cliente.models.list(limit=1)
+        except Exception as errore:  # l'SDK alza una gerarchia sua
+            if type(errore).__name__ in ("AuthenticationError", "PermissionDeniedError"):
+                raise ProviderNonConfigurato("Claude ha rifiutato la chiave") from errore
+            raise ProviderNonRaggiungibile(f"Claude non risponde: {errore}") from errore
 
     def chiedi_json(
         self,

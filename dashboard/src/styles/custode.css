@@ -13,6 +13,7 @@
   --color-text: #1b1d1c;
   --color-accent: #189d5a;
   --color-accent-2: #189d5a;
+  --color-error: #c4361f;
   --color-divider: color-mix(in srgb, #1b1d1c 32%, transparent);
   --color-rule: color-mix(in srgb, #1b1d1c 12%, transparent);
 
@@ -42,6 +43,7 @@
   --color-text: #e8e9e8;
   --color-accent: #3fc37c;
   --color-accent-2: #3fc37c;
+  --color-error: #ff7a64;
   --color-divider: color-mix(in srgb, #e8e9e8 30%, transparent);
   --color-rule: color-mix(in srgb, #e8e9e8 13%, transparent);
   --color-accent-100: #16281f;
@@ -71,6 +73,7 @@
 /* the accent is reserved for what is alive or urgent — an outline tag is a
    neutral label here, not an accented one */
 .cu .tag-outline { border-color: var(--color-divider); color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+.cu .tag-error { border-color: var(--color-error); color: var(--color-error); }
 .cu .tag-accent { background: var(--color-accent-200); color: var(--color-accent-800); }
 .cu[data-theme="notte"] .tag-accent { color: var(--color-accent-900); }
 .cu .btn { font-size: 13px; font-weight: 600; }

@@ -40,6 +40,31 @@ class ClientDeepSeek:
     def configurato(self) -> bool:
         return bool(self._impostazioni.deepseek_api_key)
 
+    def verifica_chiave(self, timeout: float) -> None:
+        """Chiede l'elenco dei modelli: costa zero e la chiave sbagliata la respinge.
+
+        Alza `ProviderNonConfigurato` se DeepSeek rifiuta la chiave,
+        `ProviderNonRaggiungibile` per qualunque altro guasto.
+        """
+        if not self.configurato():
+            raise ProviderNonConfigurato(
+                "manca ROUTER_DEEPSEEK_API_KEY: DeepSeek non è configurato"
+            )
+        client = self._client or httpx.Client(timeout=timeout)
+        try:
+            risposta = client.get(
+                f"{self._impostazioni.deepseek_base_url.rstrip('/')}/models",
+                headers={"Authorization": f"Bearer {self._impostazioni.deepseek_api_key}"},
+            )
+            if risposta.status_code in (401, 403):
+                raise ProviderNonConfigurato("DeepSeek ha rifiutato la chiave")
+            risposta.raise_for_status()
+        except httpx.HTTPError as errore:
+            raise ProviderNonRaggiungibile(f"DeepSeek non risponde: {errore}") from errore
+        finally:
+            if self._client is None:
+                client.close()
+
     def chiedi_json(self, *, sistema: str, utente: str, schema: dict[str, Any]) -> dict[str, Any]:
         if not self.configurato():
             raise ProviderNonConfigurato(

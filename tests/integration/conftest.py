@@ -30,6 +30,8 @@ class RouterFinto:
         self.risposta: dict[str, Any] = {"azioni": [{"azione": "nessuna"}]}
         self.errore: Exception | None = None
         self.messaggi_visti: list[str] = []
+        self.verifica: Exception | None = None
+        """L'errore che `verifica_per` alza: la chiave c'è ma il provider la respinge."""
         self.compiti_accesi = True
         """Se i compiti di §6 hanno una chiave dietro. Un test che vuole vedere
         la pagina col modello spento lo mette a `False`."""
@@ -50,6 +52,10 @@ class RouterFinto:
 
     def configurato_per(self, compito: Any) -> bool:
         return self.compiti_accesi
+
+    def verifica_per(self, compito: Any) -> None:
+        if self.verifica is not None:
+            raise self.verifica
 
     def chiedi_json(self, compito: Any, **kwargs: Any) -> dict[str, Any]:
         self.messaggi_visti.append(kwargs.get("utente", ""))

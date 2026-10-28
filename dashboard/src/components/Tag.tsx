@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type TagVariant = 'accent' | 'outline' | 'neutral';
+type TagVariant = 'accent' | 'outline' | 'neutral' | 'error';
 
 interface TagProps {
   variant?: TagVariant;
@@ -13,6 +13,7 @@ const VARIANT_CLASS: Record<TagVariant, string> = {
   accent: 'tag-accent',
   outline: 'tag-outline',
   neutral: 'tag-neutral',
+  error: 'tag-error',
 };
 
 export function Tag({ variant = 'neutral', mono, children, style }: TagProps) {

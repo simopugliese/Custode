@@ -22,6 +22,7 @@ import type { ImpostazioniData } from '../types/api';
 const CONNESSIONE_LABEL: Record<ImpostazioniData['connessioni'][number]['stato'], string> = {
   collegato: 'collegato',
   non_collegato: 'non collegato',
+  errore: 'errore',
 };
 
 export default function Impostazioni() {
@@ -192,7 +193,7 @@ export default function Impostazioni() {
                         <div className="row">
                           <span style={{ fontSize: 15, fontWeight: 600 }}>{c.nome}</span>
                           <span style={{ marginLeft: 'auto' }}>
-                            <Tag variant={c.stato === 'non_collegato' ? 'outline' : 'accent'}>
+                            <Tag variant={c.stato === 'errore' ? 'error' : c.stato === 'non_collegato' ? 'outline' : 'accent'}>
                               {CONNESSIONE_LABEL[c.stato]}
                             </Tag>
                           </span>

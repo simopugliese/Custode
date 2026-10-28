@@ -49,6 +49,7 @@ from custode_core.formato import etichetta_da_quando
 from custode_core.registro_job import BACKUP, SYNC_CALENDARIO, ultima_esecuzione
 from custode_router import Router
 from custode_router.compiti import Compito
+from custode_router.errori import ProviderNonConfigurato, ProviderNonRaggiungibile
 from custode_worker.config import ImpostazioniWorker
 
 router = APIRouter(prefix="/api/impostazioni", tags=["impostazioni"])
@@ -95,14 +96,46 @@ def _connessioni(
             "manca ROUTER_ANTHROPIC_API_KEY",
         ),
     ]
-    return [
-        schemi.Connessione(
+    return [_connessione(*voce, instradatore=instradatore) for voce in voci]
+
+
+def _connessione(
+    nome: str, dettaglio: str, acceso: bool, perche: str, *, instradatore: Router
+) -> schemi.Connessione:
+    if not acceso:
+        return schemi.Connessione(
             nome=nome,
-            dettaglio=dettaglio if acceso else f"{dettaglio} Adesso è spento: {perche}.",
-            stato="collegato" if acceso else "non_collegato",
+            dettaglio=f"{dettaglio} Adesso è spento: {perche}.",
+            stato="non_collegato",
         )
-        for nome, dettaglio, acceso, perche in voci
-    ]
+    problema = _prova_chiave(nome, instradatore)
+    if problema is not None:
+        return schemi.Connessione(nome=nome, dettaglio=f"{dettaglio} {problema}", stato="errore")
+    return schemi.Connessione(nome=nome, dettaglio=dettaglio, stato="collegato")
+
+
+def _prova_chiave(nome: str, instradatore: Router) -> str | None:
+    """Per i due modelli «c'è una chiave nel `.env`» non basta: si prova.
+
+    Una chiave inventata o scaduta c'è, e non funziona. Per le altre
+    connessioni la pagina dice solo se sono configurate.
+    """
+    compito = _COMPITO_DI_PROVA.get(nome)
+    if compito is None:
+        return None
+    try:
+        instradatore.verifica_per(compito)
+    except ProviderNonConfigurato:
+        return "La chiave nel .env è stata rifiutata: controllala."
+    except ProviderNonRaggiungibile:
+        return "Non riesco a raggiungerlo adesso, quindi non so se la chiave funziona."
+    return None
+
+
+_COMPITO_DI_PROVA = {
+    "DeepSeek": Compito.TAG_CALENDARIO,
+    "Claude": Compito.RIASSUNTO_DIARIO,
+}
 
 
 def _da_quando(momento: datetime | None, ora: datetime, *, mai: str) -> str:
