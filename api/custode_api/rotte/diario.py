@@ -52,10 +52,15 @@ def _periodo(vista: Vista, oggi: date) -> tuple[date, date]:
 
 def _voce(voce: dom.Voce) -> schemi.VoceDiario:
     approvata = voce.stato is dom.Stato.APPROVATA
+    # Senza bozza non c'è niente da approvare: la giornata sta ancora raccogliendo.
+    if approvata:
+        stato = "approvata"
+    else:
+        stato = "da_approvare" if voce.riassunto_proposto else "in_raccolta"
     return schemi.VoceDiario(
         id=str(voce.id),
         dataLabel=etichetta_giorno_voce(voce.giorno),
-        stato="approvata" if approvata else "da_approvare",
+        stato=stato,
         approvataAlleLabel=(
             etichetta_ora(voce.approvata_il) if approvata and voce.approvata_il else None
         ),

@@ -75,6 +75,9 @@ export default function Diario() {
                         {voce.stato === 'approvata' && (
                           <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>approvata alle {voce.approvataAlleLabel}</span>
                         )}
+                        {voce.stato === 'in_raccolta' && (
+                          <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>in raccolta — nessuna bozza ancora</span>
+                        )}
                         {voce.stato === 'assente' && (
                           <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>nessuna voce — non hai scritto a Custode</span>
                         )}

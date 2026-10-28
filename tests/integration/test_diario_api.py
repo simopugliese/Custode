@@ -210,6 +210,18 @@ def test_approvare_una_giornata_senza_bozza(
     assert "bozza" in risposta.json()["detail"]
 
 
+def test_una_giornata_senza_bozza_e_in_raccolta(
+    client: TestClient, scrivi: sqlite3.Connection, ora: datetime
+) -> None:
+    """Niente bozza, niente «da approvare»: la dashboard non offre il bottone."""
+    voce, _ = dom.aggiungi_materiale(scrivi, giorno=ora.date(), testo="materiale", ora=ora)
+
+    riga = next(v for v in client.get("/api/diario").json()["voci"] if v["id"] == str(voce.id))
+
+    assert riga["stato"] == "in_raccolta"
+    assert "testo" not in riga
+
+
 def test_una_bozza_del_mese_scorso_resta_visibile(
     client: TestClient, scrivi: sqlite3.Connection, ora: datetime
 ) -> None:

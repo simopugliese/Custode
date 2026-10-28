@@ -190,7 +190,7 @@ class HomeData(BaseModel):
 class VoceDiario(BaseModel):
     id: str
     dataLabel: str
-    # 'da_approvare' | 'approvata' | 'assente'
+    # 'da_approvare' | 'approvata' | 'in_raccolta' | 'assente'
     stato: str
     approvataAlleLabel: str | None = None
     testo: str | None = None

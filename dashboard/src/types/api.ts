@@ -103,7 +103,7 @@ export interface MeteoData {
 
 // — Diario —
 
-export type StatoVoceDiario = 'da_approvare' | 'approvata' | 'assente';
+export type StatoVoceDiario = 'da_approvare' | 'approvata' | 'in_raccolta' | 'assente';
 
 export interface VoceDiario {
   id: string;

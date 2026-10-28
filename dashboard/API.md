@@ -122,7 +122,8 @@ e non sono indirizzabili dalle mutazioni.
   31 non deve sparire dalla pagina il primo del mese dopo.
 
 `stato` è `"da_approvare"` finché non l'hai confermata (`testo` è allora la
-bozza proposta), `"approvata"` dopo — e da quel momento `testo` è la versione
+bozza proposta), `"in_raccolta"` se la giornata ha materiale ma nessuna bozza
+(niente da approvare, `testo` assente), `"approvata"` dopo — e da quel momento `testo` è la versione
 approvata e `approvataAlleLabel` dice a che ora. `scarta` **cancella anche il
 materiale grezzo**: nel diario entra solo ciò che approvi (§8.4), quindi una
 bozza rifiutata non resta da nessuna parte e il giorno torna `assente`.
