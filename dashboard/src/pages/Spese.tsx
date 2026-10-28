@@ -10,7 +10,12 @@ import { Bar } from '../components/Bar';
 import { Money, Percent } from '../components/Money';
 import { FormSpesa } from '../components/FormSpesa';
 import { Icon } from '../lib/icons';
+import { messaggioErrore } from '../lib/apiClient';
+import { movimentiInCsv, scaricaCsv } from '../lib/csv';
+import { oggiISO } from '../lib/date';
 import {
+  PASSO_MOVIMENTI,
+  leggiTuttiIMovimenti,
   useCategorieSpesa,
   useConfermaScontrino,
   useEliminaSpesa,
@@ -30,7 +35,8 @@ const PERIODI = [
 
 export default function Spese() {
   const [periodo, setPeriodo] = useState<'settimana' | 'mese' | 'anno'>('mese');
-  const { data, isLoading, error, refetch } = useSpese(periodo);
+  const [limite, setLimite] = useState(PASSO_MOVIMENTI);
+  const { data, isLoading, error, refetch, isPlaceholderData } = useSpese(periodo, limite);
   const conferma = useConfermaScontrino();
   const registra = useRegistraSpesa();
   const modifica = useModificaSpesa();
@@ -43,6 +49,22 @@ export default function Spese() {
   const [inModifica, setInModifica] = useState<Movimento | null>(null);
   const [categoriaScontrino, setCategoriaScontrino] = useState('');
   const [daUnire, setDaUnire] = useState<string | null>(null);
+  const [esportando, setEsportando] = useState(false);
+  const [erroreExport, setErroreExport] = useState<string | null>(null);
+
+  // L'export non è quello che vedi: la tabella arriva a `limite` righe, il file
+  // deve avere tutto il periodo.
+  async function esporta() {
+    setEsportando(true);
+    setErroreExport(null);
+    try {
+      scaricaCsv(`spese-${periodo}-${oggiISO()}.csv`, movimentiInCsv(await leggiTuttiIMovimenti(periodo)));
+    } catch (e) {
+      setErroreExport(messaggioErrore(e));
+    } finally {
+      setEsportando(false);
+    }
+  }
 
   const nomiCategorie = (categorie.data ?? []).filter((c) => c.attiva).map((c) => c.nome);
 
@@ -78,7 +100,10 @@ export default function Spese() {
                 <div className="row" style={{ gap: 6 }}>
                   <span className="cu-kicker" style={{ flex: 'none' }}>Periodo</span>
                   <div style={{ marginLeft: 6 }}>
-                    <SegmentedControl name="vSpese" options={[...PERIODI]} value={periodo} onChange={(v) => setPeriodo(v as typeof periodo)} />
+                    <SegmentedControl name="vSpese" options={[...PERIODI]} value={periodo} onChange={(v) => {
+                      setPeriodo(v as typeof periodo);
+                      setLimite(PASSO_MOVIMENTI);
+                    }} />
                   </div>
                   <button
                     className="btn btn-ghost"
@@ -126,11 +151,21 @@ export default function Spese() {
                 <div>
                   <div className="row" style={{ marginBottom: 6 }}>
                     <h5>Movimenti recenti</h5>
-                    <button className="btn btn-ghost" style={{ marginLeft: 'auto' }}>
-                      Esporta CSV
+                    <button
+                      className="btn btn-ghost"
+                      style={{ marginLeft: 'auto' }}
+                      onClick={esporta}
+                      disabled={esportando || data.movimenti.length === 0}
+                    >
+                      {esportando ? 'Esporto…' : 'Esporta CSV'}
                       <Icon name="download" size={14} />
                     </button>
                   </div>
+                  {erroreExport && (
+                    <div className="cu-muted" style={{ fontSize: 12, paddingBottom: 8 }} role="alert">
+                      Non esportato — {erroreExport}
+                    </div>
+                  )}
                   <table className="table">
                     <thead>
                       <tr>
@@ -199,7 +234,20 @@ export default function Spese() {
                     </tbody>
                   </table>
                   {data.movimenti.length === 0 && <div className="cu-muted" style={{ fontSize: 13, padding: '14px 0' }}>Nessun movimento nel periodo.</div>}
-                  <button className="btn btn-secondary" style={{ marginTop: 14 }}>Carica altri movimenti</button>
+                  {data.altriMovimenti > 0 && (
+                    <div className="row" style={{ marginTop: 14 }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setLimite((l) => l + PASSO_MOVIMENTI)}
+                        disabled={isPlaceholderData}
+                      >
+                        Carica altri movimenti
+                      </button>
+                      <span className="cu-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
+                        {data.altriMovimenti} più vecchi
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -411,10 +411,13 @@ che finisce a oggi, §8.5). Spesa inesistente → `404`.
 `Movimento` porta ora anche `data` (AAAA-MM-GG) e `luogo`: `dataLabel` è ciò
 che si legge, `data` è ciò che il form rimanda indietro per correggerla.
 
-Sulla pagina Spese restano inerti **«Esporta CSV»** e **«Carica altri
-movimenti»**: sono comodità, non rimediano a un errore, e la seconda ha
-bisogno di una paginazione che il contratto non prevede. «Registra spesa» e
-«Cambia categoria» invece ora funzionano.
+`GET /api/spese` accetta anche `limite` (default 50, da 1 a 5000): quanti
+movimenti mandare in `movimenti`. `altriMovimenti` dice quanti del periodo
+restano fuori, ed è ciò che decide se «Carica altri movimenti» compare: il
+bottone ripete la richiesta con 50 in più. «Esporta CSV» chiede il periodo con
+`limite=5000` e costruisce il file nel browser (separatore `;`, virgola
+decimale), quindi non ha una rotta sua. «Registra spesa» e «Cambia categoria»
+funzionano come prima.
 
 ### Categorie
 

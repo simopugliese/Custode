@@ -385,6 +385,7 @@ export interface SpeseData {
   stats: { totaleMese: number; mediaGiorno: number; categoriaMaggiore: string; variazioneMesePrecedente: number };
   andamentoGiorni: number[]; // percentuali 0-100 per il grafico a barre del mese
   movimenti: Movimento[];
+  altriMovimenti: number; // quanti movimenti del periodo restano fuori da `movimenti`
   categorie: CategoriaSpesa[];
   categoriaNota?: string;
   confronto: { label: string; importo: number }[];

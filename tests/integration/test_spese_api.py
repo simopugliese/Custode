@@ -56,6 +56,24 @@ def test_gli_importi_escono_in_euro(client: TestClient, db_path: Path, ora: date
     assert corpo["stats"]["totaleMese"] == 8.15
 
 
+def test_i_movimenti_oltre_il_limite_si_contano_e_si_possono_chiedere(
+    client: TestClient, db_path: Path, ora: datetime
+) -> None:
+    for i in range(5):
+        _scrivi(db_path, ora, centesimi=100 + i, descrizione=f"voce {i}", categoria="Bar")
+    corpo = client.get("/api/spese?limite=2").json()
+    assert len(corpo["movimenti"]) == 2
+    assert corpo["altriMovimenti"] == 3
+    corpo = client.get("/api/spese?limite=5").json()
+    assert len(corpo["movimenti"]) == 5
+    assert corpo["altriMovimenti"] == 0
+
+
+def test_un_limite_assurdo_viene_rifiutato(client: TestClient) -> None:
+    assert client.get("/api/spese?limite=0").status_code == 422
+    assert client.get("/api/spese?limite=999999").status_code == 422
+
+
 def test_il_periodo_cambia_cosa_si_conta(client: TestClient, db_path: Path, ora: datetime) -> None:
     # Lunedì 31 agosto: la settimana è iniziata oggi, il mese finisce oggi.
     _scrivi(db_path, ora, centesimi=1000, descrizione="oggi")

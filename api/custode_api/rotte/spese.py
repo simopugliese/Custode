@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from custode_api import schemi
 from custode_api.dipendenze import ConnDip, OraDip
@@ -35,10 +35,12 @@ router = APIRouter(prefix="/api/spese", tags=["spese"])
 
 Periodo = Literal["settimana", "mese", "anno"]
 
-# Quanti movimenti mandare alla pagina. Il resto sta dietro il bottone "Carica
-# altri movimenti": il contratto non ha un campo per il conteggio, quindi qui
-# il tetto serve solo a non spedire un anno intero in una risposta.
+# Quanti movimenti mandare alla pagina di default. Il resto sta dietro il
+# bottone "Carica altri movimenti", che ripete la richiesta con `limite` più
+# alto; `altriMovimenti` dice quanti ne restano fuori. Il tetto serve a non
+# spedire un anno intero in una risposta, ed è anche quello dell'export CSV.
 MAX_MOVIMENTI = 50
+LIMITE_MASSIMO = 5000
 
 # Quante categorie disegnare nella colonna: sotto la ottava la barretta è
 # indistinguibile da zero.
@@ -226,7 +228,12 @@ def _nota_categorie(spese: list[dom.Spesa]) -> str | None:
 
 
 @router.get("", response_model=schemi.SpeseData, response_model_exclude_none=True)
-def pagina_spese(conn: ConnDip, ora: OraDip, periodo: Periodo = "mese") -> schemi.SpeseData:
+def pagina_spese(
+    conn: ConnDip,
+    ora: OraDip,
+    periodo: Periodo = "mese",
+    limite: int = Query(MAX_MOVIMENTI, ge=1, le=LIMITE_MASSIMO),
+) -> schemi.SpeseData:
     oggi = ora.date()
     inizio = _inizio(periodo, oggi)
     del_periodo = dom.elenco(conn, da=inizio, a=oggi)
@@ -248,7 +255,8 @@ def pagina_spese(conn: ConnDip, ora: OraDip, periodo: Periodo = "mese") -> schem
             variazioneMesePrecedente=_variazione(conn, periodo, inizio, oggi, centesimi),
         ),
         andamentoGiorni=_andamento(del_periodo, periodo, inizio, oggi),
-        movimenti=[movimento(s, oggi) for s in del_periodo[:MAX_MOVIMENTI]],
+        movimenti=[movimento(s, oggi) for s in del_periodo[:limite]],
+        altriMovimenti=max(len(del_periodo) - limite, 0),
         categorie=[
             schemi.CategoriaSpesa(nome=nome, importo=_euro(cent), quota=cent / centesimi)
             for nome, cent in per_categoria[:MAX_CATEGORIE]

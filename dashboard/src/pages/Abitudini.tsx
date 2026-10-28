@@ -22,6 +22,11 @@ const VISTE = [
   { value: 'mese', label: 'Mese' },
 ] as const;
 
+// «Mettilo in agenda» scriverebbe sul calendario, che per ora si può solo
+// leggere: finché non c'è la scrittura il bottone resta nascosto. Quando
+// arriva, basta portare il flag a `true` e dare un `onAction` all'avviso.
+const AGENDA_IN_SCRITTURA = false;
+
 // Da 1 a 7: il target è settimanale (§7), e 7 vuol dire tutti i giorni.
 const TARGET = [1, 2, 3, 4, 5, 6, 7];
 
@@ -71,7 +76,13 @@ export default function Abitudini() {
       <AsyncState isLoading={isLoading} error={error} onRetry={refetch}>
         {data && (
           <>
-            {data.avviso && <AvvisoRow icon="calendar-clock" actionLabel="Mettilo in agenda" actionIcon="arrow-right">{data.avviso}</AvvisoRow>}
+            {data.avviso && <AvvisoRow
+                icon="calendar-clock"
+                actionLabel={AGENDA_IN_SCRITTURA ? 'Mettilo in agenda' : undefined}
+                actionIcon="arrow-right"
+              >
+                {data.avviso}
+              </AvvisoRow>}
 
             <StatsBar
               items={[

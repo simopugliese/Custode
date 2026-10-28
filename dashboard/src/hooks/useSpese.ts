@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/apiClient';
 import { queryKeys } from '../lib/queryKeys';
 import type {
@@ -9,11 +9,25 @@ import type {
   SpeseData,
 } from '../types/api';
 
-export function useSpese(periodo: 'settimana' | 'mese' | 'anno') {
+export type PeriodoSpese = 'settimana' | 'mese' | 'anno';
+
+// Quanti movimenti chiedere in più ad ogni «Carica altri movimenti». Il primo
+// carico è quello di default dell'API (50), poi si cresce di un passo alla volta.
+export const PASSO_MOVIMENTI = 50;
+
+export function useSpese(periodo: PeriodoSpese, limite: number = PASSO_MOVIMENTI) {
   return useQuery({
-    queryKey: queryKeys.spese(periodo),
-    queryFn: () => api.get<SpeseData>(`/spese?periodo=${periodo}`),
+    queryKey: queryKeys.spese(periodo, limite),
+    queryFn: () => api.get<SpeseData>(`/spese?periodo=${periodo}&limite=${limite}`),
+    // Allargando il limite la lista non deve sparire per rimpiazzarsi: resta
+    // quella di prima finché arriva la più lunga.
+    placeholderData: keepPreviousData,
   });
+}
+
+/** Tutti i movimenti del periodo, per l'export: stesso tetto dell'API. */
+export function leggiTuttiIMovimenti(periodo: PeriodoSpese) {
+  return api.get<SpeseData>(`/spese?periodo=${periodo}&limite=5000`).then((d) => d.movimenti);
 }
 
 export function useConfermaScontrino() {

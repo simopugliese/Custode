@@ -287,6 +287,8 @@ class SpeseData(BaseModel):
     stats: StatsSpese
     andamentoGiorni: list[int]
     movimenti: list[Movimento]
+    altriMovimenti: int = 0
+    """Quanti movimenti del periodo restano fuori da `movimenti` (vedi `limite`)."""
     categorie: list[CategoriaSpesa]
     categoriaNota: str | None = None
     confronto: list[ConfrontoSpese]
